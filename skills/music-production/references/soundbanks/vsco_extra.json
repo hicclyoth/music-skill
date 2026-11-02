@@ -1,6 +1,6 @@
 {
  "name": "VSCO 2 CE extra (music-production build)",
- "comment": "Built from VSCO 2 Community Edition by Versilian Studios (recorded by Sam Gossner and Simon Dalzell; sample cutting by Elan Hickler/Soundemote), CC0 1.0. Source: https://github.com/sgossner/VSCO-2-CE at 440300901dfe9275fd84e0b7763af1f8443ae62e; homepage http://vis.versilstudios.net/vsco-community.html. The instruments the vsco bank lacks for a full orchestra: a tenor trombone (the library's Old Trombone, a 1950s Olds Super, five dynamics sustained and three short, with round robins), a tuba (sustained in three dynamics, staccato in two with four round robins; its lowest and highest sustained takes, recorded soft only, are left out so every key has all three dynamics), a solo double bass (sustained with and without vibrato, spiccato, pizzicato and tremolo) and a piccolo (sustained and staccato, five notes each). The library names notes an octave below standard pitch; the piccolo is mapped where it sounds. The sustained takes have no loops of their own, and the loud brass takes hold only 2-4 s: the build cuts a loop from each take's steady part, from 0.8 s to before its release, clear of noises, matched in phase and crossfaded, so a held note lasts as long as the key. Changes: pitch-checked, intonation offsets up to 45 cents as fineTune; recorded dynamics set 3-12 dB apart as in the vsco bank's brass and strings; short notes matched by peak; the brass and bass takes pulled toward their layer's median (at most 12 dB, as their soft takes differ by up to 20 dB from note to note) and the piccolo's toward its neighbours (at most 6 dB); round robins alternate on neighbouring velocities; 16-bit TPDF dither. The library asks that the samples are not sold as such and that improvements stay open, and encourages credit to Versilian Studios/Sam Gossner and Ivy Audio/Simon Dalzell with a link to the VSCO: CE homepage.",
+ "comment": "Built from VSCO 2 Community Edition by Versilian Studios (recorded by Sam Gossner and Simon Dalzell; sample cutting by Elan Hickler/Soundemote), CC0 1.0. Source: https://github.com/sgossner/VSCO-2-CE at 440300901dfe9275fd84e0b7763af1f8443ae62e; homepage http://vis.versilstudios.net/vsco-community.html. The instruments the vsco bank lacks for a full orchestra: a tenor trombone (the library's Old Trombone, a 1950s Olds Super, five dynamics sustained and three short, with round robins), a tuba (sustained in three dynamics, staccato in two with four round robins; its lowest and highest sustained takes, recorded soft only, are left out so every key has all three dynamics), a solo double bass (sustained with and without vibrato, spiccato, pizzicato and tremolo) and a piccolo (sustained and staccato, five notes each). The library names notes an octave below standard pitch; the piccolo is mapped where it sounds. The sustained takes have no loops of their own, and the loud brass takes hold only 2-4 s: the build cuts a loop from each take's steady part, from 0.8 s to before its release, clear of noises, matched in phase and crossfaded, so a held note lasts as long as the key. Changes: pitch-checked, intonation offsets up to 45 cents as fineTune; recorded dynamics set 3-12 dB apart as in the vsco bank's brass and strings; short notes matched by peak; the brass and bass takes pulled toward their layer's median (at most 12 dB, as their soft takes differ by up to 20 dB from note to note) and the piccolo's toward its neighbours (at most 6 dB); round robins alternate on neighbouring velocities; 16-bit TPDF dither. The library asks that the samples are not sold as such and that improvements stay open, and encourages credit to Versilian Studios/Sam Gossner and Ivy Audio/Simon Dalzell with a link to the VSCO: CE homepage. Build b2: sustained presets also come as one preset per recorded dynamic, banks 16 and up on the same program and deaf to velocity, for crossfading along a dynamics curve; melodic ones also as legato presets, banks 32 and up, each take entered past its attack.",
  "copyright": "Source samples CC0 1.0 (Versilian Studios, VSCO 2 Community Edition)",
  "target_rms": 0.08,
  "presets": [
@@ -70,7 +70,14 @@
      },
      "match_limit_db": 12
     }
-   ]
+   ],
+   "dynamic_layers": {
+    "bank": 16
+   },
+   "legato": {
+    "bank": 32,
+    "attack": 0.01
+   }
   },
   {
    "name": "Trombone Short",
@@ -176,7 +183,14 @@
      },
      "match_limit_db": 12
     }
-   ]
+   ],
+   "dynamic_layers": {
+    "bank": 16
+   },
+   "legato": {
+    "bank": 32,
+    "attack": 0.01
+   }
   },
   {
    "name": "Tuba Staccato",
@@ -270,7 +284,14 @@
      },
      "match_limit_db": 12
     }
-   ]
+   ],
+   "dynamic_layers": {
+    "bank": 16
+   },
+   "legato": {
+    "bank": 32,
+    "attack": 0.01
+   }
   },
   {
    "name": "Contrabass Straight",
@@ -501,7 +522,14 @@
       "crossfade": 0.15
      }
     }
-   ]
+   ],
+   "dynamic_layers": {
+    "bank": 16
+   },
+   "legato": {
+    "bank": 32,
+    "attack": 0.01
+   }
   },
   {
    "name": "Piccolo Staccato",

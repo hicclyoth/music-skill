@@ -164,15 +164,34 @@ def validate(p):
         leg=t['performance'].get('legato')
         if leg is not None:
             if t['engine']!='soundfont' or not isinstance(leg,dict):raise ValueError(f'{t["id"]}: legato is a SoundFont-track setting (an object)')
-            number(leg.get('max_interval',5),1,12,'legato max interval',True);number(leg.get('glide_ms',25),0,200,'legato glide ms')
-            number(leg.get('gap_ms',40),0,200,'legato gap ms');number(leg.get('max_notes',4),2,16,'legato max notes',True)
-            if span<leg.get('max_interval',5)+max((abs(v) for _,v in bend),default=0):
-                raise ValueError(f'{t["id"]}: bend_range must cover the legato interval plus the authored bends')
+            if leg.get('mode','slur') not in ('slur','crossfade'):raise ValueError(f'{t["id"]}: legato mode is "slur" or "crossfade"')
+            number(leg.get('gap_ms',40),0,200,'legato gap ms')
+            if leg.get('mode','slur')=='slur':
+                number(leg.get('max_interval',5),1,12,'legato max interval',True);number(leg.get('glide_ms',25),0,200,'legato glide ms')
+                number(leg.get('max_notes',4),2,16,'legato max notes',True)
+                if span<leg.get('max_interval',5)+max((abs(v) for _,v in bend),default=0):
+                    raise ValueError(f'{t["id"]}: bend_range must cover the legato interval plus the authored bends')
+            else:
+                number(leg.get('crossfade_ms',100),20,400,'legato crossfade ms');number(leg.get('max_interval',12),1,24,'legato max interval',True)
+        dyn=t['performance'].get('dynamics')
+        if dyn is not None or (leg or {}).get('mode')=='crossfade':
+            # Rendered from a bank's dynamic layers (musiclib/layered.py): a pitched SoundFont part on its own keys.
+            if t['engine']!='soundfont' or t.get('drums') or t.get('key_map'):raise ValueError(f'{t["id"]}: dynamics and crossfade legato are for pitched SoundFont parts without a key map')
+        if dyn is not None:
+            if not isinstance(dyn,list) or not dyn:raise ValueError(f'{t["id"]}: dynamics is a list of [beat, 0-127] points')
+            last=0
+            for item in dyn:
+                if not isinstance(item,list) or len(item)!=2:raise ValueError(f'{t["id"]}: dynamics points are [beat, value]')
+                number(item[0],0,total,'dynamics beat');number(item[1],0,127,'dynamics value')
+                if item[0]<last:raise ValueError(f'{t["id"]}: dynamics points must be in time order')
+                last=item[0]
+            if any(control==1 for _,control,_ in t['performance'].get('cc',[])):raise ValueError(f'{t["id"]}: dynamics is exported as CC1, so the part cannot also write CC1')
         mix=t['mix']
         if mix.get('level_mode','active_rms') not in ('active_rms','peak'):raise ValueError('Unknown reference level mode')
         number(mix.get('delay_quarters',.75),.0625,8,'delay quarter notes')
         number(mix['level_dbfs'],-60,-6,'reference level')
         number(mix.get('pan',0),-1,1,'pan');number(mix.get('width',1),0,1,'stereo width')
+        if mix.get('depth_m') is not None:number(mix['depth_m'],0,10,'stage depth m')
         if mix.get('bus') is not None and mix['bus'] not in BUSES:raise ValueError(f'{t["id"]}: mix.bus must be one of '+', '.join(BUSES))
         if mix.get('space') is not None and mix['space'] not in SPACES:raise ValueError(f'{t["id"]}: mix.space must be one of '+', '.join(SPACES))
         number(mix.get('highpass',30),15,3000,'HPF')
@@ -197,6 +216,11 @@ def validate(p):
     if p['mix'].get('chain','room') not in ('room','bus'):raise ValueError('mix.chain must be "room" or "bus"')
     if p['mix'].get('dynamics','glue') not in ('glue','wide'):raise ValueError('mix.dynamics must be "glue" or "wide"')
     if p['mix'].get('dynamics')=='wide' and p['mix'].get('chain')!='bus':raise ValueError('mix.dynamics "wide" needs mix.chain "bus"')
+    if p['mix'].get('range_lu') is not None:
+        number(p['mix']['range_lu'],3,30,'master loudness range')
+        if p['mix'].get('dynamics')!='wide':raise ValueError('mix.range_lu belongs to mix.dynamics "wide"')
+        if 'loop' in p:raise ValueError('mix.range_lu changes the level along the piece, so it cannot be used with loop')
+    if any(t['mix'].get('depth_m') is not None for t in p['tracks']) and p['mix'].get('chain')!='bus':raise ValueError('mix.depth_m needs mix.chain "bus"')
     layers=p.get('loop',{}).get('layers')
     if layers is not None:
         # Vertical layers of one loop: every part belongs to exactly one layer, so the layers add up to the mix.

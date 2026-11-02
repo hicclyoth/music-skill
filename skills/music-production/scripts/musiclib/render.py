@@ -4,7 +4,7 @@ import math
 from pathlib import Path
 import time
 import numpy as np
-from . import audio, midi
+from . import audio, layered, midi, stage
 from .model import Clock, load_project, validate, performed, save_json, digest, file_hash, TPQ
 
 def engine_hash():
@@ -15,7 +15,7 @@ def render(project_file,output,config_file,cache=None,resume=False):
     output=Path(output).resolve();cache=Path(cache).resolve() if cache else output.parent/'cache'
     project_key=digest(p);marker=output/'render_input.json'
     code_hash=engine_hash()
-    synthesis_hash=digest({n:file_hash(Path(__file__).with_name(n)) for n in ('model.py','midi.py','audio.py')})
+    synthesis_hash=digest({n:file_hash(Path(__file__).with_name(n)) for n in ('model.py','midi.py','audio.py','layered.py','sf2.py')})
     if output.exists():
         if not resume or not marker.is_file() or json.loads(marker.read_text())['project_sha256']!=project_key:
             raise ValueError('Output exists; choose a fresh directory or resume the same project')
@@ -46,11 +46,11 @@ def render(project_file,output,config_file,cache=None,resume=False):
         midi.write(p,track_midi,[t],single_stem=True)
         if not cached:
             if not t['notes']:audio.write_wav(raw,np.zeros((frames,2),dtype=np.float32))
+            elif t['engine']=='soundfont' and layered.wanted(t):layered.render(p,t,clock,cfg,font,folder,raw)
             elif t['engine']=='soundfont':
                 # The synthesis MIDI applies the track's render patch/key map; the exported part MIDI does not.
                 synth_midi=folder/'synth.mid';midi.write(p,synth_midi,[t],single_stem=True,render=True)
-                log=audio.run([cfg['fluidsynth']['path'],'-n','-i','-C','0','-R','0','-g','.55','-r',str(audio.RATE),'-T','wav','-O','float','-o','synth.cpu-cores=1','-o','synth.polyphony=256','-o','synth.midi-bank-select=mma','-o','player.timing-source=sample','-F',raw,font['path'],synth_midi],folder,'fluidsynth')
-                if any(word in log.lower() for word in ('error','failed','not found')):raise ValueError('Instrument rendering diagnostic: '+log[-2000:])
+                audio.fluidsynth(cfg,font['path'],synth_midi,raw,folder)
             elif t['engine']=='additive':audio.synthesize(p,t,raw)
             else:audio.noise_fx(p,t,raw)
             save_json(receipt,{'key':key,'sha256':file_hash(raw),'track':t['id']})
@@ -67,10 +67,17 @@ def render(project_file,output,config_file,cache=None,resume=False):
             # uncorrelated left/right, which leaves a lead diffuse and off-centre and partly cancels in mono.
             a,b=(1+width)/2,(1-width)/2
             filters.append(f'pan=stereo|c0={a:.9f}*c0+{b:.9f}*c1|c1={b:.9f}*c0+{a:.9f}*c1')
-        filters.extend([f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1',audio.automation(fx.get('automation',[]),clock)])
+        depth=fx.get('depth_m')
+        # A part placed on the stage gets its pan with its early reflections (musiclib/stage.py), after the chain.
+        filters.extend(([] if depth is not None else [f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1'])+[audio.automation(fx.get('automation',[]),clock)])
         stem=output/'stems'/(t['id']+'.wav')
         audio.ffmpeg(cfg,['-i',raw,'-af',','.join(filters),'-ar',str(audio.RATE),'-c:a','pcm_f32le',stem],output/'logs','process_'+t['id'])
+        placed=None
+        if depth is not None:
+            x,_=audio.read_wav(stem);x,placed=stage.place(x,pan,depth);audio.write_wav(stem,x)
         receipt_data={'track':t['id'],'soundfont':font_name,'cache_key':key,'cache_hit':cached,'raw_sha256':file_hash(raw),'stem_sha256':file_hash(stem),'reference_level_dbfs':ref,'gain_db':gain,'processed_stem':str(stem.relative_to(output)),'filter_chain':','.join(filters),'same_pitch_retrigger_trims':sum(n.get('retrigger_trimmed',False) for n in performed(t,clock))}
+        if (folder/'layered.json').is_file():receipt_data['expressive']=json.loads((folder/'layered.json').read_text(encoding='utf-8'))
+        if placed:receipt_data['stage']={'depth_m':depth,**placed}
         receipts.append(receipt_data);save_json(output/'stem_receipts.json',receipts)
         print('STEM',t['id'],'cached' if cached else 'rendered','gain',round(gain,2),flush=True)
     chain_name=p['mix'].get('chain','room');buses=None;mp3=None

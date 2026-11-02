@@ -123,9 +123,9 @@
         "Strings/Solo Violin/spic/",
         "Brass/Trumpet/susvib/"
       ],
-      "output_sha256": "a7171c08df35e895df06394bfca857abb1cc33a6ee5b200109173bf85a32d81e",
+      "output_sha256": "7655c55d631a587c6086ca75508bca2b50ccd54534c6745347fe04218643c290",
       "license": "CC0-1.0 source samples: VSCO 2 Community Edition by Versilian Studios; built by music-production soundbank.py",
-      "version": "build b4"
+      "version": "build b5"
     },
     {
       "name": "vcsl",
@@ -253,9 +253,9 @@
         "Samples/staccato/",
         "Samples/pizzcato/"
       ],
-      "output_sha256": "4249eb1bfc91bce94a8caa22c3150742817a7c45216cf1ed9e17dc1d50f3152c",
+      "output_sha256": "45dea8e79128b0a7670d34254edff690053814124f15d49a9211c8fcb26f5664",
       "license": "CC0-1.0 source samples: Karoryfer x bigcat cello by Karoryfer Lecolds and bigcat instruments; built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     },
     {
       "name": "organ_vcsl",
@@ -296,9 +296,9 @@
         "Woodwinds/Piccolo/Sus/",
         "Woodwinds/Piccolo/Stac/"
       ],
-      "output_sha256": "b64e6fa60b505e86ca5f1bad510830c8ca186e415ce548d2e8dcca50da5a76e5",
+      "output_sha256": "224cec66d13e1ac72f3613cf9a837871a0666ce718e9995c0ef37d69b903c528",
       "license": "CC0-1.0 source samples: VSCO 2 Community Edition by Versilian Studios (the library also asks that the samples are not sold as such and encourages credit and a link to its homepage); built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     }
   ]
 }

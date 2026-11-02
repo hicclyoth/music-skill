@@ -43,7 +43,7 @@ Then check with `analyze` (stem levels per section) and adjust where a line must
 **Soft solos.** Because a part is levelled from its louder passages, a solo in a quiet section, written on a track that also plays ff, stays as far under the tutti as its velocity says. In one piece a clarinet's pp answer to a horn call came out 23 dB under the horn. Give such a solo a track of its own on the same patch and level it with the quiet section. Parts that only ever play softly, such as harp arpeggios or tremolo under a solo, are levelled from their soft playing, so set them well under their role's usual level.
 
 - **Seating.** Pan as an orchestra sits in common practice: first violins left (about −0.5), second violins left-centre or opposite on the right, violas centre-right, cellos right, basses right and back; woodwinds in the centre; horns left and back; trumpets, trombones and tuba right and back; timpani centre back; harp left.
-- **Depth.** Give the back rows (brass, percussion) 2–3 dB more reverb send than the strings.
+- **Depth.** Set `mix.depth_m` on every part ([Expression on the sampled orchestra](#expression-on-the-sampled-orchestra)); without it, give the back rows (brass, percussion) 2–3 dB more reverb send than the strings.
 - **One room.** Route every part to the hall: set `mix.space: "hall"` on every track, since melody parts otherwise send to the plate, and bass and rhythm parts to the room. The halls most praised for symphonic music, such as Vienna's Musikverein, Amsterdam's Concertgebouw and Boston's Symphony Hall, decay in about 1.9–2.0 s at mid frequencies when full (Beranek 2004); the generated hall decays in about 2.2 s at 1 kHz.
 
 ## Chords and doubling
@@ -63,21 +63,50 @@ An orchestral piece lives on contrast between *pp* and *ff*. The default bus cha
 
 The report also gives the loudness range (LRA, EBU Tech 3342), the spread of loudness across the piece in LU; compare it with the premix's to see what the master kept.
 
-Shape crescendos with velocity steps and with CC11 in `cc_mode: "linear"` on sustained parts. Timpani rolls, cymbal swells (keys 27–30 of the orchestra kit) and a brass crescendo on a held chord mark arrivals.
+Shape crescendos with `performance.dynamics` on parts whose bank has dynamic layers (below), otherwise with velocity steps and CC11 in `cc_mode: "linear"`. Timpani rolls, cymbal swells (keys 27–30 of the orchestra kit) and a brass crescendo on a held chord mark arrivals.
+
+If the piece must also carry on small speakers, `mix.range_lu` brings the master's loudness range down to that many LU by lifting the quieter passages, slowly and in proportion, while the loudest keep their level ([performance-and-mix.md](performance-and-mix.md)). EBU R 128 sets no ceiling on loudness range and leaves it to the programme and where it will be heard; an orchestral piece with range 12–15 LU still keeps a clear *pp* and *ff*.
+
+## Expression on the sampled orchestra
+
+A recording holds one note at one dynamic, so a sampled orchestra loses three things a real one has: a crescendo that changes the tone, notes joined without a new attack, and players who stand at different distances in one room. The renderer puts them back.
+
+- **Dynamics that change the tone.** An instrument played louder is also brighter, in ways that vary with instrument and register (Fabiani 2009); a sampled crescendo should therefore move from one recorded dynamic to the next, not only turn the level up. Samplers crossfade between recorded dynamics along the mod wheel (SFZ's `xfin`/`xfout` on CC1). The `vsco`, `vsco_extra` and `cello_bigcat` banks also hold each recorded dynamic of a sustained preset as its own preset (banks 16 and up, [soundbanks.md](soundbanks.md)). A part with `performance.dynamics`, a [beat, 0–127] curve, is rendered once per dynamic and the renders are crossfaded along it. The values read like velocities: 64 sounds about 12 dB under 127, as on a plain preset. Neighbouring dynamics cross over with equal-power curves, corrected by the two renders' measured correlation so the sum keeps its power (Fink, Holters and Zölzer 2016). Write the curve as a player shapes a phrase: a swell on a long note, a crescendo across bars, a decrescendo into the cadence.
+- **Legato.** `performance.legato` with `"mode": "crossfade"` joins a single line: a note that follows its neighbour within `gap_ms` starts from the bank's legato preset (banks 32 and up), the same recording entered past its attack, and the two notes cross over in `crossfade_ms`. This follows SFZ legato regions, which skip a sustained sample's start with `offset` and fade it in (SFZ format, "Legato"). It fits section strings, woodwinds and the low brass; 100–150 ms suits strings in a slow line, 60–100 ms winds. Chords and repeated notes still attack. In an orchestral piece rendered both ways, the level dip at a slurred note change (median) fell from 14 to 6 dB on the first violins, from 10 to 3 dB on the cellos and from 24 to 3 dB on a solo flute. A solo horn moving in small steps dipped less with the slur mode (a glide on one sample) than with crossfades, so keep that mode for solo brass and for guitars and lines that bend; on a bank with dynamic layers it works there too.
+- **Stage depth.** `mix.depth_m` stands a part that many metres behind the first desks. The renderer adds early reflections from that position in a modelled hall (image sources; Allen and Berkley 1979) and gives the part more of the hall, half the distance loss; the direct sound keeps its timing and pan, and the part its loudness. Listeners hear distance in a room mainly from the ratio of direct to reverberant sound (Zahorik 2002; Bronkhorst and Houtgast 1999). A loudspeaker orchestra laid out in the American seating spans about 13 m by 7 m (Pätynen, Tervo and Lokki 2008). Starting depths:
+
+| Part | depth_m |
+|---|---|
+| First and second violins, violas, cellos | 1–3 |
+| Double basses, harp | 3–4 |
+| Flutes, oboes, piccolo | 5–5.5 |
+| Clarinets, bassoons | 6–6.5 |
+| Horns | 7–7.5 |
+| Trumpets, trombones, tuba | 8–9 |
+| Timpani and percussion | 9–10 |
+
+  With `depth_m` on every part, give all of them one reverb send (−14 dB is a start) and let the depth set the rest.
 
 ## Writing for the sampled orchestra
 
 - **Attack.** Start slow-speaking parts early with `performance.offset_ms`:
   - section strings sustain −90 (slow attack −120), spiccato −35 to −40;
   - clarinet and tremolo about −60, flute about −35.
-  The numbers come from [soundbanks.md](soundbanks.md).
+  The numbers come from [soundbanks.md](soundbanks.md). A note that enters with crossfade legato speaks at once and leaves this offset out.
 - **Long and short notes.** Long notes go to the sustained presets and short ones to staccato, spiccato or pizzicato tracks. A fast passage on a sustain sample re-attacks every note slowly.
 - **Holding notes.** Trombone, tuba, double bass and piccolo sustains are looped, so they hold as long as written. The loud brass takes were recorded for 2–4 s, so a held *ff* loops a short stretch: vary such notes with the parts around them. The double bass's vibrato takes repeat the player's bow changes about every 2.3 s; hold long quiet notes on the straight preset.
-- **Connecting notes.** `performance.legato` slurs connected steps on winds, horns and solo strings. Section strings phrase better with bow changes than with long slurs.
+- **Connecting notes.** Crossfade legato (above) joins a line on the sustained presets of the dynamic-layer banks; the slur mode joins steps on other single-line parts. Even in a legato line, a bow change now and then (a new attack) keeps section strings breathing.
 - **Divisi.** Split a section into two tracks on the same preset.
 
 ## Sources
 
 - Rimsky-Korsakov, N. (1922). [Principles of Orchestration](https://www.gutenberg.org/ebooks/33900), ed. M. Steinberg, trans. E. Agate. Project Gutenberg #33900, public domain in the USA. Chapters II and III: the relative strength of the groups, the distribution of chords, the natural order of the woodwinds, strings doubling in octaves, combinations of timbres.
 - Beranek, L. L. (2004). *Concert Halls and Opera Houses: Music, Acoustics, and Architecture*, 2nd ed. Springer. See also Beranek, L. L. (2008). Concert Hall Acoustics—2008. *Journal of the Audio Engineering Society* 56(7/8), 532–544.
-- EBU (2023). [Tech 3342: Loudness range: A measure to supplement EBU R 128 loudness normalisation](https://tech.ebu.ch/publications/tech3342). First published 2010.
+- EBU (2023). [Tech 3342: Loudness range: A measure to supplement EBU R 128 loudness normalisation](https://tech.ebu.ch/publications/tech3342). First published 2010. See also EBU (2023), R 128: Loudness normalisation and permitted maximum level of audio signals.
+- Fabiani, M. (2009). [A method for the modification of acoustic instrument tone dynamics](https://www.dafx.de/paper-archive/2009/papers/paper_75.pdf). *Proceedings of the 12th International Conference on Digital Audio Effects (DAFx-09)*, Como.
+- Fink, M., Holters, M. and Zölzer, U. (2016). [Signal-matched power-complementary cross-fading and dry-wet mixing](https://dafx.de/paper-archive/details/gUO-U6xEDk0Z_m4S-PivJQ). *Proceedings of the 19th International Conference on Digital Audio Effects (DAFx-16)*, Brno, 109–112.
+- SFZ format. [Legato](https://sfzformat.com/tutorials/legato/) (tutorial): legato regions with `offset` and an attack, crossfades between dynamics on CC1.
+- Allen, J. B. and Berkley, D. A. (1979). Image method for efficiently simulating small-room acoustics. *Journal of the Acoustical Society of America* 65(4), 943–950. doi:10.1121/1.382599
+- Zahorik, P. (2002). Assessing auditory distance perception using virtual acoustics. *Journal of the Acoustical Society of America* 111(4), 1832–1846. doi:10.1121/1.1458027
+- Bronkhorst, A. W. and Houtgast, T. (1999). Auditory distance perception in rooms. *Nature* 397, 517–520. doi:10.1038/17374
+- Pätynen, J., Tervo, S. and Lokki, T. (2008). [A loudspeaker orchestra for concert hall studies](https://mediatech.aalto.fi/~ktlokki/Publs/08_J_Patyen.pdf). *Proceedings of the Institute of Acoustics* 30(3), 45–52.

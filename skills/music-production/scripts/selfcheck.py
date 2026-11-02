@@ -359,6 +359,91 @@ def checks(work,config=None):
         assert perf['g1_0']['velocity']<perf['g0_0']['velocity'] and report['gtr']['strokes']=={'down':2,'up':2}
         return {'downstroke_ms':down,'upstroke_ms':up}
     check('strummed_chords_follow_the_stroke',strum)
+    def xf_bank():
+        """A two-dynamic sustained instrument (a soft sine and a bright tone, both swelling in over 300 ms, as a bowed
+        attack does) with dynamic-layer and legato presets; built once per selfcheck."""
+        import wave
+        from soundbank import build
+        path=work/'xf.sf2'
+        if path.is_file():return path
+        root=work/'xf_source';root.mkdir(parents=True,exist_ok=True);rate=48000;t=np.arange(3*rate)/rate;ramp=np.minimum(1,t/.3)
+        for name,f0 in (('C4',261.63),('G4',392.0)):
+            for dyn,x in (('p',.1*ramp*np.sin(2*np.pi*f0*t)),('f',.3*ramp*sum(np.sin(2*np.pi*f0*h*t)/h for h in range(1,9)))):
+                q=np.clip(np.round(np.repeat(x[:,None],2,1)*32767),-32768,32767).astype('<i2')
+                with wave.open(str(root/f'x_{name}_{dyn}.wav'),'wb') as w:w.setnchannels(2);w.setsampwidth(2);w.setframerate(rate);w.writeframes(q.tobytes())
+        layer={'dir':'.','pattern':r'x_(?P<note>[A-G]#?\d)_(?P<dyn>[pf])\.wav','dynamics':['p','f'],'velocity':{'p':[1,64],'f':[65,127]},
+               'keys':[55,72],'layer_levels_db':{'p':-9,'f':0},'envelope':{'attack':.005,'release':.3}}
+        preset={'name':'held','program':48,'layers':[layer],'dynamic_layers':{'bank':16},'legato':{'bank':32,'attack':.01}}
+        build({'name':'xf','presets':[preset]},root,path)
+        plain={k:v for k,v in preset.items() if k not in ('dynamic_layers','legato')}
+        build({'name':'xf','presets':[plain]},root,work/'xf_plain.sf2')
+        return path
+    def expressive_bank():
+        from musiclib import sf2
+        bank,plain=sf2.read(xf_bank()),sf2.read(work/'xf_plain.sf2')
+        assert sorted((x['bank'],x['program']) for x in bank['presets'])==[(0,48),(16,48),(17,48),(32,48),(33,48)]
+        # The derived presets reuse the stored takes: the samples are the plain build's, byte for byte.
+        assert len(bank['samples'])==len(plain['samples']) and all(sf2.load_sample(bank,i).tobytes()==sf2.load_sample(plain,i).tobytes() for i in range(len(plain['samples'])))
+        derived=[i for i in bank['instruments'] if ' d' in i['name'] or ' L' in i['name']]
+        assert len(derived)==4 and all(set(i['zones'][0]['mods'])=={(0x0502,48,0,0,0),(0x0102,8,0,0,0),(0x0102,8,0,0x0C02,0)} for i in derived)
+        legato=[i for i in derived if ' L' in i['name']];rate=48000
+        offsets=[(z['gens'].get(0,0)+32768*z['gens'].get(4,0))/rate for i in legato for z in i['zones'] if z['target'] is not None]
+        # The takes reach 2 dB under their steady level at about 0.24 s: legato entries start there (+20 ms).
+        assert all(.2<o<.32 for o in offsets) and all(i['zones'][0]['gens'][34]==sf2.timecents(.01) for i in legato),offsets
+        return {'presets':len(bank['presets']),'legato_offset_s':[round(min(offsets),3),round(max(offsets),3)]}
+    check('soundbank_builds_dynamic_layers_and_legato_presets',expressive_bank)
+    def crossfade_gains():
+        from musiclib import layered
+        rng=np.random.default_rng(7);n=48000*2;frames=n//layered.FRAME+1
+        tau=np.clip(np.arange(frames)/(frames-1),0,1);w=np.stack([np.cos(np.pi*tau/2),np.sin(np.pi*tau/2)]);pair=np.zeros(frames,dtype=int)
+        def swept(y0,y1):
+            s=layered.matched([y0,y1],w,pair);g=lambda k:np.interp(np.arange(n),np.arange(frames)*layered.FRAME,w[k]*s)[:,None]
+            out=y0*g(0)+y1*g(1);seg=lambda a:10*np.log10(np.mean(a[int(.1*n):int(.9*n)].reshape(-1,4800,2)**2,axis=(1,2)))
+            return seg(out)-10*np.log10(np.mean(y0**2))
+        a=rng.standard_normal((n,2)).astype(np.float32);b=rng.standard_normal((n,2)).astype(np.float32)
+        same,free,anti=swept(a,a.copy()),swept(a,b),swept(a,(.866*b-.5*a).astype(np.float32))
+        # One take faded into itself (r = 1) keeps its level with no 3 dB bump; unrelated ones keep their power; so does
+        # a pair half in antiphase, where plain equal-power fading would dip.
+        assert np.ptp(same)<.3 and np.ptp(free)<.6 and np.ptp(anti)<.8,(np.ptp(same),np.ptp(free),np.ptp(anti))
+        notes=[{'parity':0,'start_seconds':0.,'fade_in':None,'fade_out':(.5,.1)},{'parity':1,'start_seconds':.5,'fade_in':(.5,.1),'fade_out':(1.,.1)},
+               {'parity':0,'start_seconds':1.,'fade_in':(1.,.1),'fade_out':None}]
+        g=layered.legato_gains(notes,48000*2);i=np.arange(int(.5*48000),int(.6*48000))
+        assert np.allclose(g[0][i]**2+g[1][i]**2,1,atol=1e-3) and g[0][int(.7*48000)]==0 and g[1][int(1.2*48000)]==0 and g[0][int(1.5*48000)]==1
+        return {'level_spread_db':{'same_take':round(float(np.ptp(same)),2),'unrelated':round(float(np.ptp(free)),2),'half_antiphase':round(float(np.ptp(anti)),2)}}
+    check('dynamics_crossfade_keeps_power_and_legato_fades_cross',crossfade_gains)
+    def stage_depth():
+        from musiclib import stage
+        x=np.random.default_rng(3).standard_normal((48000*3,2)).astype(np.float32)*.1;rows=[]
+        for depth in (0,4,8):
+            y,info=stage.place(x,0.,depth);er=stage.reflections(0.,depth)
+            rows.append((10*np.log10(np.mean(y.astype(float)**2)/np.mean(x.astype(float)**2)),info['reflection_share_db'],info['hall_send_boost_db'],float(np.corrcoef(er[:,0],er[:,1])[0,1]),info['first_reflection_ms']))
+        # The part keeps its loudness; deeper, its reflections and its hall send grow; the two capsules differ.
+        assert all(abs(r[0])<.05 for r in rows) and rows[0][1]<rows[1][1]<rows[2][1] and rows[0][2]==0<rows[1][2]<rows[2][2],rows
+        assert all(r[3]<.5 and r[4]>=1 for r in rows),rows
+        return {'reflection_share_db':[r[1] for r in rows],'hall_send_boost_db':[r[2] for r in rows]}
+    check('stage_depth_moves_reflections_and_hall',stage_depth)
+    def expressive_fields():
+        p=example();t=p['tracks'][1];validate(p)
+        t['performance']['dynamics']=[[0,20],[8,110]];t['performance']['legato']={'mode':'crossfade','crossfade_ms':120};validate(p)
+        t['mix']['depth_m']=6;p['mix'].update(chain='bus',dynamics='wide',range_lu=12);validate(p)
+        for bad in (lambda q:q['tracks'][1]['performance'].update(dynamics=[[4,20],[2,110]]),lambda q:q['tracks'][1]['performance']['legato'].update(crossfade_ms=900),
+                    lambda q:q['tracks'][1]['performance'].update(cc=[[0,1,64]]),lambda q:q['tracks'][1]['mix'].update(depth_m=12),
+                    lambda q:q['mix'].update(dynamics='glue'),lambda q:q.update(loop={'start_bar':0}),lambda q:q['mix'].update(chain='room')):
+            q=copy.deepcopy(p);bad(q);rejects(lambda:validate(q))
+        return True
+    check('expressive_fields_validate',expressive_fields)
+    def range_master():
+        from musiclib import mixbus
+        rng=np.random.default_rng(5);t=np.arange(48000*60)/48000
+        env=np.where(t<20,10**(-28/20),np.where(t<40,10**(-14/20),10**(-22/20)))
+        x=(rng.standard_normal((len(t),2))*.3*env[:,None]).astype(np.float32);audio.write_wav(work/'range_in.wav',x)
+        info=mixbus.range_control(work/'range_in.wav',work/'range_out.wav',8);y,_=audio.read_wav(work/'range_out.wav')
+        lev=lambda a,s,e:10*np.log10(np.mean(a[int(s*48000):int(e*48000)].astype(float)**2))
+        # The loudest passage keeps its level; the soft ones rise, the softest most, and their order stays.
+        loud,soft,mid=lev(y,22,38)-lev(x,22,38),lev(y,2,18)-lev(x,2,18),lev(y,42,58)-lev(x,42,58)
+        assert info['lra_before_lu']>12 and info['lra_after_lu']<=8.3 and abs(loud)<.2 and soft>mid>1 and lev(y,2,18)<lev(y,42,58)<lev(y,22,38),(info,loud,soft,mid)
+        return {**info,'lift_db':{'softest':round(soft,2),'middle':round(mid,2),'loudest':round(loud,2)}}
+    check('range_control_lifts_soft_passages_only',range_master)
     if config:
         from musiclib.render import render
         p=example();save_json(work/'example.json',p);cache=work/'cache'
@@ -542,6 +627,54 @@ def checks(work,config=None):
             return {'contrast_mix_db':round(mixed,2),'contrast_wide_db':round(wide,2),'contrast_glue_db':round(glue,2),
                     'hot_peak_held_db':held,'hot_true_peak_dbtp':hot['master']['true_peak_dbtp']}
         check('wide_dynamics_master_keeps_the_mix_range',wide_render)
+        def layered_render():
+            bank=xf_bank();cfg=json.loads(Path(config).read_text())
+            for key in ('fluidsynth','ffmpeg','soundfont'):
+                value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
+            cfg['soundfonts']={'xf':{'path':str(bank),'sha256':file_hash(bank)}};save_json(work/'xf_config.json',cfg)
+            q=copy.deepcopy(p);q['clock']={'bars':4,'meter':[4,4],'tempo':[[0,90]],'tail_seconds':2}
+            q['sections']=[{'id':'line','start_bar':0,'bars':4,'intent':'A slurred line'}]
+            line=[60,64,67,64,60,62,64,67,69,67,64,62,60,64,67,72];q['tracks']=[]
+            for ident,extra in (('leg',{'legato':{'mode':'crossfade','crossfade_ms':100},'dynamics':[[0,40],[16,127]]}),('plain',{})):
+                t=copy.deepcopy(p['tracks'][0]);t.update(id=ident,soundfont='xf',patch={'bank':0,'program':48},program=48,bank=0,role='harmony',range=[55,75])
+                t['notes']=[{'id':f'{ident}_{i}','on':i,'duration':1,'pitch':x} for i,x in enumerate(line)]
+                t['performance']={'notes':{f'{ident}_{i}':{'velocity':80} for i in range(len(line))},'offset_ms':-90,**extra}
+                t['mix']={**t['mix'],'reverb_db':None,'delay_db':None,'level_dbfs':-20,'pan':0};q['tracks'].append(t)
+            q['mix']={'chain':'bus','dynamics':'wide','target_lufs':-20};save_json(work/'xf.json',q)
+            render(work/'xf.json',work/'render_xf',work/'xf_config.json',cache)
+            rec={x['track']:x for x in json.loads((work/'render_xf'/'stem_receipts.json').read_text())};spb=60/90;out={}
+            for ident in ('leg','plain'):
+                m=audio.read_wav(work/'render_xf'/'stems'/f'{ident}.wav')[0].mean(axis=1)
+                env=20*np.log10(np.sqrt(np.mean(m[:len(m)//480*480].reshape(-1,480)**2,axis=1))+1e-9);at=lambda k:int(k*spb*100)
+                dips=[float(np.median(env[at(k)-40:at(k)-10])-env[at(k)-6:at(k)+30].min()) for k in range(1,16)]
+                def centroid(a,b):
+                    seg=m[int(a*spb*48000):int(b*spb*48000)];s=np.abs(np.fft.rfft(seg*np.hanning(len(seg))));return float((s*np.fft.rfftfreq(len(seg),1/48000)).sum()/s.sum())
+                out[ident]=(max(dips),centroid(.3,1.),centroid(15.3,16.))
+            # Slurred notes no longer swell in again (each take ramps in over 300 ms); the crescendo moves from the soft
+            # take to the bright one.
+            assert out['leg'][0]<4<9<out['plain'][0] and out['leg'][2]>2*out['leg'][1],out
+            assert rec['leg']['expressive']['renders']==4 and rec['leg']['expressive']['legato_entries']==15 and 'expressive' not in rec['plain']
+            cc1=[e for e in midi.read(work/'render_xf'/'midi'/'leg.mid')['tracks'][1]['events'] if e[1]>>4==11 and e[2]==1]
+            assert len(cc1)>50 and cc1[-1][3]==127,len(cc1)
+            return {'largest_transition_dip_db':{'legato':round(out['leg'][0],1),'re_attacked':round(out['plain'][0],1)},
+                    'centroid_hz':{'start':round(out['leg'][1]),'end':round(out['leg'][2])},'exported_cc1_events':len(cc1)}
+        check('layered_render_slurs_and_crossfades_dynamics',layered_render)
+        def stage_and_range():
+            from musiclib import stage
+            q=copy.deepcopy(p);q['mix'].update(chain='bus',dynamics='wide',target_lufs=-18,range_lu=6)
+            q['clock']={'bars':8,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':2}
+            q['sections']=[{'id':'soft','start_bar':0,'bars':4,'intent':'p'},{'id':'loud','start_bar':4,'bars':4,'intent':'f'}]
+            t=copy.deepcopy(p['tracks'][0]);t.update(id='deep',program=0,bank=0,role='harmony',range=[48,72])
+            t['mix']={**t['mix'],'reverb_db':-12,'delay_db':None,'depth_m':8}
+            t['notes']=[{'id':f'deep_{b}_{k}','on':b*4+k,'duration':1,'pitch':x} for b in range(8) for k,x in enumerate((48,55,60,64))]
+            t['performance']={'notes':{n['id']:{'velocity':50 if n['on']<16 else 124,'gate':1.0} for n in t['notes']}}
+            q['tracks']=[t];save_json(work/'stage.json',q);r=render(work/'stage.json',work/'render_stage',config,cache);m=r['mastering']
+            rec=json.loads((work/'render_stage'/'stem_receipts.json').read_text())[0]
+            send=-12+stage.send_boost_db(t['mix'].get('pan',0),8)
+            assert f'volume={send:.6f}dB' in (work/'render_stage'/'mix.filtergraph.txt').read_text(encoding='utf-8') and rec['stage']['reflection_share_db']>-8,rec
+            assert m['range']['lra_before_lu']>6.5 and m['range']['lra_after_lu']<=6.3 and r['master']['true_peak_dbtp']<=-1,m
+            return {'stage':rec['stage'],'range':m['range'],'master_lra_lu':r['master']['lra_lu']}
+        check('stage_depth_and_range_control_render',stage_and_range)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
     save_json(work/'selfcheck_report.json',report);return report
 

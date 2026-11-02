@@ -76,6 +76,11 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
         if expressive:
             for beat,cc,value in cc_events(t):
                 e.append((round(beat*TPQ),4,bytes([176+channel,cc,value])))
+            if t['performance'].get('dynamics') and not render:
+                # The dynamics curve goes out as CC1, the controller orchestral sample libraries read as dynamics.
+                ramp={'engine':'soundfont','performance':{'cc_mode':'linear','cc':[[b,1,int(round(v))] for b,v in t['performance']['dynamics']]}}
+                for beat,cc,value in cc_events(ramp):
+                    e.append((round(beat*TPQ),4,bytes([176+channel,cc,value])))
         if bends:
             # RPN 0 sets the wheel range in semitones, then the null RPN closes data entry.
             for cc,value in [(101,0),(100,0),(6,t['performance'].get('bend_range',2)),(38,0),(101,127),(100,127)]:

@@ -64,7 +64,7 @@ A render writes `master.wav` (24-bit), `master.flac`, `preview.mp3`, `compositio
 
 `musiclib.expression.apply(project, overrides, seed)` adds deviation the way players produce it: a slowly wandering (1/f) timing and dynamics line per player, a fixed feel per part (a laid-back bass), phrase arches, chord notes that are not struck or released together (the top note leading on keyboards, guitar chords strummed down and up with `strum`), a cymbal accent cycle and swells on held chords. It changes the authored values instead of replacing them and is deterministic for a seed. Call it from the composition script after the notes are written; `overrides` maps track ids to profile changes, or `None` to leave a part alone. The profiles and their sources are in the module's docstring.
 
-Sampled leads need connection: `performance.legato` slurs connected notes on one sample and glides the pitch, `performance.bend` writes bends and slides, `mix.width` narrows a diffuse stereo sample. Details and numbers are in [performance-and-mix.md](references/performance-and-mix.md).
+Sampled leads need connection: `performance.legato` slurs connected notes on one sample and glides the pitch, `performance.bend` writes bends and slides, `mix.width` narrows a diffuse stereo sample. Details and numbers are in [performance-and-mix.md](references/performance-and-mix.md). Sustained orchestral parts can crossfade between their recorded dynamics along `performance.dynamics`, join single lines with crossfade legato, and stand at a stage depth with `mix.depth_m` ([orchestration.md](references/orchestration.md)).
 
 ## Mixing
 

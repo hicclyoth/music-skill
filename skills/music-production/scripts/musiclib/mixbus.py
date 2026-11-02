@@ -17,22 +17,24 @@ Spaces.  A track's reverb send (mix.reverb_db) goes to the space that suits its 
 for the band, a plate for the lead, a hall for the ensemble, and a church for an organ or a choir.  Each is a stereo
 noise impulse response decaying per octave band with its own T60 (faster at high frequencies, as rooms do), building
 up its density over a few to 40 ms, with discrete early reflections in the room, hall and church.  The delay send
-works as in the room chain.
+works as in the room chain.  A part with mix.depth_m gets its early reflections from that stage position before the
+mix (musiclib/stage.py) and sends more to its space, half the distance loss.
 
 Master.  The premix is brought to -18 LUFS for glue compression (about 2 dB on the loudest passages), an air shelf, a
 little presence and a -1 dBFS limiter.  One gain toward mix.target_lufs then feeds a -1.5 dBFS sample-peak limiter;
 if limiting costs loudness the gain is corrected (at most three passes).  With mix.dynamics "wide" (orchestral and
 organ music), no bus compresses or saturates and the master keeps only its EQ: one gain brings the mix to the target
-unless its true peak would pass -1.2 dBTP, in which case the music stays quieter instead of being limited.  The
+unless its true peak would pass -1.2 dBTP, in which case the music stays quieter instead of being limited; with
+mix.range_lu it first lifts the quieter passages until the loudness range is that many LU.  The
 render checks the true peak (at most -1 dBTP) and that the MP3 decodes to the same loudness.
 """
 import math
 
 import numpy as np
 
-from . import audio
+from . import audio, stage
 from .loop import starts_at_zero
-from .measure import k_level
+from .measure import k_filter, k_level
 from .model import BUSES, save_json
 
 RATE = audio.RATE
@@ -140,7 +142,9 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
         graph.append(f'[{k}:a]asplit={len(outs)}' + ''.join(outs))
         dry[bus_of(t)].append(f'[d{k}]')
         if fx.get('reverb_db') is not None:
-            graph.append(f'[r{k}]volume={fx["reverb_db"]}dB[rs{k}]')
+            # A part placed deeper on the stage sends more to its space (musiclib/stage.py).
+            send = fx['reverb_db'] + (stage.send_boost_db(fx.get('pan', 0), fx['depth_m']) if fx.get('depth_m') is not None else 0)
+            graph.append(f'[r{k}]volume={send:.6f}dB[rs{k}]')
             sends[space_of(t)].append(f'[rs{k}]')
         if fx.get('delay_db') is not None:
             ms = clock.spb[0] * fx.get('delay_quarters', .75) * 1000
@@ -209,7 +213,15 @@ def master(p, cfg, output):
     source = audio.measure(cfg, mixed, logs, 'measure_mixed')
     target = p['mix'].get('target_lufs', -16)
     if wide:
-        return before, wide_delivery(cfg, output, mixed, source, target, gain, chain)
+        ranged = None
+        if p['mix'].get('range_lu') is not None:
+            ranged = range_control(mixed, output / 'ranged.wav', p['mix']['range_lu'])
+            mixed = output / 'ranged.wav'
+            source = audio.measure(cfg, mixed, logs, 'measure_ranged')
+        delivered = wide_delivery(cfg, output, mixed, source, target, gain, chain)
+        if ranged:
+            delivered['range'] = ranged
+        return before, delivered
     delivery, passes, ceiling = target - source['integrated_lufs'], [], LIMIT_DBFS
     for k in range(4):
         limiter = f'volume={delivery:.6f}dB,alimiter=limit={10 ** (ceiling / 20):.6f}:attack=5:release=60:level=disabled'
@@ -244,6 +256,54 @@ def wide_delivery(cfg, output, mixed, source, target, gain, chain):
             'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')}, 'target_lufs': target,
             'peak_held_db': round(max(0.0, wanted - delivery), 2), 'lra_lu': m['lra_lu'],
             'limiter_dbfs': -1.0, 'delivery_chain': guard, 'passes': passes}
+
+
+def short_term(x):
+    """EBU short-term loudness (3 s windows, BS.1770 K-weighting) every 100 ms: window centres in samples, LUFS."""
+    power = (k_filter(x) ** 2).sum(axis=1)
+    c = np.concatenate([[0.0], np.cumsum(power)])
+    win, hop = 3 * RATE, RATE // 10
+    starts = np.arange(0, max(1, len(power) - win + 1), hop)
+    level = -0.691 + 10 * np.log10(np.maximum((c[np.minimum(starts + win, len(power))] - c[starts]) / win, 1e-20))
+    return starts + win // 2, level
+
+
+def loudness_range(level):
+    """EBU Tech 3342: the spread between the 10th and 95th percentiles of the short-term loudness, gated at -70 LUFS
+    and at 20 LU under the mean of what passes; also returns those two percentiles."""
+    a = level[level > -70]
+    if not len(a):
+        return 0.0, (-70.0, -70.0)
+    g = a[a > 10 * np.log10(np.mean(10 ** (a / 10))) - 20]
+    lo, hi = float(np.percentile(g, 10)), float(np.percentile(g, 95))
+    return hi - lo, (lo, hi)
+
+
+def range_control(src, dst, target):
+    """Bring a wide master's loudness range (Tech 3342) down to `target` LU by lifting its quieter passages.
+
+    A short-term loudness at or above the 95th percentile keeps its level; below it the passage rises by a share of its
+    distance from there, the same share everywhere (a passage under the 10th percentile rises as much as one at it), so
+    the order of soft and loud and every accent inside a passage stay.  The lift follows the 3 s loudness smoothed over
+    1.5 s, so it moves with phrases, not notes.  EBU R 128 sets no ceiling on loudness range and leaves it to the
+    programme and where it will be heard; this is for music that must also carry on small speakers."""
+    x, _ = audio.read_wav(src)
+    centres, level = short_term(x)
+    before, (lo, hi) = loudness_range(level)
+    info = {'target_lu': target, 'lra_before_lu': round(before, 2)}
+    share, out, after, lift = 1 - target / before if before > target else 0.0, x, before, np.zeros(len(level))
+    for _ in range(5):
+        if share <= 0:
+            break
+        lift = np.convolve(np.pad(share * (hi - np.clip(level, lo, hi)), 7, mode='edge'), np.ones(15) / 15, mode='valid')
+        out = (x * (10 ** (np.interp(np.arange(len(x)), centres, lift) / 20))[:, None]).astype(np.float32)
+        after, _ = loudness_range(short_term(out)[1])
+        if after <= target + .3:
+            break
+        share = min(.95, share + (after - target) / before)
+    audio.write_wav(dst, out)
+    info.update(lra_after_lu=round(after, 2), share=round(share, 3), max_lift_db=round(float(lift.max()), 2))
+    return info
 
 
 def linear_master(mastering):

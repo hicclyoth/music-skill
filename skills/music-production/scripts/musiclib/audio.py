@@ -51,6 +51,12 @@ def run(argv,folder,label,timeout=600):
     if code:raise RuntimeError(f'{label} failed ({code}): {content[-3000:]}')
     return content
 
+def fluidsynth(config,font_path,midi_path,wav_path,folder,label='fluidsynth'):
+    """Render a MIDI file on one SoundFont: dry (no chorus or reverb), 48 kHz float, sample-accurate timing."""
+    log=run([config['fluidsynth']['path'],'-n','-i','-C','0','-R','0','-g','.55','-r',str(RATE),'-T','wav','-O','float','-o','synth.cpu-cores=1','-o','synth.polyphony=256','-o','synth.midi-bank-select=mma','-o','player.timing-source=sample','-F',wav_path,font_path,midi_path],folder,label)
+    if any(word in log.lower() for word in ('error','failed','not found')):raise ValueError('Instrument rendering diagnostic: '+log[-2000:])
+    return log
+
 def ffmpeg(config,args,folder,label):
     guarded=[];i=0
     while i<len(args):

@@ -10,7 +10,9 @@ build:   a JSON spec maps sample files (regex on file names) to presets.  Each f
          share an `exclusive_class` (a closed hi-hat cutting an open one).  A sustained layer can keep
          each recording's own loop (`loop: "recorded"`, from the WAV `smpl` chunk), or have one cut from
          the steady part of a take that has none (`loop: "found"`), so a held note lasts as long as the
-         key.  FLAC sources are decoded losslessly with FFmpeg (--ffmpeg).  A receipt records every
+         key.  A sustained preset can add one velocity-deaf preset per recorded dynamic (`dynamic_layers`)
+         and legato versions of them that enter each take past its attack (`legato`), for the renderer's
+         dynamics crossfades and crossfade legato.  FLAC sources are decoded losslessly with FFmpeg (--ffmpeg).  A receipt records every
          source file hash and decision.
 Sample data is never executed.  The output inherits the sample set's license.
 """
@@ -174,6 +176,97 @@ def steady_loop(x, rate, loop, sag_db=2.0, crossfade=0.15, found=False, noise_db
         x[end - n:end] = x[end - n:end] * a + x[ls - n:ls] * b
     return np.concatenate([x[:end], x[ls:ls + 16]]), (ls, end), score
 
+def attack_end(x, rate, loop=None, margin=0.02, cap=0.6):
+    """Where a sustained take has finished its attack, in samples: the first 10 ms frame within 2 dB of the take's
+    steady level (the median over its loop, or from 0.4 to 2.5 s), plus `margin`.  A legato note starts there, as SFZ
+    legato regions skip a sustained sample's start with `offset`; it stays under `cap` seconds and before the loop."""
+    mono = x.mean(axis=1) if x.ndim == 2 else x
+    hop = int(.01 * rate)
+    frames = len(mono) // hop
+    if frames < 10:
+        return 0
+    level = 20 * np.log10(np.sqrt(np.mean(mono[:frames * hop].reshape(frames, hop) ** 2, axis=1)) + 1e-12)
+    a, b = (loop[0] // hop, loop[1] // hop) if loop else (int(.4 * rate) // hop, min(frames, int(2.5 * rate) // hop))
+    if b - a < 5:
+        return 0
+    reached = np.flatnonzero(level[:b] >= np.median(level[a:b]) - 2.0)
+    end = min(cap, (reached[0] + 1) * hop / rate + margin if len(reached) else 0.0)
+    if loop:
+        end = min(end, loop[0] / rate - .02)
+    return max(0, int(end * rate))
+
+def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
+    """The `dynamic_layers` and `legato` presets of a sustained preset.
+
+    A sampler crossfades between recorded dynamics along a controller (SFZ's xfin/xfout on CC1); an SF2 zone can only
+    choose a recording by velocity.  So each recorded dynamic becomes a preset of its own at bank
+    `dynamic_layers.bank` + k (k = 0 for the softest), which ignores velocity, and the renderer plays a part once per
+    dynamic and crossfades the renders (musiclib/layered.py).  With `legato`, bank `legato.bank` + k holds the same takes
+    started past their attack, as SFZ legato regions skip a sustained sample's start with `offset`, and faded in over
+    `legato.attack` seconds.  A layer with fewer recorded dynamics than the preset's richest maps onto the same scale.
+    Round robins alternate in blocks of 16 velocities, since velocity no longer sets the level."""
+    dl, leg = pspec.get('dynamic_layers'), pspec.get('legato')
+    if not dl:
+        if leg:
+            raise ValueError(f'{pspec["name"]}: legato presets need dynamic_layers')
+        return
+    count = max(len(c['layer']['dynamics']) for c in contexts)
+    neutral = sf2.override(sf2.VELOCITY_TO_ATTENUATION, 0) + sf2.override(sf2.VELOCITY_TO_FILTER, 0)
+    report = {'preset': pspec['name'], 'program': pspec['program'], 'layer_banks': [], 'legato_banks': [], 'legato_offsets_ms': []}
+    for kind, base in (('layer', dl['bank']), ('legato', leg['bank'] if leg else None)):
+        if base is None:
+            continue
+        for k in range(count):
+            first = len(instruments)
+            for c in contexts:
+                layer, order = c['layer'], list(c['layer']['dynamics'])
+                dyn = order[round(k * (len(order) - 1) / (count - 1))] if count > 1 else order[-1]
+                by = {}
+                for e in c['entries']:
+                    by.setdefault((e['named'], e['dyn']), []).append(e)
+                zones = []
+                for note in c['notes']:
+                    if note not in c['keymap']:
+                        continue
+                    lo_key, hi_key = c['keymap'][note]
+                    have = [d for d in order if (note, d) in by]
+                    src = dyn if (note, dyn) in by else min(have, key=lambda d: (abs(order.index(d) - order.index(dyn)), -order.index(d)))
+                    group = sorted(by[(note, src)], key=lambda e: str(e['rr']))
+                    for pos, e in enumerate(group):
+                        ids = stored[(e['take'], round(e['gain'], 6), e['named'])][0]
+                        fine = 0 if e['cents'] is None or abs(e['cents']) > layer.get('max_correction_cents', 45) else -int(round(e['cents']))
+                        spans = [(v, min(127, v + 15)) for v in range(1, 128, 16) if ((v - 1) // 16) % len(group) == pos] if len(group) > 1 else [(1, 127)]
+                        offset = attack_end(e['x'], e['rate'], e.get('loop')) if kind == 'legato' else 0
+                        if kind == 'legato':
+                            report['legato_offsets_ms'].append(round(1000 * offset / e['rate'], 1))
+                        for span in spans:
+                            for ch, sid in enumerate(ids):
+                                z = {43: (lo_key, hi_key), 44: span, 58: e['named']}
+                                if fine:
+                                    z[52] = fine
+                                if offset:
+                                    z[0], z[4] = offset % 32768, offset // 32768
+                                if e.get('loop'):
+                                    z[54] = 1
+                                if layer.get('exclusive_class'):
+                                    z[57] = int(layer['exclusive_class'])
+                                if len(ids) == 2:
+                                    z[17] = -500 if ch == 0 else 500
+                                zones.append({'gens': z, 'sample': sid})
+                gens = dict(c['gens'])
+                if kind == 'legato':
+                    gens[34] = sf2.timecents(leg.get('attack', 0.01))
+                instruments.append({'name': f'{pspec["name"][:12]} {"dL"[kind == "legato"]}{k + 1}.{len(instruments) - first + 1}',
+                                    'global': gens, 'zones': zones, 'mods': neutral})
+            presets.append({'name': f'{pspec["name"][:15]} {"dL"[kind == "legato"]}{k + 1}', 'bank': base + k,
+                            'program': pspec['program'], 'global': {},
+                            'zones': [{'gens': {}, 'instrument': i} for i in range(first, len(instruments))]})
+            report[f'{kind}_banks'].append(base + k)
+    offsets = report.pop('legato_offsets_ms')
+    if offsets:
+        report['legato_offset_ms'] = {'min': min(offsets), 'median': float(np.median(offsets)), 'max': max(offsets)}
+    receipt.setdefault('derived', []).append(report)
+
 def _load_layer(layer, root, ffmpeg, loaded, receipt):
     """Match, load, trim and measure one layer's takes; returns its entries (octave-checked) and per-dynamic medians."""
     rx = re.compile(layer['pattern'])
@@ -330,6 +423,7 @@ def build(spec, root, output, ffmpeg=None):
                 for entries, _, _ in prepared:
                     for e in entries:
                         e['gain'] *= 0.95 / loudest
+        contexts = []
         for layer, (entries, octave_fix, layer_med) in zip(pspec['layers'], prepared):
             inst_zones = []
             notes = sorted({e['named'] for e in entries})
@@ -436,6 +530,7 @@ def build(spec, root, output, ffmpeg=None):
                         if e.get('loop_match') is not None:
                             row['loop_match'] = round(e['loop_match'], 3)
                         receipt['files'].append(row)
+            contexts.append({'layer': layer, 'entries': entries, 'notes': notes, 'keymap': keymap, 'gens': dict(gens)})
             instrument = {'name': f'{pspec["name"][:16]} {len(instruments) - first_instrument + 1}', 'global': gens,
                           'zones': inst_zones}
             if mods:
@@ -444,6 +539,7 @@ def build(spec, root, output, ffmpeg=None):
         presets.append({'name': pspec['name'][:19], 'bank': pspec.get('bank', 0), 'program': pspec['program'], 'global': {},
                         'zones': [{'gens': {}, 'instrument': i} for i in range(first_instrument, len(instruments))]})
         receipt['layers'].append({'preset': pspec['name'], 'layers': layer_targets})
+        _derived_presets(pspec, contexts, stored, instruments, presets, receipt)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     sf2.write(output, spec['name'], samples, instruments, presets, comment=spec.get('comment', ''),

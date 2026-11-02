@@ -168,4 +168,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (39 if CONFIG else 26), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (46 if CONFIG else 31), [c['name'] for c in report['checks']]
