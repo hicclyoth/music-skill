@@ -1,0 +1,22 @@
+{
+  "name": "music-skill",
+  "owner": {
+    "name": "music-skill contributors"
+  },
+  "description": "Write original instrumental music as editable notes, played on licensed sampled instruments, mixed and mastered. No audio-generation model.",
+  "plugins": [
+    {
+      "name": "music-skill",
+      "source": "./",
+      "description": "Write original instrumental music as editable notes: the agent composes and arranges every note, and the skill checks the score, plays it on licensed sampled instruments (piano, guitars, bass, drums, strings, brass) with player-like timing and dynamics, mixes it through buses and generated reverbs, and masters it to -14 LUFS with MIDI, stems and an MP3. No audio-generation model is involved.",
+      "category": "creative",
+      "keywords": [
+        "music",
+        "composition",
+        "midi",
+        "mixing",
+        "game-music"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,741 @@
+{
+ "name": "Osiris Piano (music-production build)",
+ "comment": "Built from Osiris Piano by Karoryfer Samples, CC0 1.0. Source: https://github.com/sfzinstruments/Osiris_Piano at 18c6afccb60cff458edbf7c394571783e074e1e9. A grand piano sampled on all 52 white keys A0-C8 in two velocity layers, once with the dampers down (UC) and once with the sustain pedal held (UC-Sus), each take recorded by three microphone pairs. As in the library's own program, the three pairs are summed at full level, here sample-aligned into one stereo take. A SoundFont cannot change recordings with the pedal, so there are two presets: pedal up (program 0) and pedal down (bank 1, program 0). The library names notes an octave below standard pitch (its A3 sounds A4). Kept from the library: its tuning (the treble is stretched sharp, as pianos are tuned, so no intonation correction is applied) and its damper release by register, 1.0 s in the bass to 0.42 s in the treble, with no dampers from F#6. Changes: the key noise before each hammer strike (about 25 ms) is trimmed to the last few milliseconds so the piano plays on the beat; the two velocity layers are levelled to the same early RMS so the velocity curve, not a step at 64, sets loudness; a take louder or softer than its neighbours is pulled toward them (at most 6 dB); the pedal-up soft B4 that the library lacks is covered by its neighbours; the bank sits 6 dB lower than the others so no take is limited at full scale; notes cut at 12 s (pedal up) or 15 s (pedal down) with a 50 ms fade; 16-bit TPDF dither.",
+ "copyright": "Source samples CC0 1.0 (Karoryfer Samples, Osiris Piano)",
+ "target_rms": 0.04,
+ "presets": [
+  {
+   "name": "Osiris Piano",
+   "program": 0,
+   "layers": [
+    {
+     "name": "vl1 21-40",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      21,
+      40
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 1.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 41-64",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      41,
+      64
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.65
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 65-89",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      65,
+      89
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.42
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 90-108",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      90,
+      108
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 3.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 21-40",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      21,
+      40
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 1.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 41-64",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      41,
+      64
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.65
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 65-89",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      65,
+      89
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.42
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 90-108",
+     "mics": [
+      {
+       "dir": "UC/A"
+      },
+      {
+       "dir": "UC/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      90,
+      108
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 12,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 3.0
+     },
+     "velocity_filter_cents": 0
+    }
+   ]
+  },
+  {
+   "name": "Osiris Piano Pedal",
+   "bank": 1,
+   "program": 0,
+   "layers": [
+    {
+     "name": "vl1 21-40",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      21,
+      40
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 1.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 41-64",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      41,
+      64
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.65
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 65-89",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      65,
+      89
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.42
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl1 90-108",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "1"
+     ],
+     "velocity": {
+      "1": [
+       1,
+       63
+      ]
+     },
+     "keys": [
+      90,
+      108
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 3.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 21-40",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      21,
+      40
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 1.0
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 41-64",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      41,
+      64
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.65
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 65-89",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      65,
+      89
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 0.42
+     },
+     "velocity_filter_cents": 0
+    },
+    {
+     "name": "vl2 90-108",
+     "mics": [
+      {
+       "dir": "UC-Sus/A"
+      },
+      {
+       "dir": "UC-Sus/B",
+       "name": [
+        "MicA",
+        "MicB"
+       ]
+      },
+      {
+       "dir": "UC-Sus/C",
+       "name": [
+        "MicA",
+        "MicC"
+       ]
+      }
+     ],
+     "pattern": "Piano_UC-Sus_MicA_(?P<note>[A-G]-?\\d)_vl(?P<dyn>\\d)\\.flac",
+     "octave_offset": 12,
+     "dynamics": [
+      "2"
+     ],
+     "velocity": {
+      "2": [
+       64,
+       127
+      ]
+     },
+     "keys": [
+      90,
+      108
+     ],
+     "onset_db": -30.0,
+     "match_notes": "local",
+     "max_seconds": 15,
+     "max_correction_cents": 0,
+     "envelope": {
+      "release": 3.0
+     },
+     "velocity_filter_cents": 0
+    }
+   ]
+  }
+ ]
+}

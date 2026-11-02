@@ -1,0 +1,21 @@
+name: It sounds wrong
+description: A clash, a part that is too loud or too quiet, a stiff phrase, an instrument that does not sound like itself.
+labels: [listening]
+body:
+  - type: textarea
+    id: where
+    attributes:
+      label: Where and what
+      description: Bar numbers or seconds, and what you hear there.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: How it should sound instead, or a reference you can describe in words.
+  - type: textarea
+    id: files
+    attributes:
+      label: Files
+      description: The project JSON and, if you can, a short excerpt of the MP3. Please only attach files you have the right to share.

@@ -1,0 +1,27 @@
+name: Something went wrong
+description: A command failed, a render is broken, or the result is not what the docs describe.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The command you ran (or what you asked your agent), and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: The error message, or the `checks` from the render's report.json.
+      render: text
+  - type: input
+    id: setup
+    attributes:
+      label: System
+      description: Operating system, Python version, and the FluidSynth and FFmpeg versions `studio.py doctor` prints.
+  - type: textarea
+    id: files
+    attributes:
+      label: Project file
+      description: Attach the project JSON if you can share it. Please only attach files you have the right to share.

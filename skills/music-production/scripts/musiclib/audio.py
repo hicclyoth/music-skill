@@ -1,0 +1,245 @@
+"""Local headless processes, narrow WAV I/O, instruments and audio measurements."""
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import struct
+import subprocess
+import time
+import numpy as np
+from .model import Clock, performed, save_json, file_hash
+
+RATE=48000
+
+def load_config(path):
+    """Verify every configured executable and SoundFont by path and SHA-256. `soundfont` is the
+    default bank; optional `soundfonts` adds named banks that tracks select with `soundfont`."""
+    path=Path(path).resolve()
+    data=json.loads(path.read_text(encoding='utf-8'))
+    extra=data.get('soundfonts',{})
+    if not isinstance(extra,dict) or 'default' in extra or not all(re.fullmatch(r'[a-z][a-z0-9_]{0,47}',k) for k in extra):
+        raise ValueError('soundfonts must map lower-case names (not "default") to entries')
+    for key,entry in [(k,data[k]) for k in ('fluidsynth','ffmpeg','soundfont')]+[('soundfonts.'+k,v) for k,v in extra.items()]:
+        p=Path(entry['path'])
+        if not p.is_absolute():p=path.parent/p
+        p=p.resolve()
+        if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}')
+        if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}')
+        entry['path']=str(p)
+    return data
+
+def soundfont_for(config,track):
+    name=track.get('soundfont','default')
+    if name=='default':return name,config['soundfont']
+    if name not in config.get('soundfonts',{}):raise ValueError(f'{track["id"]}: SoundFont "{name}" is not configured')
+    return name,config['soundfonts'][name]
+
+def run(argv,folder,label,timeout=600):
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    log=folder/(label+'.log');started=time.monotonic()
+    flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+    with log.open('wb') as out:
+        proc=subprocess.Popen([str(x) for x in argv],stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,creationflags=flags)
+        try:code=proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill();proc.wait();raise TimeoutError(f'{label} exceeded {timeout}s; log: {log}')
+    receipt={'argv':[str(x) for x in argv],'returncode':code,'seconds':round(time.monotonic()-started,3),'pid':proc.pid,'launch_mode':'CREATE_NO_WINDOW' if flags else 'no stdin; no GUI arguments','log':str(log)}
+    save_json(folder/(label+'.process.json'),receipt)
+    content=log.read_text(encoding='utf-8',errors='replace')
+    if code:raise RuntimeError(f'{label} failed ({code}): {content[-3000:]}')
+    return content
+
+def ffmpeg(config,args,folder,label):
+    guarded=[];i=0
+    while i<len(args):
+        if args[i]=='-i':
+            p=Path(args[i+1]).resolve()
+            if not p.is_file() or p.suffix.lower()!='.wav':raise ValueError('Audio inputs must be local generated WAVs')
+            with p.open('rb') as f:header=f.read(12)
+            if header[:4]!=b'RIFF' or header[8:12]!=b'WAVE':raise ValueError('Not RIFF/WAVE')
+            guarded.extend(['-protocol_whitelist','file,pipe','-f','wav','-i',p]);i+=2
+        else:guarded.append(args[i]);i+=1
+    return run([config['ffmpeg']['path'],'-hide_banner','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',*guarded],folder,label)
+
+_AFIR={}
+def afir_options(config):
+    """Options for convolving with an impulse response used as it is.  FFmpeg 7 and newer spell "no normalization"
+    irnorm=-1; FFmpeg 6 spells it gtype=none.  Asked once per executable from its own filter help."""
+    path=config['ffmpeg']['path']
+    if path not in _AFIR:
+        flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+        out=subprocess.run([path,'-hide_banner','-h','filter=afir'],capture_output=True,text=True,errors='replace',stdin=subprocess.DEVNULL,creationflags=flags,timeout=30)
+        text=out.stdout+out.stderr
+        _AFIR[path]=':'.join(['dry=1','wet=1','irnorm=-1' if 'irnorm' in text else 'gtype=none']+(['precision=double'] if 'precision' in text else []))
+    return _AFIR[path]
+
+def write_wav(path,data,rate=RATE):
+    data=np.asarray(data,dtype='<f4')
+    if data.ndim==1:data=data[:,None]
+    if not np.isfinite(data).all():raise ValueError('Nonfinite audio')
+    channels=data.shape[1];raw=data.tobytes()
+    fmt=struct.pack('<HHIIHH',3,channels,rate,rate*channels*4,channels*4,32)
+    with Path(path).open('wb') as f:
+        f.write(b'RIFF'+struct.pack('<I',36+len(raw))+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',len(raw))+raw)
+
+def read_wav(path):
+    path=Path(path)
+    with path.open('rb') as f:
+        h=f.read(12)
+        if h[:4]!=b'RIFF' or h[8:12]!=b'WAVE':raise ValueError('Only RIFF WAV supported')
+        fmt=None;payload=None
+        while True:
+            header=f.read(8)
+            if not header:break
+            if len(header)!=8:raise ValueError('Truncated WAV chunk')
+            name,size=struct.unpack('<4sI',header)
+            if size>path.stat().st_size:raise ValueError('Invalid WAV chunk size')
+            if name==b'fmt ':fmt=f.read(size)
+            elif name==b'data':payload=(f.tell(),size);f.seek(size,1)
+            else:f.seek(size,1)
+            if size%2:f.seek(1,1)
+    if fmt is None or payload is None:raise ValueError('Missing WAV format/data')
+    tag,channels,rate,_,align,bits=struct.unpack_from('<HHIIHH',fmt)
+    if tag==65534:
+        if len(fmt)<40:raise ValueError('Short extensible WAV')
+        tag=struct.unpack_from('<H',fmt,24)[0]
+    if channels not in (1,2) or rate!=RATE or payload[1]%align:raise ValueError('Unsupported WAV dimensions')
+    offset,size=payload
+    if tag==3 and bits==32:
+        data=np.memmap(path,dtype='<f4',mode='r',offset=offset,shape=(size//4//channels,channels))
+    elif tag==1 and bits==24:
+        b=np.memmap(path,dtype='u1',mode='r',offset=offset,shape=(size//3,3))
+        ints=b[:,0].astype(np.int32)|(b[:,1].astype(np.int32)<<8)|(b[:,2].astype(np.int32)<<16)
+        ints=(ints^0x800000)-0x800000
+        data=(ints.astype(np.float32)/8388608).reshape(-1,channels)
+    elif tag==1 and bits==16:
+        data=np.memmap(path,dtype='<i2',mode='r',offset=offset,shape=(size//2//channels,channels)).astype(np.float32)/32768
+    else:raise ValueError(f'Unsupported WAV encoding {tag}/{bits}')
+    return data,{'frames':len(data),'sample_rate':rate,'channels':channels,'bits':bits,'format':tag,'seconds':len(data)/rate}
+
+def rms(data):return float(np.sqrt(np.mean(np.asarray(data,dtype=np.float64)**2)))
+
+def reference_level(path,mode='active_rms'):
+    a,_=read_wav(path)
+    if not np.isfinite(a).all():raise ValueError('Nonfinite stem')
+    peak=float(np.max(np.abs(a)))
+    if peak<1e-9:raise ValueError('Silent stem')
+    if mode=='peak':return 20*math.log10(peak)
+    blocks=[rms(a[i:i+RATE//2]) for i in range(0,len(a),RATE//2)]
+    active=[x for x in blocks if x>max(1e-6,peak*.01)]
+    return 20*math.log10(float(np.percentile(active,70)))
+
+def measure(config,path,logs,label):
+    log=ffmpeg(config,['-i',path,'-af','loudnorm=I=-16:TP=-1.6:LRA=20:print_format=json','-f','null',os.devnull],logs,label)
+    matches=re.findall(r'\{\s*"input_i"[\s\S]*?\}',log)
+    if not matches:raise ValueError('No loudness measurement')
+    values=json.loads(matches[-1]);a,info=read_wav(path)
+    if not np.isfinite(a).all():raise ValueError('Nonfinite master')
+    info.update(integrated_lufs=float(values['input_i']),true_peak_dbtp=float(values['input_tp']),lra_lu=float(values['input_lra']),sample_peak_dbfs=20*math.log10(max(1e-15,float(np.max(np.abs(a))))),clipped_samples=int(np.count_nonzero(np.abs(a)>=1)),rms=rms(a),sha256=file_hash(path),meter='FFmpeg loudnorm input analysis; BS.1770/EBU R128')
+    if not all(math.isfinite(info[x]) for x in ('integrated_lufs','true_peak_dbtp','lra_lu')):raise ValueError('Silent/invalid loudness input')
+    return info
+
+def automation(points,clock):
+    if not points:return 'anull'
+    pairs=[(clock.seconds(b),v) for b,v in points]
+    expr=str(pairs[-1][1])
+    for (a,x),(b,y) in reversed(list(zip(pairs,pairs[1:]))):
+        expr=f'if(lt(t,{b:.8f}),{x}+({y-x})*(t-{a:.8f})/{b-a:.8f},{expr})'
+    return f"volume='pow(10,({expr})/20)':eval=frame"
+
+def control(track,cc,times,clock,default):
+    points=sorted((clock.seconds(b),v) for b,c,v in track['performance'].get('cc',[]) if c==cc)
+    if not points:return np.full(len(times),default,dtype=np.float32)
+    xs=np.array([x[0] for x in points]);ys=np.array([x[1] for x in points],dtype=np.float64)
+    if track['performance'].get('cc_mode','linear')=='step':
+        idx=np.searchsorted(xs,times,side='right')-1
+        return np.where(idx>=0,ys[np.clip(idx,0,None)],default)
+    return np.interp(times,xs,ys,left=default)
+
+def bend_curve(track,times,clock):
+    """Pitch bend in semitones at `times` (seconds), linear between the part's bend points; zero without any."""
+    pts=track['performance'].get('bend',[])
+    if not pts:return np.zeros(len(times))
+    return np.interp(times,[clock.seconds(b) for b,_ in pts],[v for _,v in pts])
+
+def synthesize(project,track,path):
+    clock=Clock(project);frames=round((clock.end+clock.tail)*RATE)
+    out=np.zeros((frames,2),dtype=np.float32)
+    cfg=track.get('instrument',{})
+    notes=performed(track,clock);prior_end=-1;prior_pitch=69;phase_end=0.0
+    for ni,n in enumerate(notes):
+        start=round(n['start_seconds']*RATE);stop=round(n['end_seconds']*RATE)
+        release=round(cfg.get('release_ms',120)/1000*RATE)
+        end=min(frames,stop+release);count=end-start
+        if count<1:continue
+        t=np.arange(count,dtype=np.float64)/RATE
+        connected=n['start_seconds']<=prior_end+.012
+        pitch=np.full(count,float(n['pitch']))
+        glide=min(count,round(cfg.get('glide_ms',28)/1000*RATE)) if connected else 0
+        if glide:pitch[:glide]=np.linspace(prior_pitch,n['pitch'],glide)
+        pitch+=bend_curve(track,t+n['start_seconds'],clock)
+        expr=control(track,11,t+n['start_seconds'],clock,100)/127
+        brightness=control(track,74,t+n['start_seconds'],clock,66)
+        vib=control(track,1,t+n['start_seconds'],clock,32)
+        # Default depth .015+CC1*.001 semitones, unless the instrument sets a CC1=127 depth in cents.
+        depth=cfg['vibrato_depth_cents']/100*vib/127 if 'vibrato_depth_cents' in cfg else .015+vib*.001
+        pitch+=depth*np.clip((t-cfg.get('vibrato_delay_ms',180)/1000)/.25,0,1)*np.sin(2*math.pi*cfg.get('vibrato_rate_hz',5.1)*t)
+        f=440*np.exp2((pitch-69)/12)
+        phase=phase_end+2*math.pi*np.cumsum(f)/RATE
+        gate=max(1,min(count,stop-start))
+        env=np.ones(count,dtype=np.float64)
+        attack=min(gate,round((.008 if connected else cfg.get('attack_ms',22)/1000)*RATE))
+        if attack:env[:attack]=np.sin(np.linspace(0,math.pi/2,attack))**2
+        if count>gate:env[gate:]=np.cos(np.linspace(0,math.pi/2,count-gate))**2
+        env*=1-.1*np.minimum(t/.3,1)
+        level=(n['velocity']/110)**1.4*.23
+        detunes=cfg.get('detune_cents',[-5,0,5]);harmonics=cfg.get('harmonics',12)
+        for vi,cents in enumerate(detunes):
+            ratio=2**(cents/1200);wave=np.zeros(count)
+            cutoff=cfg.get('cutoff_hz',1900)+brightness*18
+            for h in range(1,harmonics+1):
+                weight=1/(h**cfg.get('spectral_tilt',1.25)*(1+(f*h/cutoff)**4))
+                if cfg.get('odd_only') and h%2==0:weight*=.12
+                weight=np.where(f*h*ratio<RATE*.45,weight,0)
+                wave+=np.sin(h*(phase*ratio+vi*.43))*weight
+            pan=.5 if len(detunes)==1 else .35+.3*vi/(len(detunes)-1)
+            signal=wave*env*expr*level/len(detunes)
+            out[start:end,0]+=signal*np.sqrt(1-pan)
+            out[start:end,1]+=signal*np.sqrt(pan)
+        prior_end=n['end_seconds'];prior_pitch=n['pitch'];phase_end=float(phase[gate-1]%(2*math.pi))
+    write_wav(path,out)
+
+def noise_fx(project,track,path):
+    clock=Clock(project);out=np.zeros((round((clock.end+clock.tail)*RATE),2),dtype=np.float32)
+    by_id={n['id']:n for n in track['notes']}
+    for event in performed(track,clock):
+        n=by_id[event['id']]
+        start=round(event['start_seconds']*RATE);end=round(event['end_seconds']*RATE);count=end-start
+        if count<1:continue
+        rng=np.random.default_rng(int(hashlib.sha256(n['id'].encode()).hexdigest()[:8],16))
+        t=np.arange(count)/RATE;progress=np.linspace(0,1,count)
+        kind=n.get('articulation','rise');velocity=event['velocity']/127
+        if kind=='impact':
+            freq=45+70*np.exp(-t*16);sig=np.sin(2*math.pi*np.cumsum(freq)/RATE)*np.exp(-t*6)*np.minimum(t/.008,1)
+            wave=np.column_stack([sig,sig])*.2
+        else:
+            white=rng.standard_normal((count,2));freq=np.fft.rfftfreq(count,1/RATE)
+            band=(freq/1200)**2/(1+(freq/1200)**2)/(1+(freq/7500)**4)
+            wave=np.fft.irfft(np.fft.rfft(white,axis=0)*band[:,None],n=count,axis=0)
+            wave*=((progress**1.8 if kind=='rise' else np.exp(-t*4))*.13)[:,None]
+            fade=min(count,round(.04*RATE));wave[-fade:]*=np.linspace(1,0,fade)[:,None]
+        out[start:end]+=wave.astype(np.float32)*velocity
+    write_wav(path,out)
+
+def room_ir(path,seconds):
+    frames=round((seconds*1.3+.08)*RATE);rng=np.random.default_rng(64019)
+    noise=rng.standard_normal((frames,2));frequency=np.fft.rfftfreq(frames,1/RATE)
+    noise=np.fft.irfft(np.fft.rfft(noise,axis=0)/(1+(frequency[:,None]/3600)**2),n=frames,axis=0)
+    t=np.arange(frames)/RATE;envelope=np.exp(-math.log(1000)*np.maximum(0,t-.024)/seconds);envelope[t<.024]=0
+    noise*=envelope[:,None];noise/=np.sqrt(np.sum(noise**2,axis=0))[None,:]
+    noise*=.40
+    for delay,level in [(.029,.30),(.047,.24),(.071,.18),(.101,.12)]:
+        noise[round(delay*RATE),0]+=level;noise[round((delay+.009)*RATE),1]+=level
+    write_wav(path,noise)

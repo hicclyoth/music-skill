@@ -1,0 +1,227 @@
+"""Performance shaping for composers: timing and dynamics that behave like players rather than a grid.
+
+Human timing and loudness fluctuations are long-range correlated, not independent random numbers, and
+listeners prefer them to white-noise "humanize" (Hennig et al. 2011, PLoS ONE 6: e26457; Raesaenen et al.
+2015, PLoS ONE 10: e0127902).  Groove-oriented styles also reward tight drums (Fruehauf et al. 2013), so
+deviations stay small and structured:
+
+- a slowly wandering 1/f component per player plus a short-range correction (anticorrelated, lag-1 -0.5);
+- a fixed feel per part (laid-back bass, the two rhythm guitars apart);
+- phrase arches and high-loud on melodic parts (KTH rules, Friberg et al. 2006);
+- chords that are not perfectly together: the top note leads in keyboards, section players spread;
+- strummed guitar chords (opt-in `strum`, ms per string): the pick reaches the strings in order, low to high on a
+  downstroke and high to low on an upstroke, and the hand alternates down on each `strum_grid` step and up between
+  them, the usual rhythm-guitar motion.  Upstrokes are a little faster and lighter.  No measurement of string-to-string
+  timing was found; sampler strum scripts use 15-20 ms steps, which suits a slow strum, and 4-8 ms suits a driving one;
+- a two-bar periodic accent pattern on hi-hat/ride;
+- a bow-like expression arc (CC11) inside held chords of sustained parts.
+
+apply(project, overrides, seed) changes performance.notes (timing_ms, velocity, gate) of the authored
+values rather than replacing them, and densifies CC11 on parts whose profile asks for swells.  Results are
+deterministic for a given seed.  Profiles come from the track role; `overrides` maps track ids to changes
+(or None to leave a track alone).
+"""
+import hashlib
+import math
+
+import numpy as np
+
+ROLE_DEFAULTS = {
+    'melody': {'timing_sd': 6, 'short_sd': 2, 'vel_pct': 3, 'high_loud': .3, 'arch': 6, 'spread': 0, 'lead': 0,
+               'gate_sd': .02, 'contrast': .04},
+    'countermelody': {'timing_sd': 6, 'short_sd': 2, 'vel_pct': 3, 'high_loud': .2, 'arch': 4, 'spread': 8},
+    'harmony': {'timing_sd': 5, 'short_sd': 2, 'vel_pct': 3, 'arch': 4, 'spread': 10, 'lead': 10, 'contrast': .03},
+    'texture': {'timing_sd': 5, 'short_sd': 2, 'vel_pct': 4, 'arch': 3, 'spread': 6, 'lead': 6, 'gate_sd': .03},
+    'rhythm': {'timing_sd': 4, 'short_sd': 1.5, 'vel_pct': 3, 'arch': 3, 'gate_sd': .03, 'contrast': .03},
+    'bass': {'timing_sd': 3.5, 'short_sd': 1.5, 'feel': 4, 'vel_pct': 3, 'arch': 3, 'gate_sd': .02},
+    'drums': {'timing_sd': 2.5, 'short_sd': 1.5, 'vel_pct': 3, 'cymbal_cycle': 4},
+    'accent': {'timing_sd': 4, 'short_sd': 1.5, 'vel_pct': 3, 'spread': 6},
+    'effect': None,
+}
+BASE = {'timing_sd': 0, 'short_sd': 0, 'feel': 0, 'vel_pct': 0, 'high_loud': 0, 'arch': 0, 'spread': 0, 'lead': 0,
+        'gate_sd': 0, 'contrast': 0, 'cymbal_cycle': 0, 'swell': 0, 'strum': 0, 'strum_grid': .5, 'beta': .8}
+UPSTROKE_SPEED, UPSTROKE_VELOCITY = .8, .92
+
+
+def strum_offsets(onset, group, prof, rng):
+    """Per-note delays (ms) and velocity factors of one strummed chord: down on the grid, up between grid steps."""
+    step = onset / prof['strum_grid']
+    up = round(step) % 2 == 1 and abs(step - round(step)) < .25
+    order = sorted(group, key=lambda n: n['pitch'], reverse=up)
+    gap = prof['strum'] * (UPSTROKE_SPEED if up else 1)
+    out, t = {}, 0.0
+    for k, n in enumerate(order):
+        if k:
+            t += gap * (1 + .15 * rng.uniform(-1, 1))
+        out[n['id']] = (t, UPSTROKE_VELOCITY if up else 1.0)
+    return out, up
+CYMBALS = {42, 44, 46, 51, 53, 59}
+
+
+def rng_for(seed, name):
+    return np.random.default_rng(int(hashlib.sha256(f'{seed}:{name}'.encode()).hexdigest()[:12], 16))
+
+
+def lrc(n, rng, beta=.8):
+    """n samples of 1/f^beta noise (long-range correlated), zero mean, unit standard deviation."""
+    if n < 2:
+        return np.zeros(n)
+    m = 1 << (n - 1).bit_length()
+    f = np.arange(m // 2 + 1, dtype=float)
+    spectrum = (rng.standard_normal(len(f)) + 1j * rng.standard_normal(len(f))) / np.maximum(f, 1) ** (beta / 2)
+    spectrum[0] = 0
+    x = np.fft.irfft(spectrum, n=m)[:n]
+    x -= x.mean()
+    return x / x.std() if x.std() > 0 else x
+
+
+def short_range(n, rng):
+    """Differenced white noise: each deviation is partly corrected by the next (lag-1 autocorrelation -0.5)."""
+    w = rng.standard_normal(n + 1)
+    return (w[1:] - w[:-1]) / math.sqrt(2)
+
+
+def arch_shape(x):
+    """KTH-style phrase arch: rises to a peak at 60% of the phrase and falls back, centred on zero."""
+    return math.sin(math.pi * min(1, max(0, x)) ** 1.357) - .5
+
+
+def phrase_positions(track, sections, melodic):
+    """Position 0..1 of each note inside its phrase: rests of a beat or more for melodic parts, four-bar
+    blocks from each section start otherwise."""
+    notes = sorted(track['notes'], key=lambda n: n['on'])
+    pos = {}
+    if melodic:
+        groups, cur = [], []
+        for n in notes:
+            if cur and n['on'] - max(c['on'] + c['duration'] for c in cur) >= 1 - 1e-9:
+                groups.append(cur)
+                cur = []
+            cur.append(n)
+        if cur:
+            groups.append(cur)
+        for g in groups:
+            a, b = g[0]['on'], max(n['on'] + n['duration'] for n in g)
+            for n in g:
+                pos[n['id']] = (n['on'] - a) / max(b - a, 1e-9)
+        return pos
+    starts = sorted(s['start_bar'] * 4 for s in sections)
+    for n in notes:
+        s = max([x for x in starts if x <= n['on'] + 1e-9], default=0)
+        block = math.floor((n['on'] - s) / 16) * 16 + s
+        pos[n['id']] = (n['on'] - block) / 16
+    return pos
+
+
+def profile_for(track, overrides):
+    if track['id'] in overrides and overrides[track['id']] is None:
+        return None
+    role = ROLE_DEFAULTS.get(track.get('role'), ROLE_DEFAULTS['texture'])
+    if role is None and track['id'] not in overrides:
+        return None
+    return {**BASE, **(role or {}), **(overrides.get(track['id']) or {})}
+
+
+def apply(project, overrides=None, seed=1):
+    overrides = overrides or {}
+    report = {}
+    for t in project['tracks']:
+        prof = profile_for(t, overrides)
+        if prof is None or not t['notes']:
+            continue
+        perf = t['performance']['notes']
+        notes = sorted(t['notes'], key=lambda n: (n['on'], n['pitch']))
+        onsets = sorted({round(n['on'], 6) for n in notes})
+        index = {o: k for k, o in enumerate(onsets)}
+        rng = rng_for(seed, t['id'])
+        slow_t = lrc(len(onsets), rng, prof['beta'])
+        fast_t = short_range(len(onsets), rng)
+        slow_v = lrc(len(onsets), rng, prof['beta'])
+        gates = lrc(len(onsets), rng, prof['beta'])
+        cycle = rng.uniform(-1, 1, 16)
+        melodic = t.get('role') in ('melody', 'countermelody')
+        pos = phrase_positions(t, project['sections'], melodic) if prof['arch'] else {}
+        mean_pitch = sum(n['pitch'] for n in notes) / len(notes)
+        by_onset = {}
+        for n in notes:
+            by_onset.setdefault(round(n['on'], 6), []).append(n)
+        widest = max(len(g) for g in by_onset.values())
+        limit = (3 * (prof['timing_sd'] + prof['short_sd']) + abs(prof['feel']) + prof['lead'] + prof['spread']
+                 + 1.15 * prof['strum'] * (widest - 1))
+        moved, strokes = [], {'down': 0, 'up': 0}
+        for o, group in by_onset.items():
+            k = index[o]
+            shared = prof['feel'] + prof['timing_sd'] * slow_t[k] + prof['short_sd'] * fast_t[k]
+            group = sorted(group, key=lambda n: n['pitch'])
+            strummed = {}
+            if prof['strum'] and len(group) > 1:
+                strummed, up = strum_offsets(o, group, prof, rng_for(seed, f'{t["id"]}:{o}'))
+                strokes['up' if up else 'down'] += 1
+            for j, n in enumerate(group):
+                e = perf[n['id']]
+                dt = shared
+                if n['id'] in strummed:
+                    dt += strummed[n['id']][0]
+                elif len(group) > 1:
+                    if prof['lead'] and j == len(group) - 1:
+                        dt -= prof['lead']
+                    elif prof['spread']:
+                        dt += rng_for(seed, n['id']).uniform(-prof['spread'], prof['spread'])
+                dt = max(-limit, min(limit, dt)) if limit else 0
+                e['timing_ms'] = round(max(-100, min(100, e.get('timing_ms', 0) + dt)), 2)
+                v = e['velocity'] * (1 + prof['vel_pct'] / 100 * slow_v[k]) * (strummed[n['id']][1] if n['id'] in strummed else 1)
+                if prof['arch'] and n['id'] in pos:
+                    v += prof['arch'] * arch_shape(pos[n['id']])
+                if prof['high_loud']:
+                    v += max(-6, min(6, prof['high_loud'] * (n['pitch'] - mean_pitch)))
+                if prof['cymbal_cycle'] and n['pitch'] in CYMBALS:
+                    v += prof['cymbal_cycle'] * cycle[int(round(n['on'] * 2)) % 16]
+                e['velocity'] = int(max(1, min(127, round(v))))
+                g = e.get('gate', 1)
+                if prof['contrast']:
+                    g *= (1 - prof['contrast']) if n['duration'] <= .5 else (1 + prof['contrast'] / 2) if n['duration'] >= 1.5 else 1
+                if prof['gate_sd']:
+                    g *= 1 + prof['gate_sd'] * gates[k]
+                e['gate'] = round(max(.05, min(1.6, g)), 4)
+                moved.append(dt)
+        if prof['swell']:
+            swell(t, prof['swell'])
+        report[t['id']] = {'notes': len(notes), 'timing_sd_ms': round(float(np.std(moved)), 2),
+                           'profile': {k: v for k, v in prof.items() if v and k not in ('beta', 'strum_grid')}}
+        if prof['strum']:
+            report[t['id']]['strokes'] = strokes
+    return report
+
+
+def value_at(points, beat):
+    before = [(b, v) for b, v in points if b <= beat + 1e-9]
+    after = [(b, v) for b, v in points if b > beat + 1e-9]
+    if not before:
+        return after[0][1] if after else 100
+    if after and after[0][0] > before[-1][0]:
+        (b0, v0), (b1, v1) = before[-1], after[0]
+        return v0 + (v1 - v0) * (beat - b0) / (b1 - b0)
+    return before[-1][1]
+
+
+def swell(track, depth):
+    """Bow-like CC11 arc inside every held chord (1.5 beats or longer) on top of the part's existing CC11
+    curve: in a little below it, up past it at 40%, easing back near the end.  Linear CC mode is required."""
+    if track['performance'].get('cc_mode') != 'linear':
+        raise ValueError(f'{track["id"]}: swells need cc_mode linear')
+    base = sorted((b, v) for b, c, v in track['performance']['cc'] if c == 11)
+    spans = sorted({(round(n['on'], 6), round(n['on'] + n['duration'], 6)) for n in track['notes'] if n['duration'] >= 1.5})
+    arcs = []
+    for a, b in spans:
+        d = b - a
+        arcs += [(a, -depth), (a + .4 * d, depth / 2), (a + .9 * d, -depth / 3)]
+    if not arcs:
+        return
+    offset = dict(arcs)
+    beats = sorted({b for b, _ in base} | set(offset))
+    curve = []
+    for beat in beats:
+        v = value_at(base, beat) + offset.get(beat, 0)
+        curve.append([round(beat, 4), 11, int(max(0, min(127, round(v))))])
+    track['performance']['cc'] = sorted([x for x in track['performance']['cc'] if x[1] != 11] + curve,
+                                        key=lambda x: (x[0], x[1]))

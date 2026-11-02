@@ -1,0 +1,29 @@
+{
+  "name": "music-skill",
+  "displayName": "Music Skill",
+  "version": "0.1.0",
+  "description": "Write original instrumental music as editable notes: the agent composes and arranges every note, and the skill checks the score, plays it on licensed sampled instruments (piano, guitars, bass, drums, strings, brass) with player-like timing and dynamics, mixes it through buses and generated reverbs, and masters it to -14 LUFS with MIDI, stems and an MP3. No audio-generation model is involved.",
+  "author": {
+    "name": "owoevan-dev",
+    "url": "https://github.com/owoevan-dev"
+  },
+  "homepage": "https://github.com/owoevan-dev/music-skill",
+  "repository": "https://github.com/owoevan-dev/music-skill",
+  "privacyPolicyUrl": "https://github.com/owoevan-dev/music-skill/blob/main/PRIVACY.md",
+  "license": "MIT",
+  "icon": "./assets/brand/icon-512.png",
+  "keywords": [
+    "music",
+    "composition",
+    "arrangement",
+    "midi",
+    "soundfont",
+    "mixing",
+    "mastering",
+    "game-music",
+    "anime"
+  ],
+  "skills": [
+    "./skills/music-production"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "platform": "windows-x86_64",
+  "reviewed_on": "2026-11-01",
+  "downloads": [
+    {
+      "id": "fluidsynth",
+      "filename": "fluidsynth-2.6.1.zip",
+      "url": "https://github.com/FluidSynth/fluidsynth/releases/download/v2.6.1/fluidsynth-v2.6.1-win10-x64-cpp11.zip",
+      "sha256": "fab7a2e4b85675b66970f97a39bbc239729c5e0f237198b5922a6a73cbc8677c",
+      "bytes": 2727529,
+      "license": "LGPL-2.1-or-later",
+      "version": "2.6.1",
+      "checksum_evidence": "GitHub official release asset digest matched local archive",
+      "executable": "fluidsynth-v2.6.1-win10-x64-cpp11/bin/fluidsynth.exe",
+      "executable_sha256": "557b9e98d860a6df6a927e58f6cc274d6451a046da780a1011810d9d00db133d"
+    },
+    {
+      "id": "ffmpeg",
+      "filename": "ffmpeg-9.0.2-essentials_build.zip",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+      "sha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+      "bytes": 114768076,
+      "license": "GPL-3.0 build",
+      "version": "9.0.2",
+      "checksum_evidence": "GitHub release asset digest matched local archive",
+      "executable": "ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe",
+      "executable_sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec"
+    },
+    {
+      "id": "soundfont",
+      "filename": "MS Basic.sf3",
+      "url": "https://raw.githubusercontent.com/musescore/MuseScore/32f0a26e5b70d784a891a3637f32124431abed6f/share/sound/MS%20Basic.sf3",
+      "sha256": "5ea2375e8bd7d8e71def1036978c1621e85b66934169b6a2744b27b9b3c2d99c",
+      "bytes": 51278610,
+      "license": "MIT; retain named sample-author notices",
+      "version": "MuseScore repository commit 32f0a26e5b70d784a891a3637f32124431abed6f",
+      "checksum_evidence": "Pinned official repository revision; downloaded bytes hashed locally"
+    },
+    {
+      "id": "soundfont_notice",
+      "filename": "MS Basic_License.md",
+      "url": "https://raw.githubusercontent.com/musescore/MuseScore/32f0a26e5b70d784a891a3637f32124431abed6f/share/sound/MS%20Basic_License.md",
+      "sha256": "9486e6baeb3eb274cd3f0e131cf1bc50ac4b57f548791b1b6678def7988f19d4",
+      "bytes": 3327,
+      "license": "Upstream license and sample author notices",
+      "version": "Same pinned MuseScore commit"
+    }
+  ]
+}
