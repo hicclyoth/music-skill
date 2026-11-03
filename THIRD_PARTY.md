@@ -18,8 +18,8 @@ Nothing in this list is bundled in the repository. Setup downloads each item fro
 | Bank | Licence | Source |
 |---|---|---|
 | [MuseScore MS Basic](https://github.com/musescore/MuseScore/tree/master/share/sound), pinned commit | MIT, with sample-author notices kept in `MS Basic_License.md` | MuseScore and the named sample authors |
-| [FreePats FSBS electric guitars](https://github.com/freepats/electric-guitar-FSBS-dist1) (dist1, dist2, clean) | CC0 1.0 | FreePats |
-| [Bass YR](https://github.com/freepats/electric-bass-YR), picked and finger | CC0 1.0 | samples by Andrea Biasior, FreePats |
+| [FreePats FSBS electric guitars](https://github.com/freepats/electric-guitar-FSBS-dist1) (dist1, dist2, clean) | CC0 1.0 | FreePats; repacked unchanged on this project's release |
+| [Bass YR](https://github.com/freepats/electric-bass-YR), picked and finger | CC0 1.0 | samples by Andrea Biasior, FreePats; repacked unchanged on this project's release |
 | [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) samples, built into SF2s by `soundbank.py`: the orchestra; trombone, tuba, solo double bass and piccolo; section strings by desk; and the articulations the others leave out (mutes, falls, growls, tremolo and vibrato) | CC0 1.0; the readme asks that the samples are not sold directly and that improvements stay open, and asks for credit with a link to the [VSCO: CE homepage](http://vis.versilstudios.net/vsco-community.html) | Versilian Studios; recorded by Sam Gossner and Simon Dalzell (Ivy Audio) |
 | [VCSL](https://github.com/sgossner/VCSL) samples, built into SF2s by `soundbank.py`: Steinway B, concert harp, marimba, vibraphone, xylophone, tubular bells, timpani and orchestral percussion; harpsichords, a Kawai grand, upright pianos and Yamaha TX81Z voices; recorders, ocarina, harmonicas, tenor sax, saxello and a Renaissance organ; folk harp, dan tranh, psaltery, kalimbas, balafon, hand chimes and world percussion | CC0 1.0 | Versilian Studios |
 | [Big Rusty Drums](https://github.com/sfzinstruments/karoryfer.big-rusty-drums) samples, built into a GM kit by `soundbank.py` | CC0 1.0 | Karoryfer Samples |

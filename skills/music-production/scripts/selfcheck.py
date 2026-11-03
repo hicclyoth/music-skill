@@ -283,7 +283,21 @@ def checks(work,config=None):
         assert fs.requested(lock,'orchestra,rusty')>={'vsco','rusty'} and fs.requested(lock,None) is None
         rejects(lambda:fs.requested(lock,'nonesuch'))
         assert urllib.parse.urlsplit(lock['prebuilt']['release']).hostname in fs.HOSTS
-        return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre)}
+        # A bank published as an archive comes from its unchanged tar.xz repack when that matches, else from the publisher.
+        import io,tarfile
+        member,notice='Demo SF2/demo.sf2','Demo SF2/LICENSE.txt';tx=assets/'Demo-SF2.tar.xz'
+        with tarfile.open(tx,'w:xz') as tar:
+            for name,data in ((member,bank),(notice,b'CC0')):
+                info=tarfile.TarInfo(name);info.size=len(data);tar.addfile(info,io.BytesIO(data))
+        arch={'name':'demo_archive','format':'7z','url':'https://github.com/x/y/releases/download/1/Demo-SF2.7z','bytes':1,'sha256':'0'*64,
+              'member':member,'member_sha256':item['output_sha256'],'notices':[notice],'license':'CC0','version':'1'}
+        mirror={'file':tx.name,'bytes':tx.stat().st_size,'sha256':file_hash(tx),'url':'https://github.com/x/y/releases/download/1/'+tx.name}
+        got=fs.install_archive(arch,work/'archive_runtime',work/'archive_cache',True,mirror,assets)
+        assert Path(got['path']).read_bytes()==bank and got['source']==mirror['url']
+        rejects(lambda:fs.install_archive(arch,work/'archive_runtime2',work/'archive_cache',True,{**mirror,'sha256':'0'*64},assets))
+        mirrors=lock['prebuilt']['archives']
+        assert set(mirrors)=={i['name'] for i in lock['archives']} and all(a['file'].endswith('.tar.xz') and len(a['sha256'])==64 for a in mirrors.values())
+        return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre),'repacked_archives':len(mirrors)}
     check('prebuilt_banks_unpack_only_when_they_match_the_lock',prebuilt_bank)
     def bus_settings():
         from musiclib import mixbus

@@ -181,9 +181,25 @@ def git_blob_sha1s(path):
     forms = [data] + ([data.replace(b'\r\n', b'\n')] if b'\0' not in data and b'\r\n' in data else [])
     return {hashlib.sha1(b'blob %d\0' % len(d) + d).hexdigest() for d in forms}
 
-def install_archive(item, runtime, cache, offline):
-    archive = cache / Path(urllib.parse.urlsplit(item['url']).path).name
-    cached(item['url'], archive, offline, item['bytes'], sha256_is(item['sha256']))
+def install_archive(item, runtime, cache, offline, mirror=None, local=None):
+    """A bank published as an archive: from `mirror` first (the same files repacked unchanged as a tar.xz on this
+    project's release, or found in `local`), then from its publisher's own archive; the bank must have its locked hash
+    either way."""
+    if mirror:
+        try:
+            source = Path(local) / mirror['file'] if local else None
+            return _install_archive({**item, 'format': 'tar.xz', 'url': mirror['url'], 'bytes': mirror['bytes'], 'sha256': mirror['sha256']},
+                                    runtime, cache, offline, source)
+        except (OSError, ValueError, EOFError, lzma.LZMAError, tarfile.TarError, http.client.HTTPException) as e:
+            print(f'{item["name"]}: no repacked archive ({e}); downloading it from its publisher', flush=True)
+    return _install_archive(item, runtime, cache, offline)
+
+def _install_archive(item, runtime, cache, offline, local=None):
+    archive = local if local else cache / Path(urllib.parse.urlsplit(item['url']).path).name
+    if local and not archive.is_file():
+        raise ValueError('Missing repacked archive ' + str(archive))
+    if not local:
+        cached(item['url'], archive, offline, item['bytes'], sha256_is(item['sha256']))
     if archive.stat().st_size != item['bytes'] or file_hash(archive) != item['sha256']:
         raise ValueError('Archive integrity failed: ' + item['name'])
     names, links = list_members(archive, item['format'])
@@ -366,10 +382,15 @@ def main():
     config = absolute_paths(json.loads(args.config.read_text(encoding='utf-8')), args.config.resolve().parent)
     fonts = config.setdefault('soundfonts', {})
     failed = {}
+    mirrors = {} if args.from_source else lock.get('prebuilt', {}).get('archives', {})
     for item in lock['archives']:
         if only is None or item['name'] in only:
             try:
-                fonts[item['name']] = install_archive(item, runtime, cache, args.offline)
+                mirror = mirrors.get(item['name'])
+                mirror = {**mirror, 'url': lock['prebuilt']['release'] + urllib.parse.quote(mirror['file'])} if mirror else None
+                fonts[item['name']] = install_archive(item, runtime, cache, args.offline, mirror, args.prebuilt_from)
+                if mirror and fonts[item['name']]['source'] == mirror['url']:
+                    print('PREBUILT', item['name'], flush=True)
                 print('VERIFIED', item['name'], flush=True)
             except (OSError, ValueError, http.client.HTTPException) as e:
                 failed[item['name']] = str(e)
@@ -415,6 +436,9 @@ def source_paths(lock, only, runtime, cache):
     for item in lock['archives']:
         if only is None or item['name'] in only:
             paths.add(cache / Path(urllib.parse.urlsplit(item['url']).path).name)
+            mirror = lock.get('prebuilt', {}).get('archives', {}).get(item['name'])
+            if mirror:
+                paths.add(cache / mirror['file'])
     for item in lock['builds']:
         if only is not None and item['name'] not in only:
             continue
