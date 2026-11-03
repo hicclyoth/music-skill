@@ -1,7 +1,8 @@
 """Surge XT parts (`engine: "surge"`): a curated factory patch of the Surge XT synthesizer, played offline through
 pedalboard.  Both are GPL-3.0 programs installed beside the skill.  They run only in scripts/surge_host.py, a
 GPL-3.0-or-later program that the renderer starts as its own process and talks to through files (a job with the
-part's timed MIDI events in, a WAV out), so the skill's MIT code never runs with them; the music made is the user's.
+part's timed MIDI events in, a WAV out): the renderer's own processes never load them, and the host imports one MIT
+helper of the skill (with_patch below), which the GPL allows.  The music made with them is the user's.
 
 A VST3's saved state, as JUCE writes it, is "VC2!", a little-endian size and XML whose <IComponent> holds the plugin's
 own state in JUCE's text encoding ("<bytes>.<6-bit groups, least significant bit first>").  Surge's state starts with

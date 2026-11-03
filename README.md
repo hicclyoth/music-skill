@@ -68,6 +68,8 @@ A text-to-music model hands you a finished waveform. Some can regenerate a secti
 
 Here the agent writes the score, so the music is made of decisions you can read and change: the melody in bar 33, the voicing of a chord, how hard the drummer hits the crash. Change one note and only that part renders again. The sounds are multisampled recordings of real instruments under licences you can check, or the skill's own synthesizers, and no model trained on other people's recordings is involved.
 
+If Claude or another agent is already cutting your video or building your game, it knows what the music has to fit: how long each scene runs, where the cuts land, when the narration starts, how a level loops. It can write to those numbers, with a swell that peaks on the reveal, a quieter bed under the voice, a loop as long as the level, and when the edit changes, rewrite just the bars that moved.
+
 ## How it works
 
 1. **Write.** The agent plans the form and a theme, then writes a project file. Every note's pitch and length go in the score; how it is played (velocity, timing, release) is kept separately. A longer piece is usually written by a short Python script the agent creates, so voicings, bass lines and drum patterns stay readable.
@@ -181,7 +183,8 @@ Whether the music is good is another matter, and only listening can tell. The pi
 - The sound is only as good as the free banks. The YR basses have one velocity layer, the section strings speak slowly, marimba, xylophone and piccolo are sampled sparsely, and a sampled guitar bend shifts the whole sample instead of changing the string's tone.
 - No bank yet covers acoustic guitars, a choir or East Asian instruments beyond an erhu and a dan tranh; such parts fall back to MS Basic's sparse General MIDI samples.
 - Surge XT starts its oscillators at random phases, so a Surge part is a slightly different take each time it is synthesized; the render cache keeps a take until the part changes. Everything else renders the same every time.
-- The agent cannot listen. `review` and `analyze` locate problems; a person has to hear the result, and the skill tells the agent never to claim it listened unless it really did.
+- The agent cannot listen. `review` and `analyze` locate problems; a person has to hear the result, and the skill tells the agent never to claim it listened.
+- A long piece with many synthesizer or effect parts needs memory, up to about 2 GB for each part rendered at once; the renderer runs fewer parts at a time when free memory is short, and `--jobs` sets the number.
 - Linux and macOS use the system FluidSynth and FFmpeg, so their samples can differ slightly from the pinned Windows builds.
 
 ## Documentation

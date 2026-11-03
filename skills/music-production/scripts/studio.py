@@ -16,7 +16,7 @@ def main():
         if name=='review':cmd.add_argument('--config',type=Path,help='also check each note against the samples of its bank')
         if name=='render':
             cmd.add_argument('--config',type=Path,required=True);cmd.add_argument('--cache',type=Path);cmd.add_argument('--resume',action='store_true')
-            cmd.add_argument('--jobs',type=int,help='parts rendered at once (default: one per processor, at most 8; the result is the same)')
+            cmd.add_argument('--jobs',type=int,help='parts rendered at once (default: one per processor, at most 8, and one per 2 GB of free memory; the result is the same)')
         if name=='revise':
             cmd.add_argument('--track',required=True);cmd.add_argument('--note',required=True)
             cmd.add_argument('--pitch',type=int);cmd.add_argument('--velocity',type=int);cmd.add_argument('--duration',type=float)

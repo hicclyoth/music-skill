@@ -28,7 +28,7 @@ Copy this checklist into the project's notes and tick it off. Each step ends on 
 - [ ] **5. Score review**: `studio.py review` ran (with `--config`, so notes far from their samples are found) and every prompt has a musical decision (a prepared tension, or a fix); `studio.py profile` shows whether density, register and repetition follow the plan section by section.
 - [ ] **6. Render**: `mix.chain` is `"bus"` for a finished mix; `studio.py render` completes with every check passed.
 - [ ] **7. Measure**: `studio.py analyze` ran, with `--reference` where a genre reference fits; section levels, spectrum, tonal balance, stereo and lead presence are explained or fixed.
-- [ ] **8. Listen**: the user heard the full piece (or a tool you can actually run on the audio did). Until then, say plainly that nobody has listened yet.
+- [ ] **8. Listen**: the user heard the full piece. Until then, say plainly that nobody has listened yet.
 - [ ] **9. Revise**: one cause at a time, the previous version kept, compared at equal loudness, then a full-form pass.
 - [ ] **10. Deliver**: master, MP3, MIDI, stems and project, and for a game loop `loop.wav`/`loop.ogg` with the loop points; a credit for any bank that needs one (the optional banks need none; MS Basic parts get its credit line); measured checks; what changed and what is still open.
 
@@ -49,7 +49,7 @@ python <skill>/scripts/excerpt.py <project>/song.json --first-bar 17 --bars 8 --
 python <skill>/scripts/selfcheck.py --work <new empty folder> --config <config.json>
 ```
 
-Errors go to stderr as `ERROR: ...` with exit code 2. Outputs never overwrite: use a new folder for every render and review, and a new file for every revision and report. Installing banks, rendering and the selfcheck can take several minutes; run them with a long timeout or in the background. `--resume` continues the same project in an existing render folder. Parts render in parallel, one per processor up to 8 (`--jobs`); the result is the same for any number.
+Errors go to stderr as `ERROR: ...` with exit code 2. Outputs never overwrite: use a new folder for every render and review, and a new file for every revision and report. Installing banks, rendering and the selfcheck can take several minutes; run them with a long timeout or in the background. `--resume` continues the same project in an existing render folder. Parts render in parallel, one per processor up to 8 and one per 2 GB of free memory (`--jobs` sets it); the result is the same for any number.
 
 A render writes `master.wav` (24-bit), `master.flac`, `preview.mp3`, `composition.mid` (performed), `score.mid` (notation timing), one MIDI per part in `midi/`, processed stems in `stems/`, effect returns in `returns/` and `report.json`. A project with `loop` also gets `loop.wav`, `loop.ogg` and `loop.json`: the loop with the tail folded back from its start, the loop points and a cue point per section written into the files. With `loop.layers`, every layer also comes as its own loop in `layers/`. The raw synthesis cache is keyed by notes, performance, instrument, the tempo as played and dependency hashes, so a mix edit reuses every part and a one-note edit re-renders one part.
 
@@ -75,7 +75,7 @@ Set `"chain": "bus"` in the project's `mix` for a finished piece. Parts are grou
 ## Honesty
 
 - `review`, `analyze` and the render report locate problems. Note counts, dynamic range and track counts are not quality scores.
-- Never say or imply that you listened, or describe how the music sounds, unless you really ran a listening tool on the audio. If nobody has listened, say so and keep the perceptual verdict open.
+- Never say or imply that you listened, or describe how the music sounds as if you had heard it. An audio-analysis tool's output is reported as that tool's, not as listening. If nobody has listened, say so and keep the perceptual verdict open.
 - If the user's feedback could be a wish or a complaint, ask which before changing anything.
 
 ## Rights

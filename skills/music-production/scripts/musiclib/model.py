@@ -50,6 +50,7 @@ KNOWN = {
     'performance': {'notes', 'cc', 'cc_mode', 'offset_ms', 'bend', 'bend_range', 'legato', 'bow_change_s', 'bow_ms', 'round_robin',
                     'swing', 'dynamics', 'dynamics_mode'},
     'played note': {'velocity', 'timing_ms', 'gate'},
+    'note': {'id', 'on', 'duration', 'pitch', 'phrase', 'articulation', 'comment'},
     'track mix': {'level_dbfs', 'level_mode', 'pan', 'width', 'depth_m', 'facing', 'bus', 'space', 'highpass', 'lowpass', 'eq',
                   'reverb_db', 'delay_db', 'delay_quarters', 'compressor', 'effects', 'automation', 'delay', 'duck', 'filter_sweep',
                   'saturate', 'gate', 'wow_flutter'},
@@ -61,12 +62,28 @@ KNOWN = {
 # Track and layer ids name files (stems, part MIDIs, layer loops): Windows reserves these names, with any extension.
 RESERVED = {'con', 'prn', 'aux', 'nul', *(f'com{i}' for i in range(1, 10)), *(f'lpt{i}' for i in range(1, 10))}
 
-def unknown_fields(obj, kind, where, warnings):
+def unknown_fields(obj, kind, where, warnings, count=1):
+    """Warn about each field of `obj` not in KNOWN[kind], with the nearest known name (`count`: how many objects of a
+    part carry it, for notes)."""
     if not isinstance(obj, dict):
         return
     for key in sorted(set(obj) - KNOWN[kind]):
-        near = difflib.get_close_matches(key, sorted(KNOWN[kind]), n=1, cutoff=.6)
-        warnings.append(f'{where}: unknown field {key!r}' + (f' (did you mean {near[0]!r}?)' if near else '') + '; it has no effect')
+        played = KNOWN['played note'] if kind == 'note' else set()  # velocity, timing and gate written on the score
+        near = difflib.get_close_matches(key, sorted(KNOWN[kind] | played), n=1, cutoff=.6)
+        hint = (' (it belongs in performance.notes)' if key in played
+                else f' (did you mean {near[0]!r}? that belongs in performance.notes)' if near and near[0] in played
+                else f' (did you mean {near[0]!r}?)' if near else '')
+        warnings.append(f'{where}: unknown field {key!r}' + hint + (f' on {count} notes' if count > 1 else '') + '; it has no effect')
+
+def unknown_note_fields(notes, kind, where, warnings):
+    """One warning per unknown field of a part's notes, however many notes carry it."""
+    seen = {}
+    for n in notes:
+        if isinstance(n, dict):
+            for key in set(n) - KNOWN[kind]:
+                seen[key] = seen.get(key, 0) + 1
+    for key, count in sorted(seen.items()):
+        unknown_fields({key: None}, kind, where, warnings, count)
 
 def effective_tempo(project):
     """The tempo map as played: the authored one, with `clock.rubato` applied.  Friberg and Sundberg (1999) model a
@@ -290,6 +307,8 @@ def _track(p,t,c,total,clock,warnings):
     unknown_fields(t,'track',tid,warnings);unknown_fields(t['performance'],'performance',f'{tid}.performance',warnings)
     unknown_fields(t['mix'],'track mix',f'{tid}.mix',warnings);unknown_fields(t['performance'].get('legato'),'legato',f'{tid}.performance.legato',warnings)
     if t['engine']=='synth':unknown_fields(t.get('synth'),'synth',f'{tid}.synth',warnings)
+    unknown_note_fields(t['notes'],'note',f'{tid} notes',warnings)
+    unknown_note_fields(list(t['performance']['notes'].values()),'played note',f'{tid} performance.notes',warnings)
     for n in t['notes']:
         if not isinstance(n.get('id'),str) or not 1<=len(n['id'])<=120 or n['id'] in local_ids:
             raise ValueError(f'{tid}: duplicate or invalid note id {n.get("id")!r}')
@@ -303,7 +322,6 @@ def _track(p,t,c,total,clock,warnings):
             raise ValueError(f'Missing performance for {t["id"]}/{n["id"]}')
         perf=t['performance']['notes'][n['id']]
         if 'velocity' not in perf:raise ValueError(f'{at}: performance.notes needs a velocity')
-        unknown_fields(perf,'played note',f'{at} performance',warnings)
         number(perf['velocity'],1,127,f'{at} velocity',True)
         number(perf.get('timing_ms',0),-100,100,f'{at} timing_ms')
         number(perf.get('gate',1),.05,1.6,f'{at} gate')

@@ -295,6 +295,16 @@ def checks(work,config=None):
         got=fs.install_archive(arch,work/'archive_runtime',work/'archive_cache',True,mirror,assets)
         assert Path(got['path']).read_bytes()==bank and got['source']==mirror['url']
         rejects(lambda:fs.install_archive(arch,work/'archive_runtime2',work/'archive_cache',True,{**mirror,'sha256':'0'*64},assets))
+        # A repacked archive with a member outside its folder, or a link, is refused before anything is unpacked.
+        for bad in ('../evil.txt','link'):
+            bx=assets/f'bad_{bad[-4:]}.tar.xz'
+            with tarfile.open(bx,'w:xz') as tar:
+                info=tarfile.TarInfo(member);info.size=len(bank);tar.addfile(info,io.BytesIO(bank))
+                extra=tarfile.TarInfo(bad)
+                if bad=='link':extra.type,extra.linkname=tarfile.SYMTYPE,'../outside'
+                tar.addfile(extra,io.BytesIO(b''))
+            rejects(lambda:fs._install_archive({**arch,'format':'tar.xz','bytes':bx.stat().st_size,'sha256':file_hash(bx)},work/'archive_runtime3',work/'archive_cache',True,bx))
+        assert not (work/'archive_runtime3'/'demo_archive').exists() and not (work/'evil.txt').exists()
         mirrors=lock['prebuilt']['archives']
         assert set(mirrors)=={i['name'] for i in lock['archives']} and all(a['file'].endswith('.tar.xz') and len(a['sha256'])==64 for a in mirrors.values())
         return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre),'repacked_archives':len(mirrors)}
@@ -1092,6 +1102,8 @@ def checks(work,config=None):
         body=b'x'*1000
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
+                if self.path=='/redirect':
+                    self.send_response(302);self.send_header('Location','https://example.invalid/bank.sf2');self.end_headers();return
                 self.send_response(200);self.send_header('Content-Length','1000');self.end_headers()
                 self.wfile.write(body[:400] if self.path=='/short' else body)
             def log_message(self,*a):pass
@@ -1099,6 +1111,9 @@ def checks(work,config=None):
         base=f'http://127.0.0.1:{server.server_port}';hosts=fs.HOSTS
         try:
             fs.HOSTS=hosts|{'127.0.0.1'};dest=work/'dl.bin'
+            # A redirect to a host off the list is refused before any request goes there.
+            try:fs._fetch_once(base+'/redirect',dest,None,10**6,None);raise AssertionError('followed a redirect off the list')
+            except ValueError as e:assert 'not allowed' in str(e),e
             try:fs._fetch_once(base+'/short',dest,None,10**6,None);raise AssertionError('kept a short download')
             except fs.Damaged:pass
             assert not dest.exists() and not dest.with_name('dl.bin.partial').exists()

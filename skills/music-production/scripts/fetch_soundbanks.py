@@ -164,9 +164,17 @@ def list_members(archive, fmt):
 def extract(archive, fmt, members, target):
     target.mkdir(parents=True, exist_ok=True)
     if fmt == 'tar.xz':
+        # Each wanted member must be a plain file with a safe name; it is copied through extractfile, which every Python
+        # 3.10 has (extract's `filter` came only in 3.10.12 and 3.11.4).
         with tarfile.open(archive, 'r:xz') as t:
             for name in members:
-                t.extract(t.getmember(name), target, filter='data')
+                m = t.getmember(name)
+                if not m.isfile() or not safe_member(name):
+                    raise ValueError('Unsafe archive member: ' + name)
+                dest = target / name
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with t.extractfile(m) as src, dest.open('wb') as out:
+                    shutil.copyfileobj(src, out, 1 << 20)
         return
     kind, tool = archive_tool()
     if kind == '7z':

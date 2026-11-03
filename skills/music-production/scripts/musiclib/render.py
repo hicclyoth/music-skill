@@ -17,9 +17,28 @@ from .model import Clock, load_project, validate, performed, save_json, digest, 
 def engine_hash():
     return digest({p.name:file_hash(p) for p in Path(__file__).parent.glob('*.py')})
 
+def free_memory():
+    """Bytes of memory free for new work, or None where it cannot be read (macOS gives half its installed memory)."""
+    try:
+        if os.name=='nt':
+            import ctypes
+            class Status(ctypes.Structure):
+                _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong)]+[(k,ctypes.c_ulonglong) for k in ('total','avail','page_total','page_avail','virtual_total','virtual_avail','extended')]
+            s=Status();s.length=ctypes.sizeof(Status)
+            return s.avail if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(s)) else None
+        if os.path.exists('/proc/meminfo'):
+            with open('/proc/meminfo',encoding='ascii') as f:
+                for line in f:
+                    if line.startswith('MemAvailable:'):return int(line.split()[1])*1024
+        return os.sysconf('SC_PHYS_PAGES')*os.sysconf('SC_PAGE_SIZE')//2
+    except (OSError,ValueError,AttributeError):
+        return None
+
 def default_jobs():
-    """Parallel parts: one per processor, at most 8 (each holds a few hundred MB of audio while it works)."""
-    return max(1,min(8,os.cpu_count() or 1))
+    """Parallel parts: one per processor, at most 8, and one per 2 GB of free memory (a long part with a mono synth line
+    or effects can hold that much while it works)."""
+    jobs=max(1,min(8,os.cpu_count() or 1));free=free_memory()
+    return max(1,min(jobs,int(free//2e9))) if free else jobs
 
 def synthesis_identity(p,clock,t,deps,renderer):
     """What a part's raw synthesis depends on, hashed into its cache key: the clock and the tempo as played (phrase
