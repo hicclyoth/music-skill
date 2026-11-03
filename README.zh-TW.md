@@ -31,7 +31,7 @@ music-skill 是一個 [Agent Skill](https://agentskills.io)，讓 AI agent 像�
 
 ## 試聽
 
-**[《Above the Clouds》](examples/above-the-clouds)**：為管弦樂團與管風琴寫的音樂會序曲。從遠方的法國號開始，經過快板、暴風雨和一段寧靜的小提琴獨奏，最後管風琴加入，以最強音奏出主題大旋律。可以聽[整首序曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28），或[最後 1:41](examples/above-the-clouds/above_the_clouds_highlight.mp3)。
+**[《Above the Clouds》](examples/above-the-clouds)**：為管弦樂團與管風琴寫的音樂會序曲。從遠方的法國號開始，經過快板、暴風雨和一段寧靜的小提琴獨奏，最後管風琴加入，以最強音奏出主題大旋律。可以聽[整首序曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28）。
 
 **[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**：節慶浩室（festival house）。鋼琴主題、漸強段和 supersaw 的爆發段（drop），都用這個 skill 內建的合成器和鼓機做成。
 

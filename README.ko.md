@@ -31,7 +31,7 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 
 ## 들어 보기
 
-**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](examples/above-the-clouds/above_the_clouds.mp3)(4:28)이나 [마지막 1분 41초](examples/above-the-clouds/above_the_clouds_highlight.mp3)를 들어 보세요.
+**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](examples/above-the-clouds/above_the_clouds.mp3)(4:28)을 들어 보세요.
 
 **[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**: 페스티벌 하우스입니다. 피아노 테마, 빌드업, 슈퍼소 드롭을 스킬에 내장된 신시사이저와 드럼 머신으로 만들었습니다.
 

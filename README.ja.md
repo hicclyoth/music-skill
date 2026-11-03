@@ -31,7 +31,7 @@ music-skill は、作曲家と小さなスタジオのやり方でオリジナ�
 
 ## 試聴
 
-**[『Above the Clouds』](examples/above-the-clouds)**：オーケストラとオルガンのための演奏会用序曲です。遠くから響くホルンに始まり、アレグロ、嵐、静かなヴァイオリン独奏を経て、オルガンとともに大きな旋律がフォルティッシッシモで鳴ります。[全曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28）か、[最後の 1:41](examples/above-the-clouds/above_the_clouds_highlight.mp3)をどうぞ。
+**[『Above the Clouds』](examples/above-the-clouds)**：オーケストラとオルガンのための演奏会用序曲です。遠くから響くホルンに始まり、アレグロ、嵐、静かなヴァイオリン独奏を経て、オルガンとともに大きな旋律がフォルティッシッシモで鳴ります。[全曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28）をどうぞ。
 
 **[『Signal Fire』](examples/genre-demos/signal_fire.mp3)**：フェスティバル系のハウスです。ピアノのテーマ、ビルドアップ、スーパーソーのドロップを、スキル内蔵のシンセサイザーとドラムマシンで作っています。
 

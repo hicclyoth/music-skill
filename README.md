@@ -31,7 +31,7 @@ No audio-generation model is involved. Besides the MP3 and WAV you get the MIDI,
 
 ## Listen
 
-**[Above the Clouds](examples/above-the-clouds)**, a concert overture for orchestra and organ: from a distant horn call through an Allegro, a storm and a still violin solo to its big tune, fff, with the organ. Hear [the whole overture](examples/above-the-clouds/above_the_clouds.mp3) (4:28) or [its last 1:41](examples/above-the-clouds/above_the_clouds_highlight.mp3).
+**[Above the Clouds](examples/above-the-clouds)**, a concert overture for orchestra and organ: from a distant horn call through an Allegro, a storm and a still violin solo to its big tune, fff, with the organ. Hear [the whole overture](examples/above-the-clouds/above_the_clouds.mp3) (4:28).
 
 **[Signal Fire](examples/genre-demos/signal_fire.mp3)**, festival house: a piano theme, a build-up and a supersaw drop on the skill's own synthesizers and drum machine.
 

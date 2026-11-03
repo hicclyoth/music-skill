@@ -3,7 +3,6 @@
 An original concert overture for symphony orchestra and organ. Claude (Opus 5.5) composed, orchestrated and mixed it with the music-production skill. Nothing was played by hand and no audio model generated anything: `above_the_clouds.py` writes every note, and the skill renders it.
 
 - [above_the_clouds.mp3](above_the_clouds.mp3): the whole overture, 4:28.
-- [above_the_clouds_highlight.mp3](above_the_clouds_highlight.mp3): from the ascent to the end, 1:41.
 
 <p align="center">
   <img src="../../docs/images/above-the-clouds.png" alt="Every note of Above the Clouds, by section of the orchestra: the melody in red above strings, winds, brass, harp and organ, and percussion, with the sections marked">
