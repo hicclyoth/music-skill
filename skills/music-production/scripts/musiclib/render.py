@@ -103,7 +103,7 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
                 elif t['engine']=='surge':
                     # Surge XT when it is installed; otherwise the part's fallback preset on the built-in synth.
                     played={'preset':t['surge']['preset']}
-                    try:surge.render(p,t,raw,folder,cfg);played['rendered_with']='Surge XT'
+                    try:played.update(surge.render(p,t,raw,folder,cfg) or {});played['rendered_with']='Surge XT'
                     except surge.Unavailable as e:
                         fallback=surge.fallback_track(t);synth.render(p,fallback,raw,clock)
                         played.update(rendered_with='built-in synth',fallback=fallback['synth']['preset'],reason=str(e))

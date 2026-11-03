@@ -648,7 +648,18 @@ def checks(work,config=None):
         got=surge._decode(re.search(r'<IComponent>(.*?)</IComponent>',out[8:8+size].decode()).group(1))
         assert surge._decode(inner)==old+tail and got==new+tail and out[8+size:]==b'\x00',got[:48]
         rejects(lambda:surge.with_patch(state,b'RIFF'+fxp[4:]))
-        return {'state_bytes':len(out),'patch_bytes':len(new)}
+        # Surge gets no tempo here and would play synced parameters at 120 BPM: at 90 BPM a synced Delay time (log2 s)
+        # grows by log2(120/90) and an LFO rate (log2 Hz) shrinks by as much, both freed; an unsynced one stays.
+        import math
+        synced=patch('<patch><fx5_type type="0" value="1" /><fx5_p0 type="2" value="-1.000000" temposync="1" />'
+                     '<a_lfo6_rate type="2" value="0.000000" temposync="1" /><a_lfo2_rate type="2" value="2.000000" temposync="0" /></patch>')
+        sfxp=b'CcnK'+bytes(4)+b'FPCh'+bytes(44)+struct.pack('>I',len(synced))+synced
+        moved,names=surge.at_tempo(sfxp,90);body=moved[60:].decode('latin-1')
+        value=lambda n:float(re.search(r'<%s [^>]*value="([-\d.]+)"'%n,body).group(1))
+        assert names==['fx5_p0','a_lfo6_rate'] and 'temposync="1"' not in body and value('a_lfo2_rate')==2
+        assert abs(value('fx5_p0')-(-1+math.log2(120/90)))<1e-5 and abs(value('a_lfo6_rate')-math.log2(90/120))<1e-5
+        assert struct.unpack('>I',moved[56:60])[0]==len(moved)-60 and surge._patch_size(moved[60:])==len(moved)-60
+        return {'state_bytes':len(out),'patch_bytes':len(new),'synced_at_90_bpm':names}
     check('surge_patch_goes_into_the_plugin_state',surge_state)
     def tonal_reference():
         from musiclib import analysis

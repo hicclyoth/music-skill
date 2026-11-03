@@ -11,8 +11,14 @@ its patch ("sub3", the sizes of its XML and of the six oscillators' wavetable bl
 Surge takes the patch on its first audio block and sets its parameters from it there, so the host plays a silent block
 before it sets the part's macros and bend range; every event still moves by a short lead-in that is cut off again.  Its oscillators start at random phases, so one part renders a different waveform each time
 (the same sound); the render cache, not the renderer, holds a take fixed.  Without Surge, pedalboard or the preset's
-file, the part plays its fallback preset on the built-in synth and its stem receipt says why."""
+file, the part plays its fallback preset on the built-in synth and its stem receipt says why.
+
+pedalboard gives a plugin no tempo, so Surge plays tempo-synced parameters at 120 BPM.  Before a patch loads, each
+synced parameter it uses (the left and right times of a Delay effect, an LFO's rate) becomes the free-running value it
+has at the tempo where the part's first note falls: Surge stores both as log2 of seconds or of Hz at 120 BPM, so a
+time moves by log2(120/bpm) and a rate by log2(bpm/120).  A tempo change inside the part does not move them."""
 import json
+import math
 import re
 import struct
 import subprocess
@@ -119,6 +125,44 @@ def with_patch(state, fxp):
     return b'VC2!' + struct.pack('<I', len(new)) + new + state[8 + size:]
 
 
+SYNCED_DELAY = re.compile(r'fx(\d+)_p[01]$')  # a Delay effect's (type 1) left and right times
+SYNCED_RATE = re.compile(r'[ab]_lfo\d+_rate$')
+
+
+def at_tempo(fxp, bpm):
+    """The .fxp `fxp` with its tempo-synced Delay times and LFO rates turned into free-running values for `bpm`, and
+    the names of the parameters changed."""
+    size = struct.unpack('>I', fxp[56:60])[0]
+    chunk = fxp[60:60 + size]
+    if fxp[:4] != b'CcnK' or chunk[:4] != b'sub3':
+        raise ValueError('not a Surge patch')
+    xml_size = struct.unpack('<I', chunk[4:8])[0]
+    xml = chunk[32:32 + xml_size].decode('latin-1')
+    fx_types = {m.group(1): float(m.group(2)) for m in re.finditer(r'<fx(\d+)_type [^>]*?value="([-+\d.eE]+)"', xml)}
+    changed = []
+
+    def free(m):
+        name, attrs = m.group(1), m.group(2)
+        if 'temposync="1"' not in attrs:
+            return m.group(0)
+        delay = SYNCED_DELAY.match(name)
+        if delay and fx_types.get(delay.group(1)) == 1:
+            shift = math.log2(120 / bpm)
+        elif SYNCED_RATE.match(name):
+            shift = math.log2(bpm / 120)
+        else:
+            return m.group(0)
+        value = float(re.search(r'value="([-+\d.eE]+)"', attrs).group(1))
+        attrs = re.sub(r'value="[-+\d.eE]+"', f'value="{value + shift:.6f}"', attrs, count=1).replace('temposync="1"', 'temposync="0"')
+        changed.append(name)
+        return f'<{name} {attrs}/>'
+
+    new = re.sub(r'<(\w+) ([^>]*?)/>', free, xml).encode('latin-1')
+    chunk = chunk[:4] + struct.pack('<I', len(new)) + chunk[8:32] + new + chunk[32 + xml_size:]
+    # Only the chunk size changes; Surge leaves the header's byteSize at 0, and so does this.
+    return fxp[:56] + struct.pack('>I', len(chunk)) + chunk + fxp[60 + size:], changed
+
+
 def locate(cfg, track):
     """The plugin, pedalboard and patch file for a part, checked by hash; Unavailable with the reason otherwise."""
     from .model import file_hash
@@ -141,7 +185,15 @@ def render(project, track, raw, folder, cfg):
     """Play a Surge part into `raw`: its MIDI is written by the renderer's writer, then a separate process loads the
     plugin, sets the patch and macros and renders.  Raises Unavailable when Surge cannot play here."""
     from . import midi
+    from .model import Clock
     plugin, pylib, patch = locate(cfg, track)
+    clock = Clock(project)
+    first = min((n['on'] for n in track['notes']), default=0)
+    bpm = next(v for b, v in reversed(clock.tempo) if b <= first + 1e-9)
+    fxp, synced = at_tempo(patch.read_bytes(), bpm)
+    if synced:
+        patch = Path(folder) / 'patch_at_tempo.fxp'
+        patch.write_bytes(fxp)
     part_midi, job = Path(folder) / 'surge.mid', Path(folder) / 'surge_job.json'
     # A patch built to sound an octave below the key it is played on plays an octave up, so the written pitch sounds.
     shift = presets()['presets'][track['surge']['preset']].get('transpose', 0)
@@ -162,6 +214,7 @@ def render(project, track, raw, folder, cfg):
     (Path(folder) / 'surge.log').write_text(done.stdout + done.stderr, encoding='utf-8')
     if done.returncode or not Path(raw).is_file():
         raise Unavailable(f'Surge XT failed to render (exit {done.returncode}; see {Path(folder) / "surge.log"})')
+    return {'tempo_synced': {'bpm': round(bpm, 3), 'parameters': synced}} if synced else {}
 
 
 def _seconds(tick, tempos, division):
