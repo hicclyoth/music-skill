@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows [Kee
 
 First public release, 0.1.0.
 
+### Fixed before release, after two independent reviews
+
+- The synthesis cache now follows the tempo as played (phrase rubato moves with the sections) and the synth and Surge preset files; old cache entries are not reused.
+- `excerpt.py` cuts and moves dynamics, bends and filter sweeps with the notes, drops the final ritardando of an excerpt that stops early and leaves out a loop.
+- Surge XT parts play the project's `bend_range` and macros (Surge reset both from the patch on its first audio block); Surge runs in `scripts/surge_host.py`, a GPL-3.0-or-later program, so no GPL code runs in the skill's own processes.
+- Validation refuses a JSON float where MIDI needs an integer and a section id that is not text, names the part, note and value in its errors, and warns about unknown fields with the nearest known name.
+- A slow final ritardando reads back from its own MIDI; each drum part gets its own port in the combined MIDI; phrase arches follow the meter.
+- `inspect-midi`, `review` and `analyze` never overwrite; `revise` names the tracks or notes it could not find; every command reports `ERROR:` with exit code 2 and survives a console that cannot show a title's characters.
+- FluidSynth diagnostics are read from its own messages, not from paths that contain words like "error"; a changed system tool says how to write a new configuration.
+- Downloads that end short or do not match the lock are tried again and never cached, a damaged cache file is downloaded again, every redirect is checked, a build is kept only with its locked hash, one failed bank no longer stops the others, the .7z banks also unpack with 7-Zip (Windows 10's tar cannot), and configurations written elsewhere keep relative bank paths.
+- `soundbank.py cut` writes only inside its output folder; a game loop's peak is measured before the 24-bit file could clip it; the Ogg loop is byte-reproducible.
+- The bootstrap lets pip pick the pedalboard wheel for the running Python, skips an optional Surge XT that fails with its reason and still writes the configuration, and finds a Windows Surge XT with `--system`.
+- A mono synth line starts afresh after 30 s of unbroken legato, bounding its memory.
+- Crossfade legato: a crossfade ends before the next note on the same render (fast notes after a long one no longer cut a fade short), and a note that a chord enters with is struck, not slurred. *Above the Clouds* was re-rendered (four parts changed; approved by ear) and its recordings replaced.
+- Seven banks rebuilt (`tuba_war`, `vsco_colors`, `vcsl_winds` and the four Iowa banks): FluidSynth applies zone attenuation at 0.4 of its value, so a dynamic borrowed from a louder recording now plays as soft as intended (a soft horn run went from 3.2 to 0.4 dB of note-to-note spread), and the loop search uses each recording's own pitch. The other genre demos are unchanged, bit for bit.
+- NumPy 2.1.2 stays pinned for Python 3.10–3.13 (the banks' builds reproduce with it); Python 3.14 and newer take a current NumPy 2, and CI adds a Python 3.14 job and a Windows job.
+- Documentation: install steps with a virtual environment and the disk space the downloads take, where each download comes from, the Surge host's licence, MS Basic's acknowledgement request, the listening rule, the default loudness target, nested synth fields, the ride pattern, the strum grid, the horn shelf (about 4 dB) and the tonal-balance thresholds as prompts rather than validated limits.
+
 ### Added
 
 - **Projects**: a validated JSON format for score, performance and mix: up to 64 parts, 512 bars and 30 minutes, one meter with a tempo map, quarter-note time throughout. MIDI export of the performed and the notated timing, one MIDI per part, and a bounded MIDI reader.
@@ -36,7 +54,7 @@ First public release, 0.1.0.
   - an erhu (sustained, short and sul tasto) and a tenor steel pan;
   - University of Iowa Musical Instrument Samples: horn, bass trombone, bass clarinet, E-flat clarinet, alto and bass flute, and solo violin, viola, cello and double bass (arco and pizzicato), each chromatic at three dynamics; orchestra bells, crotales, Thai gongs, and clash and suspended cymbals, tam-tams and a wind gong, struck, rolled and bowed. The strings and winds have their recording noise reduced by up to 12 dB and the bells, crotales and Thai gongs by up to 10 dB; the cymbals and tam-tams are left as recorded.
 - **Examples**: *Above the Clouds*, a concert overture for orchestra and organ; six genre demos (festival house, jazz blues, synthwave, lo-fi hip-hop, future bass, a chiptune loop); and *Daybreak Signal*, an anime-opening-style piece with a piano melody, with notes on how it was revised. Each comes with the script that wrote it and its project file, and is dedicated to the public domain (CC0 1.0).
-- **Checks**: 56 selfcheck cases without a renderer configuration and 72 with one, and repository tests, run in CI on Ubuntu and macOS.
+- **Checks**: 68 selfcheck cases without a renderer configuration and 84 with one, and repository tests, run in CI on Ubuntu and macOS.
 - **Docs**: READMEs in English, Traditional Chinese, Simplified Chinese, Japanese and Korean; the skill's own documentation in English.
 - **Brand**: a mark, logo and icons in ink and paper with one cinnabar accent, with copies of the icons inside the skill folder for Codex.
 

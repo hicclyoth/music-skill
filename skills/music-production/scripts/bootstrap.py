@@ -24,6 +24,7 @@ import os
 from pathlib import Path,PurePosixPath
 import re
 import shutil
+import tempfile
 import subprocess
 import sys
 import urllib.parse
@@ -51,11 +52,20 @@ def safe_extract(path,target,only=None):
             out.parent.mkdir(parents=True,exist_ok=True)
             with z.open(i) as src,out.open('wb') as dst:shutil.copyfileobj(src,dst,1024*1024)
 
+class Allowed(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to an allowed host over HTTPS, checked before the request is made."""
+    def redirect_request(self,req,fp,code,msg,headers,newurl):
+        parts=urllib.parse.urlsplit(newurl)
+        if parts.scheme!='https' or parts.hostname not in HOSTS:raise ValueError('Redirect to a host that is not allowed: '+newurl)
+        return super().redirect_request(req,fp,code,msg,headers,newurl)
+
 def download(item,archive,offline):
     if archive.exists():return
     if offline:raise ValueError('Offline cache missing '+str(archive))
+    parts=urllib.parse.urlsplit(item['url'])
+    if parts.scheme!='https' or parts.hostname not in HOSTS:raise ValueError('Host not allowed: '+item['url'])
     request=urllib.request.Request(item['url'],headers={'User-Agent':'MusicProductionSkill/1.0'})
-    with urllib.request.urlopen(request,timeout=60) as r:
+    with urllib.request.build_opener(Allowed).open(request,timeout=60) as r:
         if urllib.parse.urlsplit(r.url).hostname not in HOSTS:raise ValueError('Unexpected download redirect')
         temp=archive.with_name(archive.name+'.partial');count=0
         with temp.open('wb') as out:
@@ -94,29 +104,43 @@ def surge_plugin(lock,runtime,cache,args,system):
         target=runtime/'surge_xt';safe_extract(archive,target,item['extract']);binary=target/item['executable']
         if file_hash(binary)!=item['executable_sha256']:raise ValueError('Executable integrity failed: surge_xt')
         return binary,binary,item['url']
-    kind='darwin' if sys.platform=='darwin' else 'linux'
-    for bundle in ([args.surge_vst3] if args.surge_vst3 else [Path(p).expanduser() for p in s['system_bundles'].get(kind,[])]):
+    kind='darwin' if sys.platform=='darwin' else 'windows' if os.name=='nt' else 'linux'
+    for bundle in ([args.surge_vst3] if args.surge_vst3 else [Path(os.path.expandvars(p)).expanduser() for p in s['system_bundles'].get(kind,[])]):
         for inner in s['bundle_binaries'].get(kind,[]):
             if (Path(bundle)/inner).is_file():return Path(bundle).resolve(),(Path(bundle)/inner).resolve(),'User system installation; hash is integrity, not provenance'
     return None,None,None
 
 def pedalboard_wheel(lock,cache,offline):
-    """The pinned pedalboard wheel for this Python and platform, picked by pip and checked against PyPI's hashes."""
+    """The pinned pedalboard wheel for this Python and platform, picked by pip (from the cache first, so a cache shared
+    by several Pythons or machines gives each its own wheel) and checked against PyPI's hashes."""
     board=lock['optional']['pedalboard'];wheels=board['wheels']
-    def verified():
-        for name,w in wheels.items():
-            f=cache/name
-            if f.is_file() and f.stat().st_size==w['bytes'] and file_hash(f)==w['sha256']:return f,w
-        return None,None
-    found=verified()
-    if found[0] or offline:return found
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
-    subprocess.run([sys.executable,'-m','pip','download',f'pedalboard=={board["version"]}','--no-deps','--only-binary=:all:','-d',str(cache),'-q'],
-                   check=False,capture_output=True,timeout=600,stdin=subprocess.DEVNULL,creationflags=flags)
-    return verified()
+    def pick(online):
+        chosen=Path(tempfile.mkdtemp(prefix='wheel-',dir=cache))
+        try:
+            source=['--no-index','--find-links',str(cache)] if not online else []
+            subprocess.run([sys.executable,'-m','pip','download',f'pedalboard=={board["version"]}','--no-deps','--only-binary=:all:',
+                            '--no-cache-dir',*source,'-d',str(chosen),'-q'],check=False,capture_output=True,timeout=600,
+                           stdin=subprocess.DEVNULL,creationflags=flags)
+            for f in chosen.glob('*.whl'):
+                w=wheels.get(f.name)
+                if w and f.stat().st_size==w['bytes'] and file_hash(f)==w['sha256']:
+                    if not (cache/f.name).is_file():shutil.copy2(f,cache/f.name)
+                    return cache/f.name,w
+            return None,None
+        finally:shutil.rmtree(chosen,ignore_errors=True)
+    found=pick(False)
+    if found[0] or offline:return found
+    return pick(True)
 
 def install_surge(lock,runtime,cache,args,system,config):
     """Surge XT, pedalboard and the curated patches; a missing piece is reported and leaves Surge parts on fallbacks."""
+    try:return _install_surge(lock,runtime,cache,args,system,config)
+    except (ValueError,OSError,subprocess.SubprocessError) as e:
+        config.pop('surge',None);config.pop('pedalboard',None)
+        print(f'SKIPPED surge_xt | {e}; Surge parts use their fallback presets',flush=True)
+
+def _install_surge(lock,runtime,cache,args,system,config):
     plugin,binary,source=surge_plugin(lock,runtime,cache,args,system)
     if plugin is None:
         print('SKIPPED surge_xt | not found: install Surge XT 1.3.4 from https://surge-synthesizer.github.io/ or pass --surge-vst3; Surge parts use their fallback presets',flush=True);return
@@ -125,7 +149,7 @@ def install_surge(lock,runtime,cache,args,system,config):
         print('SKIPPED pedalboard | no pinned wheel for this Python and platform; Surge parts use their fallback presets',flush=True);return
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
     pylib=runtime/'pylib'
-    done=subprocess.run([sys.executable,'-m','pip','install','--no-deps','--no-index','--target',str(pylib),str(wheel),'-q'],
+    done=subprocess.run([sys.executable,'-m','pip','install','--no-deps','--no-index','--no-cache-dir','--target',str(pylib),str(wheel),'-q'],
                         capture_output=True,text=True,timeout=600,stdin=subprocess.DEVNULL,creationflags=flags)
     if done.returncode or not (pylib/'pedalboard').is_dir():raise ValueError('pedalboard install failed: '+(done.stderr or '').strip()[-300:])
     presets=json.loads((Path(__file__).resolve().parents[1]/'references'/'surge-presets.json').read_text(encoding='utf-8'))
@@ -137,7 +161,7 @@ def install_surge(lock,runtime,cache,args,system,config):
         if local.stat().st_size!=p['bytes'] or file_hash(local)!=p['sha256']:raise ValueError('Patch integrity failed: '+name)
         out=patches/p['patch'];out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(local,out)
     s=lock['optional']['surge_xt'];board=lock['optional']['pedalboard']
-    config['surge']={'path':str(plugin),'binary':str(binary),'sha256':file_hash(binary),'version':s['version'],'license':s['license'],'source':source,'patches':str(patches)}
+    config['surge']={'path':str(plugin),'binary':str(binary),'sha256':file_hash(binary),'version':s['version'] if not system else 'system install (version not checked)','license':s['license'],'source':source,'patches':str(patches)}
     config['pedalboard']={'path':str(pylib),'sha256':meta['sha256'],'version':board['version'],'license':board['license'],'source':meta['url']}
     print('VERIFIED surge_xt |',len(presets['presets']),'curated patches',flush=True)
 
@@ -152,7 +176,7 @@ def main():
     system=args.system or os.name!='nt'
     if args.config.exists():raise ValueError('Configuration exists; choose a new path')
     runtime=args.runtime.resolve();runtime.mkdir(parents=True,exist_ok=True)
-    lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'runtime-lock.json').read_text())
+    lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'runtime-lock.json').read_text(encoding='utf-8'))
     cache=args.archive_cache.resolve() if args.archive_cache else runtime/'downloads';cache.mkdir(parents=True,exist_ok=True)
     config={};receipts=[]
     if system:

@@ -2,7 +2,17 @@
 import argparse
 import copy
 from pathlib import Path
-from musiclib.model import Clock,load_project,save_json,validate
+import sys
+from musiclib.model import Clock,curve_at,load_project,save_json,validate
+
+def crop(points,start,end,before=None):
+    """A [beat, value] curve (linear between points) from `start` to `end`, moved to start at 0: the value at each
+    cut, then the points between.  `before` is the value ahead of the first point (a bend rests at 0 until its first
+    point; other curves hold their first value)."""
+    if not points:return points
+    at=lambda b:before if before is not None and b<points[0][0] else curve_at(points,b)
+    inside=[[b-start,v] for b,v in points if start<b<end]
+    return [[0,at(start)]]+inside+[[end-start,at(end)]]
 
 def extract(p,first_bar,bars):
     if first_bar<1 or bars<1 or first_bar-1+bars>p['clock']['bars']:raise ValueError('Excerpt outside source bars')
@@ -33,11 +43,30 @@ def extract(p,first_bar,bars):
                 if a<=beat<=b:return x+(y-x)*(clock.seconds(beat)-clock.seconds(a))/(clock.seconds(b)-clock.seconds(a))
             return points[-1][1]
         if points:t['mix']['automation']=[[0,value_at(start)]]+[[beat-start,v] for beat,v in points if start<beat<end]+[[end-start,value_at(end)]]
+        perf=t['performance']
+        if perf.get('dynamics'):perf['dynamics']=crop(perf['dynamics'],start,end)
+        if perf.get('bend'):perf['bend']=crop(perf['bend'],start,end,before=0.0)
+        if t['mix'].get('filter_sweep'):t['mix']['filter_sweep']['points']=crop(t['mix']['filter_sweep']['points'],start,end)
+    rubato=q['clock'].get('rubato')
+    if rubato and first_bar-1+bars<p['clock']['bars']:
+        # The final ritardando belongs to the piece's last bars; an excerpt that stops earlier keeps only the phrase rubato.
+        rubato={k:v for k,v in rubato.items() if k not in ('final_beats','final_ratio')}
+        if rubato.get('phrase_beats'):q['clock']['rubato']=rubato
+        else:q['clock'].pop('rubato')
+    if 'loop' in q:
+        q.pop('loop')
+        q.setdefault('decisions',[]).append('The excerpt plays as a passage, not a loop; the source keeps its loop.')
     if 'harmony' in q:q['harmony']=[{**h,'bar':h['bar']-first_bar+1} for h in q['harmony'] if first_bar<=h['bar']<first_bar+bars]
     q.setdefault('decisions',[]).append(f'Excerpt from source bars {first_bar}–{first_bar+bars-1}; notes already held at the cut are re-attacked for independent rendering.')
     validate(q);return q
 
-if __name__=='__main__':
+def main():
     p=argparse.ArgumentParser();p.add_argument('project',type=Path);p.add_argument('--first-bar',type=int,required=True);p.add_argument('--bars',type=int,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
     if a.output.exists():raise ValueError('Preserve prior output; use new path')
     save_json(a.output,extract(load_project(a.project),a.first_bar,a.bars));print(a.output)
+
+if __name__=='__main__':
+    for stream in (sys.stdout,sys.stderr):stream.reconfigure(errors='backslashreplace')
+    try:main()
+    except (ValueError,KeyError,OSError) as e:
+        print('ERROR:',str(e),file=sys.stderr);sys.exit(2)

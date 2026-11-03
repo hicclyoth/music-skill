@@ -1,5 +1,6 @@
 """Validated score/performance/mix project model; all time units are quarter notes."""
 import bisect
+import difflib
 import hashlib
 import json
 import math
@@ -29,8 +30,43 @@ def file_hash(path):
     return h.hexdigest()
 
 def number(value, lo, hi, name, integer=False):
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lo <= value <= hi or (integer and int(value) != value):
-        raise ValueError(f'{name}: expected {lo}..{hi}' + (' integer' if integer else ''))
+    """`value` must be a number in lo..hi; with `integer`, a JSON integer (100, not 100.0, which MIDI cannot carry)."""
+    if isinstance(value, bool) or not isinstance(value, int if integer else (int, float)) or not math.isfinite(value) or not lo <= value <= hi:
+        show = lambda x: f'{x:g}' if isinstance(x, float) else repr(x)
+        hint = f' (write {int(value)}, not {value!r})' if integer and isinstance(value, float) and math.isfinite(value) and value.is_integer() else ''
+        raise ValueError(f'{name}: expected {"an integer " if integer else ""}{show(lo)}..{show(hi)}, got {show(value)}{hint}')
+
+# Fields each object may carry.  Validation lists any other field as a warning with the nearest known name, since a
+# misspelt optional field would otherwise do nothing; free-text fields (a section's `intent`, a note's `phrase`)
+# can go on sections and notes, which are not checked.
+KNOWN = {
+    'project': {'schema', 'title', 'version', 'clock', 'sections', 'tracks', 'mix', 'harmony', 'loop', 'brief', 'decisions',
+                'authorship', 'revision_history', 'description', 'comment'},
+    'clock': {'bars', 'meter', 'tempo', 'tail_seconds', 'rubato'},
+    'mix': {'chain', 'dynamics', 'loudness', 'target_lufs', 'peak_ceiling_db', 'max_limit_db', 'room_seconds', 'range_lu',
+            'mono_below_hz', 'wow_flutter'},
+    'track': {'id', 'engine', 'notes', 'performance', 'mix', 'program', 'bank', 'drums', 'range', 'soundfont', 'patch', 'key_map',
+              'instrument', 'synth', 'surge', 'kit', 'role', 'name', 'description', 'comment'},
+    'performance': {'notes', 'cc', 'cc_mode', 'offset_ms', 'bend', 'bend_range', 'legato', 'bow_change_s', 'bow_ms', 'round_robin',
+                    'swing', 'dynamics', 'dynamics_mode'},
+    'played note': {'velocity', 'timing_ms', 'gate'},
+    'track mix': {'level_dbfs', 'level_mode', 'pan', 'width', 'depth_m', 'facing', 'bus', 'space', 'highpass', 'lowpass', 'eq',
+                  'reverb_db', 'delay_db', 'delay_quarters', 'compressor', 'effects', 'automation', 'delay', 'duck', 'filter_sweep',
+                  'saturate', 'gate', 'wow_flutter'},
+    'legato': {'mode', 'gap_ms', 'max_interval', 'glide_ms', 'max_notes', 'crossfade_ms', 'portamento_ms', 'portamento_from'},
+    'synth': {'preset', 'oscillators', 'amp', 'filter', 'filter_env', 'lfo', 'pitch_env', 'arpeggio', 'glide_ms', 'mono', 'drive',
+              'velocity_curve', 'gain_db'},
+}
+
+# Track and layer ids name files (stems, part MIDIs, layer loops): Windows reserves these names, with any extension.
+RESERVED = {'con', 'prn', 'aux', 'nul', *(f'com{i}' for i in range(1, 10)), *(f'lpt{i}' for i in range(1, 10))}
+
+def unknown_fields(obj, kind, where, warnings):
+    if not isinstance(obj, dict):
+        return
+    for key in sorted(set(obj) - KNOWN[kind]):
+        near = difflib.get_close_matches(key, sorted(KNOWN[kind]), n=1, cutoff=.6)
+        warnings.append(f'{where}: unknown field {key!r}' + (f' (did you mean {near[0]!r}?)' if near else '') + '; it has no effect')
 
 def effective_tempo(project):
     """The tempo map as played: the authored one, with `clock.rubato` applied.  Friberg and Sundberg (1999) model a
@@ -100,13 +136,24 @@ class Clock:
         return self.beats[i] + (seconds-self.times[i])/self.spb[i]
 
 def validate(p):
+    """Check a project; returns its size and `warnings` (unknown fields).  A missing field is reported with its place."""
+    try:
+        return _validate(p)
+    except KeyError as e:
+        raise ValueError(f'missing field {e}') from None
+
+def _validate(p):
+    warnings = []
     if p.get('schema') != 'music-production/v1':
         raise ValueError('Unsupported project schema')
     if not isinstance(p.get('title'),str) or not 1<=len(p['title'])<=200:
         raise ValueError('Title required')
-    c=p['clock']
+    unknown_fields(p,'project','project',warnings)
+    c=p['clock'];unknown_fields(c,'clock','clock',warnings);unknown_fields(p['mix'],'mix','mix',warnings)
     number(c['bars'],1,512,'bars',True)
-    if len(c['meter'])!=2 or c['meter'][1] not in (2,4,8,16):
+    if not isinstance(c['meter'],list) or len(c['meter'])!=2:raise ValueError('clock.meter is [beats, beat unit], e.g. [3, 4]')
+    number(c['meter'][1],2,16,'meter beat unit',True)
+    if c['meter'][1] not in (2,4,8,16):
         raise ValueError('Unsupported meter')
     number(c['meter'][0],1,16,'meter numerator',True)
     number(c.get('tail_seconds',5),1,15,'tail')
@@ -132,6 +179,8 @@ def validate(p):
     cursor=0
     section_ids=set()
     for s in p['sections']:
+        if not isinstance(s.get('id'),str) or not 1<=len(s['id'])<=64:raise ValueError(f'Section id must be a string of 1-64 characters, got {s.get("id")!r}')
+        number(s['start_bar'],0,c['bars']-1,f'section {s["id"]} start bar',True)
         if s['id'] in section_ids or s['start_bar']!=cursor:
             raise ValueError('Sections must uniquely cover all bars')
         number(s['bars'],1,c['bars'],'section bars',True)
@@ -147,146 +196,13 @@ def validate(p):
         raise ValueError('Track count outside bound')
     ids=set(); events=0
     for t in p['tracks']:
-        if not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['id']) or t['id'] in ids:
-            raise ValueError('Invalid or duplicate track id')
+        if not isinstance(t.get('id'),str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['id']) or t['id'] in ids:
+            raise ValueError(f'Invalid or duplicate track id {t.get("id")!r}: lower-case letters, digits and underscores, starting with a letter')
+        if t['id'] in RESERVED:raise ValueError(f'Track id {t["id"]!r} is a reserved file name on Windows; choose another')
         ids.add(t['id'])
-        if t['engine'] not in ('soundfont','additive','noise','synth','drum_synth','surge'):
-            raise ValueError('Unsupported instrument engine')
-        if t['engine']=='synth':
-            from . import synth;synth.validate(t)
-        if t['engine']=='drum_synth':
-            from . import drums;drums.validate(t)
-        if t['engine']=='surge':
-            from . import surge;surge.validate(t)
-        if 'kit' in t and t['engine']!='drum_synth':raise ValueError(f'{t["id"]}: "kit" belongs to engine "drum_synth"')
-        if 'synth' in t and t['engine']!='synth':raise ValueError(f'{t["id"]}: "synth" belongs to engine "synth"')
-        if 'surge' in t and t['engine']!='surge':raise ValueError(f'{t["id"]}: "surge" belongs to engine "surge"')
-        if not isinstance(t.get('drums',False),bool):raise ValueError('drums must be boolean')
-        # Render-side sound selection; the score/MIDI export keeps program, bank and authored pitches.
-        if 'soundfont' in t and (t['engine']!='soundfont' or not isinstance(t['soundfont'],str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['soundfont'])):
-            raise ValueError(f'{t["id"]}: soundfont must name a configured SoundFont (soundfont engine only)')
-        if 'patch' in t:
-            if t['engine']!='soundfont' or not isinstance(t['patch'],dict) or set(t['patch'])-{'bank','program'}:raise ValueError(f'{t["id"]}: patch takes bank/program')
-            number(t['patch'].get('bank',0),0,16383,'patch bank',True);number(t['patch'].get('program',0),0,127,'patch program',True)
-        if 'key_map' in t:
-            if t['engine']!='soundfont' or not isinstance(t['key_map'],dict) or len(t['key_map'])>128:raise ValueError(f'{t["id"]}: key_map maps MIDI pitches')
-            for k,v in t['key_map'].items():
-                if not re.fullmatch(r'\d{1,3}',k) or int(k)>127:raise ValueError(f'{t["id"]}: key_map keys are MIDI pitches')
-                number(v,0,127,'key_map target',True)
-        if t['performance'].get('cc_mode','linear' if t['engine']=='additive' else 'step') not in ('step','linear'):
-            raise ValueError(f'{t["id"]}: cc_mode must be step or linear')
-        number(t['performance'].get('offset_ms',0),-300,300,'track offset ms')
-        if t['engine']=='additive':
-            cfg=t.get('instrument',{})
-            for name,default,lo,hi in [('harmonics',12,1,32),('spectral_tilt',1.25,.7,3),('attack_ms',22,1,500),('release_ms',120,5,2000),('glide_ms',28,0,200),('cutoff_hz',1900,100,12000),('vibrato_depth_cents',14,0,100),('vibrato_rate_hz',5.1,2,9),('vibrato_delay_ms',180,0,1000)]:
-                number(cfg.get(name,default),lo,hi,'instrument '+name,integer=name=='harmonics')
-            voices=cfg.get('detune_cents',[-5,0,5])
-            if not isinstance(voices,list) or not 1<=len(voices)<=7:raise ValueError('Expected 1–7 synth voices')
-            for cents in voices:number(cents,-40,40,'detune cents')
-            if not isinstance(cfg.get('odd_only',False),bool):raise ValueError('odd_only must be boolean')
-        number(t.get('program',0),0,127,'program',True)
-        number(t.get('bank',0),0,16383,'bank',True)
-        lo,hi=t.get('range',[0,127])
-        number(lo,0,127,'range low',True);number(hi,lo,127,'range high',True)
-        local_ids=set()
-        for n in t['notes']:
-            if not isinstance(n['id'],str) or len(n['id'])>120 or n['id'] in local_ids:
-                raise ValueError('Duplicate/invalid note id')
-            local_ids.add(n['id']);events+=1
-            number(n['on'],0,total-1/TPQ,'note onset')
-            number(n['duration'],1/TPQ,total,'note duration')
-            if n['on']+n['duration']>total+1e-6:
-                raise ValueError(f'Note beyond score: {t["id"]}/{n["id"]}')
-            number(n['pitch'],lo,hi,f'pitch {t["id"]}/{n["id"]}',True)
-            if n['id'] not in t['performance']['notes']:
-                raise ValueError(f'Missing performance for {t["id"]}/{n["id"]}')
-            perf=t['performance']['notes'][n['id']]
-            number(perf['velocity'],1,127,'velocity',True)
-            number(perf.get('timing_ms',0),-100,100,'timing ms')
-            number(perf.get('gate',1),.05,1.6,'gate')
-        if local_ids!=set(t['performance']['notes']):
-            raise ValueError('Performance keys must exactly match score ids')
-        if t['engine']=='additive':
-            ordered=sorted(t['notes'],key=lambda n:n['on'])
-            if any(a['on']+a['duration']>b['on']+1/TPQ for a,b in zip(ordered,ordered[1:])):
-                raise ValueError('Additive lead requires a monophonic score; use another track for harmony')
-        for beat,control,value in t['performance'].get('cc',[]):
-            number(beat,0,total,'CC beat');number(control,0,127,'CC control',True);number(value,0,127,'CC value',True)
-        span=t['performance'].get('bend_range',2);number(span,1,24,'bend range',True)
-        bend=t['performance'].get('bend',[])
-        if not isinstance(bend,list):raise ValueError(f'{t["id"]}: bend is a list of [beat, semitones]')
-        last=0
-        for item in bend:
-            if not isinstance(item,list) or len(item)!=2:raise ValueError(f'{t["id"]}: bend points are [beat, semitones]')
-            number(item[0],0,total,'bend beat');number(item[1],-span,span,'bend semitones')
-            if item[0]<last:raise ValueError(f'{t["id"]}: bend points must be in time order')
-            last=item[0]
-        leg=t['performance'].get('legato')
-        if leg is not None:
-            if t['engine']!='soundfont' or not isinstance(leg,dict):raise ValueError(f'{t["id"]}: legato is a SoundFont-track setting (an object)')
-            if leg.get('mode','slur') not in ('slur','crossfade'):raise ValueError(f'{t["id"]}: legato mode is "slur" or "crossfade"')
-            number(leg.get('gap_ms',40),0,200,'legato gap ms')
-            if leg.get('mode','slur')=='slur':
-                number(leg.get('max_interval',5),1,12,'legato max interval',True);number(leg.get('glide_ms',25),0,200,'legato glide ms')
-                number(leg.get('max_notes',4),2,16,'legato max notes',True)
-                if span<leg.get('max_interval',5)+max((abs(v) for _,v in bend),default=0):
-                    raise ValueError(f'{t["id"]}: bend_range must cover the legato interval plus the authored bends')
-            else:
-                number(leg.get('crossfade_ms',100),20,400,'legato crossfade ms');number(leg.get('max_interval',12),1,24,'legato max interval',True)
-                number(leg.get('portamento_ms',0),0,300,'legato portamento ms');number(leg.get('portamento_from',.6),.2,1,'legato portamento from')
-                if leg.get('max_interval',12)>12 and leg.get('portamento_ms',0):raise ValueError(f'{t["id"]}: portamento covers intervals up to 12 semitones')
-        perf=t['performance']
-        if perf.get('bow_change_s') is not None:
-            number(perf['bow_change_s'],2,12,'bow change seconds');number(perf.get('bow_ms',60),20,200,'bow change ms')
-            if (leg or {}).get('mode')!='crossfade':raise ValueError(f'{t["id"]}: bow changes need crossfade legato')
-        if perf.get('round_robin') not in (None,True,False):raise ValueError(f'{t["id"]}: round_robin is true or false')
-        if perf.get('swing') is not None:
-            if not isinstance(perf['swing'],dict) or 'ratio' not in perf['swing'] or set(perf['swing'])-{'ratio','unit'}:raise ValueError(f'{t["id"]}: swing takes ratio and optional unit')
-            number(perf['swing']['ratio'],.5,.8,'swing ratio')
-            if perf['swing'].get('unit',.5) not in (.25,.5,1):raise ValueError(f'{t["id"]}: swing unit is 0.25, 0.5 or 1 beat')
-        if perf.get('round_robin') and (t['engine']!='soundfont' or t.get('drums')):raise ValueError(f'{t["id"]}: round_robin is for pitched SoundFont parts')
-        dyn=t['performance'].get('dynamics')
-        if dyn is not None or (leg or {}).get('mode')=='crossfade':
-            # Rendered from a bank's dynamic layers (musiclib/layered.py): a pitched SoundFont part on its own keys.
-            if t['engine']!='soundfont' or t.get('drums') or t.get('key_map'):raise ValueError(f'{t["id"]}: dynamics and crossfade legato are for pitched SoundFont parts without a key map')
-        if t['performance'].get('dynamics_mode','take') not in ('crossfade','take'):raise ValueError(f'{t["id"]}: dynamics_mode must be "crossfade" or "take"')
-        if dyn is not None:
-            if not isinstance(dyn,list) or not dyn:raise ValueError(f'{t["id"]}: dynamics is a list of [beat, 0-127] points')
-            last=0
-            for item in dyn:
-                if not isinstance(item,list) or len(item)!=2:raise ValueError(f'{t["id"]}: dynamics points are [beat, value]')
-                number(item[0],0,total,'dynamics beat');number(item[1],0,127,'dynamics value')
-                if item[0]<last:raise ValueError(f'{t["id"]}: dynamics points must be in time order')
-                last=item[0]
-            if any(control==1 for _,control,_ in t['performance'].get('cc',[])):raise ValueError(f'{t["id"]}: dynamics is exported as CC1, so the part cannot also write CC1')
-        mix=t['mix']
-        if mix.get('level_mode','active_rms') not in ('active_rms','peak'):raise ValueError('Unknown reference level mode')
-        number(mix.get('delay_quarters',.75),.0625,8,'delay quarter notes')
-        number(mix['level_dbfs'],-60,-6,'reference level')
-        number(mix.get('pan',0),-1,1,'pan');number(mix.get('width',1),0,1,'stereo width')
-        if mix.get('depth_m') is not None:number(mix['depth_m'],0,10,'stage depth m')
-        from . import production;production.validate(p,t)
-        for e in mix.get('effects',[]):
-            if not isinstance(e,dict) or e.get('type') not in ('chorus','phaser','bitcrush'):raise ValueError(f'{t["id"]}: effects are chorus, phaser or bitcrush')
-            number(e.get('depth',.5),0,1,'effect depth');number(e.get('rate_hz',.5),.05,5,'phaser rate')
-            number(e.get('bits',8),2,16,'bitcrush bits',True);number(e.get('downsample',4),1,32,'bitcrush downsample',True);number(e.get('mix',1),0,1,'bitcrush mix')
-        if mix.get('facing','front') not in ('front','back'):raise ValueError(f'{t["id"]}: mix.facing must be "front" or "back"')
-        if mix.get('facing','front')=='back' and mix.get('depth_m') is None:raise ValueError(f'{t["id"]}: mix.facing needs mix.depth_m')
-        if mix.get('bus') is not None and mix['bus'] not in BUSES:raise ValueError(f'{t["id"]}: mix.bus must be one of '+', '.join(BUSES))
-        if mix.get('space') is not None and mix['space'] not in SPACES:raise ValueError(f'{t["id"]}: mix.space must be one of '+', '.join(SPACES))
-        number(mix.get('highpass',30),15,3000,'HPF')
-        number(mix.get('lowpass',18000),100,22000,'LPF')
-        for hz,gain in mix.get('eq',[]):
-            number(hz,20,20000,'EQ frequency');number(gain,-12,12,'EQ gain')
-        for key in ('reverb_db','delay_db'):
-            if mix.get(key) is not None: number(mix[key],-80,0,key)
-        if mix.get('compressor'):
-            co=mix['compressor'];number(co['threshold_db'],-50,-3,'compressor threshold');number(co['ratio'],1,12,'compressor ratio');number(co['attack_ms'],.1,200,'attack');number(co['release_ms'],5,3000,'release')
-        prev=-1
-        for beat,db in mix.get('automation',[]):
-            number(beat,0,total,'automation beat');number(db,-60,12,'automation dB')
-            if beat<=prev:raise ValueError('Automation points must be ordered')
-            prev=beat
+        try:events+=_track(p,t,c,total,clock,warnings)
+        except KeyError as e:
+            raise ValueError(f'{t["id"]}: missing field {e}') from None
     if events>500000:raise ValueError('Too many notes')
     if isinstance(p.get('harmony'),list):
         for h in p['harmony']:
@@ -308,7 +224,7 @@ def validate(p):
         if not isinstance(layers,dict) or not 2<=len(layers)<=8:raise ValueError('loop.layers maps 2-8 layer ids to track ids')
         owner={}
         for lid,members in layers.items():
-            if not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',lid):raise ValueError(f'Invalid layer id {lid!r}')
+            if not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',lid) or lid in RESERVED:raise ValueError(f'Invalid layer id {lid!r}')
             if not isinstance(members,list) or not members:raise ValueError(f'layer {lid} needs a list of track ids')
             for tid in members:
                 if tid not in ids:raise ValueError(f'layer {lid}: unknown track {tid!r}')
@@ -328,7 +244,153 @@ def validate(p):
     number(p['mix'].get('peak_ceiling_db',-1.6),-8,-1,'master ceiling')
     number(p['mix'].get('max_limit_db',1.5),0,4,'limiter allowance')
     number(p['mix'].get('room_seconds',1.1),.2,4,'room decay')
-    return {'tracks':len(ids),'notes':events,'bars':c['bars'],'seconds':round(clock.end+clock.tail,3),'sections':len(section_ids)}
+    return {'tracks':len(ids),'notes':events,'bars':c['bars'],'seconds':round(clock.end+clock.tail,3),'sections':len(section_ids),'warnings':warnings}
+
+def _track(p,t,c,total,clock,warnings):
+    """One track's checks (validate); returns its note count."""
+    if t['engine'] not in ('soundfont','additive','noise','synth','drum_synth','surge'):
+        raise ValueError('Unsupported instrument engine')
+    if t['engine']=='synth':
+        from . import synth;synth.validate(t)
+    if t['engine']=='drum_synth':
+        from . import drums;drums.validate(t)
+    if t['engine']=='surge':
+        from . import surge;surge.validate(t)
+    if 'kit' in t and t['engine']!='drum_synth':raise ValueError(f'{t["id"]}: "kit" belongs to engine "drum_synth"')
+    if 'synth' in t and t['engine']!='synth':raise ValueError(f'{t["id"]}: "synth" belongs to engine "synth"')
+    if 'surge' in t and t['engine']!='surge':raise ValueError(f'{t["id"]}: "surge" belongs to engine "surge"')
+    if not isinstance(t.get('drums',False),bool):raise ValueError('drums must be boolean')
+    # Render-side sound selection; the score/MIDI export keeps program, bank and authored pitches.
+    if 'soundfont' in t and (t['engine']!='soundfont' or not isinstance(t['soundfont'],str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['soundfont'])):
+        raise ValueError(f'{t["id"]}: soundfont must name a configured SoundFont (soundfont engine only)')
+    if 'patch' in t:
+        if t['engine']!='soundfont' or not isinstance(t['patch'],dict) or set(t['patch'])-{'bank','program'}:raise ValueError(f'{t["id"]}: patch takes bank/program')
+        number(t['patch'].get('bank',0),0,16383,'patch bank',True);number(t['patch'].get('program',0),0,127,'patch program',True)
+    if 'key_map' in t:
+        if t['engine']!='soundfont' or not isinstance(t['key_map'],dict) or len(t['key_map'])>128:raise ValueError(f'{t["id"]}: key_map maps MIDI pitches')
+        for k,v in t['key_map'].items():
+            if not re.fullmatch(r'\d{1,3}',k) or int(k)>127:raise ValueError(f'{t["id"]}: key_map keys are MIDI pitches')
+            number(v,0,127,'key_map target',True)
+    if t['performance'].get('cc_mode','linear' if t['engine']=='additive' else 'step') not in ('step','linear'):
+        raise ValueError(f'{t["id"]}: cc_mode must be step or linear')
+    number(t['performance'].get('offset_ms',0),-300,300,'track offset ms')
+    if t['engine']=='additive':
+        cfg=t.get('instrument',{})
+        for name,default,lo,hi in [('harmonics',12,1,32),('spectral_tilt',1.25,.7,3),('attack_ms',22,1,500),('release_ms',120,5,2000),('glide_ms',28,0,200),('cutoff_hz',1900,100,12000),('vibrato_depth_cents',14,0,100),('vibrato_rate_hz',5.1,2,9),('vibrato_delay_ms',180,0,1000)]:
+            number(cfg.get(name,default),lo,hi,'instrument '+name,integer=name=='harmonics')
+        voices=cfg.get('detune_cents',[-5,0,5])
+        if not isinstance(voices,list) or not 1<=len(voices)<=7:raise ValueError('Expected 1–7 synth voices')
+        for cents in voices:number(cents,-40,40,'detune cents')
+        if not isinstance(cfg.get('odd_only',False),bool):raise ValueError('odd_only must be boolean')
+    number(t.get('program',0),0,127,'program',True)
+    number(t.get('bank',0),0,16383,'bank',True)
+    lo,hi=t.get('range',[0,127])
+    number(lo,0,127,'range low',True);number(hi,lo,127,'range high',True)
+    local_ids=set();events=0;tid=t['id']
+    unknown_fields(t,'track',tid,warnings);unknown_fields(t['performance'],'performance',f'{tid}.performance',warnings)
+    unknown_fields(t['mix'],'track mix',f'{tid}.mix',warnings);unknown_fields(t['performance'].get('legato'),'legato',f'{tid}.performance.legato',warnings)
+    if t['engine']=='synth':unknown_fields(t.get('synth'),'synth',f'{tid}.synth',warnings)
+    for n in t['notes']:
+        if not isinstance(n.get('id'),str) or not 1<=len(n['id'])<=120 or n['id'] in local_ids:
+            raise ValueError(f'{tid}: duplicate or invalid note id {n.get("id")!r}')
+        local_ids.add(n['id']);events+=1;at=f'{tid}/{n["id"]}'
+        number(n['on'],0,total-1/TPQ,f'{at} onset (beats)')
+        number(n['duration'],1/TPQ,total,f'{at} duration (beats)')
+        if n['on']+n['duration']>total+1e-6:
+            raise ValueError(f'Note beyond score: {t["id"]}/{n["id"]}')
+        number(n['pitch'],lo,hi,f'pitch {t["id"]}/{n["id"]}',True)
+        if n['id'] not in t['performance']['notes']:
+            raise ValueError(f'Missing performance for {t["id"]}/{n["id"]}')
+        perf=t['performance']['notes'][n['id']]
+        if 'velocity' not in perf:raise ValueError(f'{at}: performance.notes needs a velocity')
+        unknown_fields(perf,'played note',f'{at} performance',warnings)
+        number(perf['velocity'],1,127,f'{at} velocity',True)
+        number(perf.get('timing_ms',0),-100,100,f'{at} timing_ms')
+        number(perf.get('gate',1),.05,1.6,f'{at} gate')
+    if local_ids!=set(t['performance']['notes']):
+        raise ValueError('Performance keys must exactly match score ids')
+    if t['engine']=='additive':
+        ordered=sorted(t['notes'],key=lambda n:n['on'])
+        if any(a['on']+a['duration']>b['on']+1/TPQ for a,b in zip(ordered,ordered[1:])):
+            raise ValueError('Additive lead requires a monophonic score; use another track for harmony')
+    for beat,control,value in t['performance'].get('cc',[]):
+        number(beat,0,total,f'{tid} CC beat');number(control,0,127,f'{tid} CC controller',True);number(value,0,127,f'{tid} CC value',True)
+    span=t['performance'].get('bend_range',2);number(span,1,24,'bend range',True)
+    bend=t['performance'].get('bend',[])
+    if not isinstance(bend,list):raise ValueError(f'{t["id"]}: bend is a list of [beat, semitones]')
+    last=0
+    for item in bend:
+        if not isinstance(item,list) or len(item)!=2:raise ValueError(f'{t["id"]}: bend points are [beat, semitones]')
+        number(item[0],0,total,f'{tid} bend beat');number(item[1],-span,span,f'{tid} bend semitones (within bend_range)')
+        if item[0]<last:raise ValueError(f'{t["id"]}: bend points must be in time order')
+        last=item[0]
+    leg=t['performance'].get('legato')
+    if leg is not None:
+        if t['engine']!='soundfont' or not isinstance(leg,dict):raise ValueError(f'{t["id"]}: legato is a SoundFont-track setting (an object)')
+        if leg.get('mode','slur') not in ('slur','crossfade'):raise ValueError(f'{t["id"]}: legato mode is "slur" or "crossfade"')
+        number(leg.get('gap_ms',40),0,200,'legato gap ms')
+        if leg.get('mode','slur')=='slur':
+            number(leg.get('max_interval',5),1,12,'legato max interval',True);number(leg.get('glide_ms',25),0,200,'legato glide ms')
+            number(leg.get('max_notes',4),2,16,'legato max notes',True)
+            if span<leg.get('max_interval',5)+max((abs(v) for _,v in bend),default=0):
+                raise ValueError(f'{t["id"]}: bend_range must cover the legato interval plus the authored bends')
+        else:
+            number(leg.get('crossfade_ms',100),20,400,'legato crossfade ms');number(leg.get('max_interval',12),1,24,'legato max interval',True)
+            number(leg.get('portamento_ms',0),0,300,'legato portamento ms');number(leg.get('portamento_from',.6),.2,1,'legato portamento from')
+            if leg.get('max_interval',12)>12 and leg.get('portamento_ms',0):raise ValueError(f'{t["id"]}: portamento covers intervals up to 12 semitones')
+    perf=t['performance']
+    if perf.get('bow_change_s') is not None:
+        number(perf['bow_change_s'],2,12,'bow change seconds');number(perf.get('bow_ms',60),20,200,'bow change ms')
+        if (leg or {}).get('mode')!='crossfade':raise ValueError(f'{t["id"]}: bow changes need crossfade legato')
+    if perf.get('round_robin') not in (None,True,False):raise ValueError(f'{t["id"]}: round_robin is true or false')
+    if perf.get('swing') is not None:
+        if not isinstance(perf['swing'],dict) or 'ratio' not in perf['swing'] or set(perf['swing'])-{'ratio','unit'}:raise ValueError(f'{t["id"]}: swing takes ratio and optional unit')
+        number(perf['swing']['ratio'],.5,.8,'swing ratio')
+        if perf['swing'].get('unit',.5) not in (.25,.5,1):raise ValueError(f'{t["id"]}: swing unit is 0.25, 0.5 or 1 beat')
+    if perf.get('round_robin') and (t['engine']!='soundfont' or t.get('drums')):raise ValueError(f'{t["id"]}: round_robin is for pitched SoundFont parts')
+    dyn=t['performance'].get('dynamics')
+    if dyn is not None or (leg or {}).get('mode')=='crossfade':
+        # Rendered from a bank's dynamic layers (musiclib/layered.py): a pitched SoundFont part on its own keys.
+        if t['engine']!='soundfont' or t.get('drums') or t.get('key_map'):raise ValueError(f'{t["id"]}: dynamics and crossfade legato are for pitched SoundFont parts without a key map')
+    if t['performance'].get('dynamics_mode','take') not in ('crossfade','take'):raise ValueError(f'{t["id"]}: dynamics_mode must be "crossfade" or "take"')
+    if dyn is not None:
+        if not isinstance(dyn,list) or not dyn:raise ValueError(f'{t["id"]}: dynamics is a list of [beat, 0-127] points')
+        last=0
+        for item in dyn:
+            if not isinstance(item,list) or len(item)!=2:raise ValueError(f'{t["id"]}: dynamics points are [beat, value]')
+            number(item[0],0,total,f'{tid} dynamics beat');number(item[1],0,127,f'{tid} dynamics value')
+            if item[0]<last:raise ValueError(f'{t["id"]}: dynamics points must be in time order')
+            last=item[0]
+        if any(control==1 for _,control,_ in t['performance'].get('cc',[])):raise ValueError(f'{t["id"]}: dynamics is exported as CC1, so the part cannot also write CC1')
+    mix=t['mix']
+    if mix.get('level_mode','active_rms') not in ('active_rms','peak'):raise ValueError('Unknown reference level mode')
+    number(mix.get('delay_quarters',.75),.0625,8,'delay quarter notes')
+    number(mix['level_dbfs'],-60,-6,f'{tid} mix.level_dbfs')
+    number(mix.get('pan',0),-1,1,'pan');number(mix.get('width',1),0,1,'stereo width')
+    if mix.get('depth_m') is not None:number(mix['depth_m'],0,10,'stage depth m')
+    from . import production;production.validate(p,t)
+    for e in mix.get('effects',[]):
+        if not isinstance(e,dict) or e.get('type') not in ('chorus','phaser','bitcrush'):raise ValueError(f'{t["id"]}: effects are chorus, phaser or bitcrush')
+        number(e.get('depth',.5),0,1,'effect depth');number(e.get('rate_hz',.5),.05,5,'phaser rate')
+        number(e.get('bits',8),2,16,'bitcrush bits',True);number(e.get('downsample',4),1,32,'bitcrush downsample',True);number(e.get('mix',1),0,1,'bitcrush mix')
+    if mix.get('facing','front') not in ('front','back'):raise ValueError(f'{t["id"]}: mix.facing must be "front" or "back"')
+    if mix.get('facing','front')=='back' and mix.get('depth_m') is None:raise ValueError(f'{t["id"]}: mix.facing needs mix.depth_m')
+    if mix.get('bus') is not None and mix['bus'] not in BUSES:raise ValueError(f'{t["id"]}: mix.bus must be one of '+', '.join(BUSES))
+    if mix.get('space') is not None and mix['space'] not in SPACES:raise ValueError(f'{t["id"]}: mix.space must be one of '+', '.join(SPACES))
+    number(mix.get('highpass',30),15,3000,'HPF')
+    number(mix.get('lowpass',18000),100,22000,'LPF')
+    for hz,gain in mix.get('eq',[]):
+        number(hz,20,20000,'EQ frequency');number(gain,-12,12,'EQ gain')
+    for key in ('reverb_db','delay_db'):
+        if mix.get(key) is not None: number(mix[key],-80,0,key)
+    if mix.get('compressor'):
+        co=mix['compressor'];number(co['threshold_db'],-50,-3,'compressor threshold');number(co['ratio'],1,12,'compressor ratio');number(co['attack_ms'],.1,200,'attack');number(co['release_ms'],5,3000,'release')
+    prev=-1
+    for beat,db in mix.get('automation',[]):
+        number(beat,0,total,f'{tid} automation beat');number(db,-60,12,f'{tid} automation dB')
+        if beat<=prev:raise ValueError(f'{tid}: automation points must be ordered')
+        prev=beat
+    return events
 
 def performed(track,clock,expressive=True):
     """Return actual MIDI-grid onset/release. Trim only overlapping same-key retriggers.

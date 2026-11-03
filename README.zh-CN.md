@@ -64,7 +64,7 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 
 ## 为什么不直接生成？
 
-文字生成音乐的模型交给你的是一段做好的音频。只要有一小节不对，就得重新生成，换来的是另一首歌。你没法打开它挪动一个音，也说不清里面的声音从哪里来。
+文字生成音乐的模型交给你的是一段做好的音频。有些可以重新生成其中一段，但你没法打开它挪动一个音，也说不清里面的声音从哪里来。
 
 这里由 agent 写出乐谱，所以音乐是由一个个你看得懂、改得动的决定组成的：第 33 小节的旋律、一个和弦的配置、鼓手敲镲片的力度。只改一个音，就只会重新渲染那个声部。声音来自真实乐器的多重采样录音（许可都查得到）或 skill 内置的合成器，也没有用到任何以他人录音训练的模型。
 
@@ -74,10 +74,10 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 2. **检查乐谱**：`review` 会列出声部之间持续的小二度和小九度，以及落在和弦外的旋律音，让每一处都是有意的选择，而不是意外。
 3. **演奏**：演奏模型加入真人演奏会有的偏差：每位乐手在时间和音量上缓慢的起伏、略微靠后的贝斯、乐句的起伏弧线，以及和弦中各音不会同时按下、也不会同时松开。采样的主旋律可以连奏，也可以推弦。
 4. **渲染**：FluidSynth 用有许可的 SoundFont 音色库，让每个采样声部用各自的乐器演奏；电子声部则由内置的合成器和鼓机，或 Surge XT 合成器的音色演奏。
-5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 −14 LUFS，真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
+5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 项目的目标响度（默认 −16 LUFS，流媒体常用 −14 LUFS），真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
 6. **测量**：`analyze` 会测出每个段落的响度、频谱和立体声、主旋律比伴奏响多少，并把母带的音色平衡与已发表的商业录音测量，或同曲风的参考进行比较。这些数字能指出问题所在，但不能代替实际聆听。
 
-只改一个音，就只会重新渲染那一个声部；只改混音，则完全不需要重新渲染。
+只改一个音，就只会重新渲染那一个声部；只改混音，则沿用所有已合成的声部，只重新混音。
 
 游戏用的项目可以设置循环：渲染时会把混响尾巴折回循环开头，并按 Godot 和 RPG Maker 读取的格式，把循环点写进 WAV 和 Ogg 文件，每个段落也标上提示点。循环还能拆成几层，各层相加就是完整混音，让音乐随着游戏紧张程度逐层加厚。
 
@@ -100,6 +100,13 @@ npx skills add owoevan-dev/music-skill
 
 **渲染工具**：每台电脑设置一次，可以交给 agent 代劳。
 
+需要 Python 3.10 及以上版本和 NumPy。在 Linux 和 macOS 上，用虚拟环境把 NumPy 和系统的 Python 分开，下面的命令也就能用 `python`（Debian 和 Ubuntu 要先 `sudo apt install python3-venv`）：
+
+```
+python3 -m venv .venv && . .venv/bin/activate        # Windows: py -m venv .venv, then .venv\Scripts\activate
+python -m pip install -r skills/music-production/requirements.txt
+```
+
 Windows x64 会下载锁定版本的 FluidSynth 和 FFmpeg 便携版，以及 Surge XT 合成器和运行它的插件宿主（约 55 MB；加上 `--no-surge` 就不安装）：
 
 ```
@@ -110,16 +117,16 @@ Linux（Ubuntu 24.04、Debian 13 或更新版本）和 macOS 使用系统软件�
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS：brew install fluid-synth ffmpeg
-python3 skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
+python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-然后下载音色库（本项目构建好的版本）：全部二十九个下载约 3.4 GB、安装后约 8 GB。`--only orchestra`、`band`、`world` 或 `examples`（示例曲用到的音色库）可以只装一组，也可以直接写音色库名称（`--only vcsl,rusty`）；项目用到尚未安装的音色库时，会停下来并给出安装命令。加上 `--from-source` 则改从各发布者的原始采样自行构建。
+然后下载音色库（本项目构建好的版本）：全部二十九个下载约 3.4 GB、安装后约 8 GB；除非加上 `--delete-sources`，下载的文件会留在 runtime 文件夹，所以请预留约 12 GB。`--only orchestra`、`band`、`world` 或 `examples`（示例曲用到的音色库）可以只装一组，也可以直接写音色库名称（`--only vcsl,rusty`）；项目用到尚未安装的音色库时，会停下来并给出安装命令。加上 `--from-source` 则改从各发布者的原始采样自行构建。
 
 ```
 python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/local-config.json --runtime <folder>/.runtime --output <folder>/local-config.studio.json
 ```
 
-需要 Python 3.10 及以上版本和 NumPy。不需要 GPU、账号或音频模型。所有文件都从发布者或本项目自己的 release 下载，并用锁定的 SHA-256 校验。
+不需要 GPU、账号或音频模型。所有文件都从发布者或本项目自己的 release 下载，并用锁定的 SHA-256 校验。
 
 ## 使用方法
 
@@ -147,20 +154,20 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | 管弦乐 | VSCO 2 Community Edition（Versilian Studios）的弦乐（含分部、震音和拨奏）、铜管、长号、大号、低音提琴、木管、短笛和钟琴；VCSL 的竖琴、木槌类打击乐、管钟、定音鼓和管弦打击乐；爱荷华大学电子音乐工作室的圆号、低音长号、单簧管、长笛、独奏弦乐和打击乐 | CC0；爱荷华：可自由用于任何用途，没有限制 |
 | 乐队 | FreePats FSBS 电吉他（两种失真、一种干净音色）；Bass YR 拨片与指弹贝斯，采样由 Andrea Biasior 录制；Karoryfer Samples 的 Big Rusty Drums、五弦贝斯、拨奏低音提琴、弧顶爵士吉他、上低音萨克斯和大号；Karoryfer Lecolds 与 bigcat instruments 的独奏大提琴 | CC0 |
 | 独奏与世界乐器 | VCSL 的次中音萨克斯、saxello、竖笛、陶笛、口琴、民谣竖琴、越南筝（đàn tranh）、psaltery（拨弦齐特琴）、卡林巴、巴拉风和世界打击乐；二胡；次中音钢鼓；人声“啊” | CC0；钢鼓：Unlicense |
-| 合成器 | 内置的合成器与鼓机；Surge XT 和五十个精选出厂音色，可选，默认安装 | 内置：MIT；Surge XT：GPL-3.0，作为独立程序运行 |
+| 合成器 | 内置的合成器与鼓机；Surge XT 和五十个精选出厂音色，可选，默认安装 | 内置：MIT；Surge XT：GPL-3.0，由独立的 GPL 程序运行 |
 | 其他乐器 | MuseScore MS Basic | MIT |
 
-录音音色库都是 CC0、可自由用于任何用途而没有限制（爱荷华大学的录音），或已贡献给公有领域（钢鼓），用它们制作的音乐不需要署名。Surge XT 采用 GPL-3.0，作为独立程序运行；GPL 约束的是程序本身，不是它演奏出来的音乐。MS Basic 的 MIT 声明只随音色库本身的副本，不涉及用它渲染出来的音乐。来源列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+录音音色库都是 CC0、可自由用于任何用途而没有限制（爱荷华大学的录音），或已贡献给公有领域（钢鼓），用它们制作的音乐不需要署名。Surge XT 采用 GPL-3.0，只在本项目一个独立的 GPL 程序（`surge_host.py`）里运行；GPL 约束的是程序本身，不是它们演奏出来的音乐。MS Basic 是其他声部退而使用的 General MIDI 音色库，采用 MIT，它的声明要求在任何衍生作品中保留致谢。我们的理解是这指音色库本身的复制和改编，而不是用它演奏的音乐，但这只是我们的理解：如果你发表的作品有声部用到 MS Basic，稳妥起见请署名（示例曲都没有用到）。来源列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 效果如何
 
-`selfcheck.py` 共有 72 项检查（没有渲染配置时为 56 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新渲染一个声部；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 84 项检查（没有渲染配置时为 68 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新渲染一个声部；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音乐好不好听是另一回事，只有实际聆听才知道。上面这些曲子是这个仓库最好的证据。
 
 ## 常见问题
 
-**做出来的音乐可以用在视频、游戏或商业作品里吗？** 工具本身没有任何限制。音色库都是 CC0 或可自由使用，不需要署名；GPL 许可的程序（FFmpeg、Surge XT）约束的是程序本身，不是经过它们处理的音乐。至于你对 agent 帮你写的音乐是否享有著作权，取决于你所在地的法律，以及你参与塑造了多少。
+**做出来的音乐可以用在视频、游戏或商业作品里吗？** 工具本身没有任何限制。可选音色库都是 CC0 或可自由使用，不需要署名（MS Basic 见上文）；GPL 许可的程序（FFmpeg、Surge XT）约束的是程序本身，不是经过它们处理的音乐。至于你对 agent 帮你写的音乐是否享有著作权，取决于你所在地的法律，以及你参与塑造了多少。
 
 **哪些 agent 可以用？** 任何能加载 Agent Skills 并运行 Python 的 agent：Claude Code（以插件安装）、Codex，以及通过 `npx skills` 安装的其他 agent。
 
@@ -174,7 +181,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 - 音色的上限取决于免费音色库：YR 贝斯只有一层力度，弦乐起音偏慢，马林巴、木琴和短笛的采样稀疏，采样吉他的推弦是把整段采样变调，不会有真实琴弦的音色变化。
 - 目前还没有木吉他、合唱，以及二胡和越南筝以外的东亚乐器音色库；这些声部只能用 MS Basic 采样稀疏的 General MIDI 音色。
 - Surge XT 的振荡器每次都从随机相位开始，所以同一个 Surge 声部每次合成都会有细微差异；渲染缓存会保留一次的结果，直到这个声部改动为止。其他部分每次渲染都完全相同。
-- agent 听不到声音。`review` 和 `analyze` 只能找出问题，结果必须由人来听；skill 也会要求 agent 不得声称自己听过。
+- agent 听不到声音。`review` 和 `analyze` 只能找出问题，结果必须由人来听；skill 也要求 agent 没有真的听过，就不得声称听过。
 - Linux 和 macOS 使用系统的 FluidSynth 和 FFmpeg，渲染出的采样可能与 Windows 的锁定版本略有差异。
 
 ## 文档
@@ -198,4 +205,4 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 许可
 
-代码与文档采用 [MIT](LICENSE) 许可。示例的录音与乐曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，由用户从发布者处下载，不包含在这个仓库中。序曲的那张图是程序直接从它的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。
+代码与文档采用 [MIT](LICENSE) 许可。示例的录音与乐曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，不包含在这个仓库中：工具和其中五个音色库从发布者下载，另外二十四个从本项目的 release 下载（用发布者的采样构建）。`skills/music-production/scripts/surge_host.py` 采用 GPL-3.0-or-later，与它运行的 Surge XT 和 pedalboard 相同。序曲的那张图是程序直接从它的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。

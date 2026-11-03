@@ -39,9 +39,9 @@ The first versions stopped often. After each anticipation the band held for a be
 Set up the renderer and the sound banks as the repository README describes, then:
 
 ```
-python examples/daybreak-signal/daybreak_signal.py piano.json 1.1.r3p4 --arr r3 --lead piano --mix bus
-python skills/music-production/scripts/studio.py render piano.json --config <folder>/local-config.studio.json --output render_piano --cache cache
-python skills/music-production/scripts/studio.py analyze render_piano
+python examples/daybreak-signal/daybreak_signal.py out/piano.json 1.1.r3p4 --arr r3 --lead piano --mix bus
+python skills/music-production/scripts/studio.py render out/piano.json --config <folder>/local-config.studio.json --output out/render_piano --cache out/cache
+python skills/music-production/scripts/studio.py analyze out/render_piano
 ```
 
 The script writes the same project file as the one published here.

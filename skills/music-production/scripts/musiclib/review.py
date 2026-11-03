@@ -20,13 +20,13 @@ def vertical(p,clock,limit=40):
     for t in p['tracks']:
         if t.get('drums') or t['engine'] in ('noise','drum_synth'):continue
         for n in t['notes']:
-            item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],t['role'] in FOREGROUND)
+            item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],t.get('role') in FOREGROUND)
             notes.append(item)
             for b in range(int(n['on']//clock.beats_per_bar),int((item[1]-1e-9)//clock.beats_per_bar)+1):by_bar[b].append(item)
     seen=set();found=[]
     for a in notes:
         if a[1]-a[0]<.75:continue
-        for b in {x for bar in range(int(a[0]//clock.beats_per_bar),int((a[1]-1e-9)//clock.beats_per_bar)+1) for x in by_bar[bar]}:
+        for b in sorted({x for bar in range(int(a[0]//clock.beats_per_bar),int((a[1]-1e-9)//clock.beats_per_bar)+1) for x in by_bar[bar]}):
             if b is a or abs(a[2]-b[2])%12!=1:continue
             ov=min(a[1],b[1])-max(a[0],b[0])
             key=tuple(sorted([a,b]))
@@ -45,7 +45,7 @@ def chord_tones(p,clock,limit=40):
     starts=[b for b,_ in line];unknown=sorted({h['symbol'] for h in p['harmony'] if harmony.parse(h['symbol'])is None})
     out=[]
     for t in p['tracks']:
-        if t['role'] not in FOREGROUND:continue
+        if t.get('role') not in FOREGROUND:continue
         for n in t['notes']:
             if not(n['on']%1==0 or n['duration']>=1):continue
             ch=harmony.chord_at(line,n['on'])
@@ -113,9 +113,9 @@ def review(p,out,config=None):
             if a['tick']!=b['tick']:
                 interval.append(abs(b['pitch']-a['pitch']));gaps.append((b['start_seconds']-a['end_seconds'])*1000)
         phrases=Counter(n.get('phrase','unassigned') for n in notes)
-        info={'id':t['id'],'role':t['role'],'engine':t['engine'],'notes':len(notes),'pitch_range':[min((n['pitch'] for n in notes),default=None),max((n['pitch'] for n in notes),default=None)],'duration_values':dict(hist),'velocity_range':[min(vel,default=None),max(vel,default=None)],'median_performed_key_gap_ms':round(statistics.median(gaps),2) if gaps else None,'step_or_repeat_fraction':round(sum(x<=2 for x in interval)/len(interval),3) if interval else None,'phrase_labels':dict(phrases),'same_key_retrigger_trims':sum(n.get('retrigger_trimmed',False) for n in actual)}
+        info={'id':t['id'],'role':t.get('role'),'engine':t['engine'],'notes':len(notes),'pitch_range':[min((n['pitch'] for n in notes),default=None),max((n['pitch'] for n in notes),default=None)],'duration_values':dict(hist),'velocity_range':[min(vel,default=None),max(vel,default=None)],'median_performed_key_gap_ms':round(statistics.median(gaps),2) if gaps else None,'step_or_repeat_fraction':round(sum(x<=2 for x in interval)/len(interval),3) if interval else None,'phrase_labels':dict(phrases),'same_key_retrigger_trims':sum(n.get('retrigger_trimmed',False) for n in actual)}
         summary['tracks'].append(info)
-        if t['role'] in ('melody','countermelody') and notes:
+        if t.get('role') in ('melody','countermelody') and notes:
             if len(hist)<3:summary['prompts'].append(f'{t["id"]}: few duration categories; inspect whether the intended line has phrase direction and space.')
             if len(set(vel))<4:summary['prompts'].append(f'{t["id"]}: nearly flat MIDI velocity; inspect instrument response before adding expression.')
         bank=(t.get('patch') or t).get('bank',0)
@@ -123,13 +123,13 @@ def review(p,out,config=None):
             summary['prompts'].append(f'{t["id"]}: MuseScore "Expr." presets (bank 17/18) are near-silent until CC2 is written.')
         for n in notes:
             e=t['performance']['notes'][n['id']];a=a_by_id[n['id']]
-            csv_rows.append({'track':t['id'],'role':t['role'],'note_id':n['id'],'bar_1_based':int(n['on']//clock.beats_per_bar)+1,'beat_in_bar':round(n['on']%clock.beats_per_bar,4),'pitch':n['pitch'],'duration_q':n['duration'],'phrase':n.get('phrase',''),'articulation':n.get('articulation',''),'velocity':e['velocity'],'timing_ms':e.get('timing_ms',0),'gate':e.get('gate',1),'start_seconds':round(a['start_seconds'],6),'end_seconds':round(a['end_seconds'],6)})
+            csv_rows.append({'track':t['id'],'role':t.get('role'),'note_id':n['id'],'bar_1_based':int(n['on']//clock.beats_per_bar)+1,'beat_in_bar':round(n['on']%clock.beats_per_bar,4),'pitch':n['pitch'],'duration_q':n['duration'],'phrase':n.get('phrase',''),'articulation':n.get('articulation',''),'velocity':e['velocity'],'timing_ms':e.get('timing_ms',0),'gate':e.get('gate',1),'start_seconds':round(a['start_seconds'],6),'end_seconds':round(a['end_seconds'],6)})
     for s in p['sections']:
         lo=s['start_bar']*clock.beats_per_bar;hi=(s['start_bar']+s['bars'])*clock.beats_per_bar
         tracks=[];roles=Counter()
         for t in p['tracks']:
             notes=[n for n in t['notes'] if lo<=n['on']<hi]
-            if notes:tracks.append(t['id']);roles[t['role']]+=len(notes)
+            if notes:tracks.append(t['id']);roles[t.get('role')]+=len(notes)
         summary['sections'].append({**s,'start_seconds':round(clock.seconds(lo),3),'end_seconds':round(clock.seconds(hi),3),'active_tracks':tracks,'onsets_by_role':dict(roles)})
     summary['vertical_minor_seconds_ninths']=v=vertical(p,clock)
     if v['count']:

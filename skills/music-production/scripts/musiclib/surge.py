@@ -1,13 +1,14 @@
 """Surge XT parts (`engine: "surge"`): a curated factory patch of the Surge XT synthesizer, played offline through
-pedalboard.  Both are GPL-3.0 programs installed beside the skill and run as their own process; the skill stays MIT
-and the music made with them is the user's.
+pedalboard.  Both are GPL-3.0 programs installed beside the skill.  They run only in scripts/surge_host.py, a
+GPL-3.0-or-later program that the renderer starts as its own process and talks to through files (a job with the
+part's timed MIDI events in, a WAV out), so the skill's MIT code never runs with them; the music made is the user's.
 
 A VST3's saved state, as JUCE writes it, is "VC2!", a little-endian size and XML whose <IComponent> holds the plugin's
 own state in JUCE's text encoding ("<bytes>.<6-bit groups, least significant bit first>").  Surge's state starts with
 its patch ("sub3", the sizes of its XML and of the six oscillators' wavetable blocks, then those blocks), the chunk a
 .fxp patch file carries after its 60-byte header, so a patch loads by writing its chunk over the patch in the state.
-Surge takes the patch on its first audio block and drops the events that arrive there: every event moves by a lead-in
-that is cut off again.  Its oscillators start at random phases, so one part renders a different waveform each time
+Surge takes the patch on its first audio block and sets its parameters from it there, so the host plays a silent block
+before it sets the part's macros and bend range; every event still moves by a short lead-in that is cut off again.  Its oscillators start at random phases, so one part renders a different waveform each time
 (the same sound); the render cache, not the renderer, holds a take fixed.  Without Surge, pedalboard or the preset's
 file, the part plays its fallback preset on the built-in synth and its stem receipt says why."""
 import json
@@ -144,10 +145,17 @@ def render(project, track, raw, folder, cfg):
     shift = presets()['presets'][track['surge']['preset']].get('transpose', 0)
     played = {**track, 'notes': [{**n, 'pitch': max(0, min(127, n['pitch'] + shift))} for n in track['notes']]} if shift else track
     midi.write(project, part_midi, [played], single_stem=True, render=True)
-    job.write_text(json.dumps({'plugin': str(plugin), 'pylib': str(pylib), 'patch': str(patch), 'midi': str(part_midi),
-                               'out': str(raw), 'macros': track['surge'].get('macros', {})}), encoding='utf-8')
+    # Notes, pitch bend, mod wheel and sustain go to the plugin, timed in seconds; the bend range goes as a setting.
+    song = midi.read(part_midi)
+    events = [[bytes([s, *a]).hex(), _seconds(tick, song['tempos'], song['division']) + LEAD_S]
+              for t in song['tracks'] for tick, s, *a in t['events']
+              if (s >> 4) in (8, 9, 14) or ((s >> 4) == 11 and a[0] in (1, 64))]
+    job.write_text(json.dumps({'plugin': str(plugin), 'pylib': str(pylib), 'patch': str(patch), 'out': str(raw), 'rate': RATE,
+                               'events': events, 'duration': max((t for _, t in events), default=LEAD_S) + TAIL_S,
+                               'trim': int(round(LEAD_S * RATE)), 'macros': track['surge'].get('macros', {}),
+                               'bend_range': track['performance'].get('bend_range', 2)}), encoding='utf-8')
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-    done = subprocess.run([sys.executable, '-m', 'musiclib.surge', str(job)], cwd=SCRIPTS, capture_output=True, text=True,
+    done = subprocess.run([sys.executable, str(SCRIPTS / 'surge_host.py'), str(job)], cwd=SCRIPTS, capture_output=True, text=True,
                           timeout=1800, stdin=subprocess.DEVNULL, creationflags=flags)
     (Path(folder) / 'surge.log').write_text(done.stdout + done.stderr, encoding='utf-8')
     if done.returncode or not Path(raw).is_file():
@@ -165,30 +173,3 @@ def _seconds(tick, tempos, division):
         t += (at - last_tick) / division * last_tempo / 1e6
         last_tick, last_tempo = at, tempo
     return t + (tick - last_tick) / division * last_tempo / 1e6
-
-
-def _work(job_file):
-    """The separate process: notes, pitch bend, mod wheel and sustain go to the plugin."""
-    import numpy as np
-    from . import audio, midi
-    job = json.loads(Path(job_file).read_text(encoding='utf-8'))
-    sys.path.insert(0, job['pylib'])
-    import pedalboard
-    song = midi.read(job['midi'])
-    events = [(bytes([s, *a]), _seconds(tick, song['tempos'], song['division']) + LEAD_S)
-              for track in song['tracks'] for tick, s, *a in track['events']
-              if (s >> 4) in (8, 9, 14) or ((s >> 4) == 11 and a[0] in (1, 64))]
-    synth = pedalboard.load_plugin(job['plugin'])
-    synth.raw_state = with_patch(synth.raw_state, Path(job['patch']).read_bytes())
-    for k, v in job['macros'].items():
-        synth.parameters[f'm{k}'].raw_value = float(v)
-    end = max((t for _, t in events), default=LEAD_S) + TAIL_S
-    out = synth(events, duration=end, sample_rate=RATE, num_channels=2, buffer_size=512, reset=True)
-    x = np.asarray(out, dtype=np.float32).T[int(round(LEAD_S * RATE)):]
-    if not np.isfinite(x).all():
-        raise SystemExit('non-finite samples')
-    audio.write_wav(job['out'], x, RATE)
-
-
-if __name__ == '__main__':
-    _work(sys.argv[1])

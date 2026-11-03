@@ -31,7 +31,7 @@ Write one track per orchestral part (violins I, violins II, violas, cellos, bass
 
 **Missing**: English horn, contrabassoon, celesta and choir. Cover a missing part with the nearest colour (an oboe for the English horn's upper range, the bass clarinet or a bassoon for a contrabassoon line an octave up) and say so.
 
-**Two of some instruments.** The Iowa recordings sample the horn, the solo strings and the woodwinds they add on every semitone at three dynamics, dry and played by single players; VSCO samples its horn and solo violin every few semitones (`review --config` lists the notes it stretches) at two to four dynamics, in a room. Where both exist, render the passage on each and keep the one that sounds better in place. The Iowa solo strings are single players: a soloist, not a section.
+**Two of some instruments.** The Iowa recordings sample the horn, the solo strings and the woodwinds they add on every semitone at three dynamics, dry and played by single players; VSCO samples its horn and solo violin every few semitones (`review --config` lists the notes it stretches) at two to four dynamics, in a room. Where both exist, render the passage on each and let the user choose by ear; keep the chosen one in place. The Iowa solo strings are single players: a soloist, not a section.
 
 ## Balance
 

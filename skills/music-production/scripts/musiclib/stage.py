@@ -22,7 +22,7 @@ still sets its loudness.
 A horn's bell points backward, away from the audience: in front of the player its sound above about 2 kHz is some
 10 dB weaker than on the bell's axis, and much of what the hall hears comes off the wall behind (Meyer 2009, on the
 directivity of orchestral instruments).  With `facing: "back"` the direct sound and the reflections that leave the
-player toward the hall lose 8 dB above 2 kHz (a first-order shelf), while the reflections off the stage shell, which the
+player toward the hall lose about 4 dB toward the top (a first-order shelf from 2 kHz), while the reflections off the stage shell, which the
 bell faces, come back 6 dB stronger; the part keeps its dry energy as before, so it sounds further and darker, not
 quieter.
 """
@@ -74,7 +74,8 @@ def images(src, order=2):
 
 
 def _shelf(freqs, corner=2000.0, cut_db=-8.0):
-    """A first-order high shelf: unity at low frequencies, `cut_db` well above `corner`."""
+    """A first-order high shelf: unity at low frequencies, falling to half of `cut_db` (-4 dB for the default) well above
+    `corner`."""
     g = 10 ** (cut_db / 20)
     return (1 + 1j * freqs / (corner / math.sqrt(g)) * math.sqrt(g)) / (1 + 1j * freqs / (corner / math.sqrt(g)))
 

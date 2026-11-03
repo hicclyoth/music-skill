@@ -13,6 +13,17 @@ from .model import Clock, performed, save_json, file_hash
 
 RATE=48000
 
+def absolute_paths(config, base):
+    """The configuration with every relative path made absolute against `base` (the folder of the file it was read
+    from), so it can be written anywhere."""
+    entries = [config[k] for k in ('fluidsynth', 'ffmpeg', 'soundfont', 'surge', 'pedalboard') if isinstance(config.get(k), dict)]
+    entries += [v for v in config.get('soundfonts', {}).values() if isinstance(v, dict)]
+    for entry in entries:
+        for key in ('path', 'binary', 'patches'):
+            if isinstance(entry.get(key), str) and not Path(entry[key]).is_absolute():
+                entry[key] = str((Path(base) / entry[key]).resolve())
+    return config
+
 def load_config(path):
     """Verify every configured executable and SoundFont by path and SHA-256. `soundfont` is the
     default bank; optional `soundfonts` adds named banks that tracks select with `soundfont`."""
@@ -25,8 +36,10 @@ def load_config(path):
         p=Path(entry['path'])
         if not p.is_absolute():p=path.parent/p
         p=p.resolve()
-        if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}')
-        if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}')
+        # A system package update replaces the executable: the configuration then names a file that is gone or changed.
+        again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
+        if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
+        if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
         entry['path']=str(p)
     return data
 
@@ -59,7 +72,9 @@ def run(argv,folder,label,timeout=600):
 def fluidsynth(config,font_path,midi_path,wav_path,folder,label='fluidsynth'):
     """Render a MIDI file on one SoundFont: dry (no chorus or reverb), 48 kHz float, sample-accurate timing."""
     log=run([config['fluidsynth']['path'],'-n','-i','-C','0','-R','0','-g','.55','-r',str(RATE),'-T','wav','-O','float','-o','synth.cpu-cores=1','-o','synth.polyphony=256','-o','synth.midi-bank-select=mma','-o','player.timing-source=sample','-F',wav_path,font_path,midi_path],folder,label)
-    if any(word in log.lower() for word in ('error','failed','not found')):raise ValueError('Instrument rendering diagnostic: '+log[-2000:])
+    # Only FluidSynth's own messages ("fluidsynth: error: ...", a preset "not found"), not paths it echoes.
+    problems=[line for line in log.splitlines() if line.lower().startswith('fluidsynth:') and any(w in line.lower() for w in ('error','panic','failed','not found'))]
+    if problems:raise ValueError('Instrument rendering diagnostic: '+'\n'.join(problems)[-2000:])
     return log
 
 def ffmpeg(config,args,folder,label):

@@ -39,7 +39,7 @@ A layout that works for a 3-minute track at 128 BPM (96 bars): intro 16, breakdo
 
 ## Sound design
 
-Every part is a preset from [synth-presets.json](synth-presets.json) with your own fields over it ([schema.md](schema.md)). Probe a preset on the part's notes before building on it.
+Every part is a preset from [synth-presets.json](synth-presets.json) with your own fields over it ([schema.md](schema.md)). A field you give replaces the preset's whole field: to change one value of a nested object (`lfo`, `filter`, `amp`), copy the preset's object and change that value. Probe a preset on the part's notes before building on it.
 
 | Role | Preset and settings |
 |---|---|
@@ -47,7 +47,7 @@ Every part is a preset from [synth-presets.json](synth-presets.json) with your o
 | Plucks and arpeggios | `pluck`, with a dotted-eighth delay (`mix.delay` `beats: 0.75`) |
 | Future-bass chords | `future_bass_chord`, ducked hard by the kick (below); an `lfo` on pitch (10–30 cents, `rate_beats` 0.5–1) for the wobbling swell |
 | Pads | `trance_pad`, `warm_pad`; `pwm_strings` for a string machine, with `effects` `chorus` |
-| Bass | `sub_bass` under a kick-led groove; `acid_bass` with a filter swept by its envelope; `reese_bass`; `wobble_bass` (`lfo` `rate_beats` 0.5 or 0.25 for wobbles on eighths or sixteenths); `synthwave_bass`; `bass_808` (a long sine with a pitch punch and glide) |
+| Bass | `sub_bass` under a kick-led groove; `acid_bass` with a filter swept by its envelope; `reese_bass`; `wobble_bass` (its `lfo`, copied whole, with `rate_beats` 0.5 or 0.25 for wobbles on eighths or sixteenths); `synthwave_bass`; `bass_808` (a long sine with a pitch punch and glide) |
 | Stabs and brass | `brass_stab` |
 | Keys | `fm_epiano`, `fm_bell` |
 | Transitions | `noise_riser`, `downlifter` after a drop, `reverse_cymbal` into a downbeat; `noise` parts with `rise` and `impact` |
@@ -90,11 +90,11 @@ The production tools work on a part's processed stem ([schema.md](schema.md)); `
 - **Saturation.** `mix.saturate` 0.2–0.4 on a bass makes its harmonics carry on small speakers at the same loudness.
 - **Gate.** `mix.gate` with a pattern such as `"x.x.xx.x"` in sixteenths chops a pad into a trance gate.
 - **Low end.** `mix.mono_below_hz` 100–150 keeps the bass and kick in the middle, as club systems and vinyl cutting want.
-- **Loudness.** `mix.loudness: "loud"` rounds peaks in an oversampled soft clipper before the limiter. A festival-house test track reached −9.1 LUFS at −1.2 dBTP this way, its drop the loudest section, with clipper and limiter taking at most 0.2 dB of level from any section (`mastering.limiting_db` in the report). If a section loses more than about 3 dB there (`analyze` warns), it sounds squashed and can end up quieter than the sparser sections around it: lower `target_lufs`, or lower that section's peaks with `mix.saturate` on its loudest parts (a supersaw lead's unison peaks, the kick). Listen for the kick losing its click before pushing further.
+- **Loudness.** `mix.loudness: "loud"` rounds peaks in an oversampled soft clipper before the limiter. A festival-house test track reached −9.1 LUFS at −1.2 dBTP this way, its drop the loudest section, with clipper and limiter taking at most 0.2 dB of level from any section (`mastering.limiting_db` in the report). If a section loses more than about 3 dB there (`analyze` warns), its transients flatten and it can measure quieter than the sparser sections around it: lower `target_lufs`, or lower that section's peaks with `mix.saturate` on its loudest parts (a supersaw lead's unison peaks, the kick). Ask the user to listen for the kick losing its click before pushing further.
 
 ## Future bass
 
-Half-time drums at 140–160 BPM with a big clap or snare on beat 3; chords of sevenths and ninths (IVmaj7–V–iii7–vi suits it) on `future_bass_chord`, ducked deep by the kick and held through each bar so the pumping is heard; a pitch LFO on the chords for the wobbling swell; a lead built from short notes, for example `vocal_ah` short notes (bank 1) with a dotted-eighth delay where a vocal chop would go. Drop the chords on the drop's downbeat with the kick. These are conventions of the style, not measurements.
+Half-time drums at 140–160 BPM with a big clap or snare on beat 3; chords of sevenths and ninths (IVmaj7–V–iii7–vi suits it) on `future_bass_chord`, ducked deep by the kick and held through each bar so the pumping is heard; a pitch LFO on the chords for the wobbling swell; a lead built from short notes, for example short notes on `vocal_ah` with a dotted-eighth delay where a vocal chop would go. Drop the chords on the drop's downbeat with the kick. These are conventions of the style, not measurements.
 
 ## Synthwave
 

@@ -51,13 +51,14 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
     conductor.append((0,1,meta(88,bytes([num,den.bit_length()-1,36 if den==8 and num%3==0 else 24,8]))))
     for s in project['sections']:
         conductor.append((round(s['start_bar']*clock.beats_per_bar*TPQ),2,meta(6,s['id'].encode('ascii','replace'))))
-    chunks=[chunk(conductor)];routing=[];melodic=0
+    chunks=[chunk(conductor)];routing=[];melodic=0;kits=0
     for t in tracks:
         patch=t.get('patch') if render else None
         bank=(patch or t).get('bank',0);program=(patch or t).get('program',0)
         drum_channel=bool(t.get('drums')) and (patch is None or bank==128)
         if drum_channel:
-            channel=9;port=0
+            # Each drum part gets channel 10 of its own port, so two kits keep their own program and controllers.
+            channel=9;port=0 if single_stem else kits;kits+=1
         elif single_stem:
             channel=0;port=0
         else:
@@ -170,7 +171,8 @@ def read(path,max_bytes=8_000_000,max_events=1_000_000):
                 elif mt==81:
                     if length!=3:raise ValueError('Invalid tempo')
                     tempo=int.from_bytes(payload,'big')
-                    if not 100000<=tempo<=4000000:raise ValueError('Tempo outside bound')
+                    # Any slower tempo a project's rubato can reach (a 30-minute bound limits the length anyway).
+                    if tempo<100000:raise ValueError('Tempo outside bound')
                     tempos.append([tick,tempo])
                 elif mt==88:
                     if length!=4 or payload[0]==0 or payload[1]>7:raise ValueError('Invalid meter')

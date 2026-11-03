@@ -72,6 +72,9 @@
           "~/.vst3/Surge XT.vst3",
           "/usr/lib/vst3/Surge XT.vst3",
           "/usr/local/lib/vst3/Surge XT.vst3"
+        ],
+        "windows": [
+          "%CommonProgramFiles%/VST3/Surge XT.vst3"
         ]
       },
       "bundle_binaries": {
@@ -81,6 +84,9 @@
         "linux": [
           "Contents/x86_64-linux/Surge XT.so",
           "Contents/aarch64-linux/Surge XT.so"
+        ],
+        "windows": [
+          "Contents/x86_64-win/Surge XT.vst3"
         ]
       }
     },

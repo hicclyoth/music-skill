@@ -40,9 +40,9 @@ One four-note head (scale degrees 5–1–2, then 3) opens the horn call, the Al
 Set up the renderer and the sound banks as the repository README describes, then:
 
 ```
-python examples/above-the-clouds/above_the_clouds.py above_the_clouds.json 1.0.r7 --engine-r7
-python skills/music-production/scripts/studio.py render above_the_clouds.json --config <folder>/local-config.studio.json --output render_overture --cache cache
-python skills/music-production/scripts/studio.py analyze render_overture
+python examples/above-the-clouds/above_the_clouds.py out/above_the_clouds.json 1.0.r7 --engine-r7
+python skills/music-production/scripts/studio.py render out/above_the_clouds.json --config <folder>/local-config.studio.json --output out/render_overture --cache out/cache
+python skills/music-production/scripts/studio.py analyze out/render_overture
 ```
 
 The script writes the same project file as the one published here.

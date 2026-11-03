@@ -10,8 +10,9 @@ deviations stay small and structured:
 - phrase arches and high-loud on melodic parts (KTH rules, Friberg et al. 2006);
 - chords that are not perfectly together: the top note leads in keyboards, section players spread;
 - strummed guitar chords (opt-in `strum`, ms per string): the pick reaches the strings in order, low to high on a
-  downstroke and high to low on an upstroke, and the hand alternates down on each `strum_grid` step and up between
-  them, the usual rhythm-guitar motion.  Upstrokes are a little faster and lighter.  No measurement of string-to-string
+  downstroke and high to low on an upstroke, and the hand alternates on the `strum_grid` steps, down on the even
+  steps and up on the odd ones (with the default 0.5, down on the beat and up on the "and"), the usual rhythm-guitar
+  motion; a chord off the grid is a downstroke.  Upstrokes are a little faster and lighter.  No measurement of string-to-string
   timing was found; sampler strum scripts use 15-20 ms steps, which suits a slow strum, and 4-8 ms suits a driving one;
 - a two-bar periodic accent pattern on hi-hat/ride;
 - a bow-like expression arc (CC11) inside held chords of sustained parts.
@@ -86,9 +87,9 @@ def arch_shape(x):
     return math.sin(math.pi * min(1, max(0, x)) ** 1.357) - .5
 
 
-def phrase_positions(track, sections, melodic):
+def phrase_positions(track, sections, melodic, beats_per_bar=4.0):
     """Position 0..1 of each note inside its phrase: rests of a beat or more for melodic parts, four-bar
-    blocks from each section start otherwise."""
+    blocks from each section start otherwise (`beats_per_bar` quarter notes to a bar)."""
     notes = sorted(track['notes'], key=lambda n: n['on'])
     pos = {}
     if melodic:
@@ -105,11 +106,12 @@ def phrase_positions(track, sections, melodic):
             for n in g:
                 pos[n['id']] = (n['on'] - a) / max(b - a, 1e-9)
         return pos
-    starts = sorted(s['start_bar'] * 4 for s in sections)
+    starts = sorted(s['start_bar'] * beats_per_bar for s in sections)
+    span = 4 * beats_per_bar
     for n in notes:
         s = max([x for x in starts if x <= n['on'] + 1e-9], default=0)
-        block = math.floor((n['on'] - s) / 16) * 16 + s
-        pos[n['id']] = (n['on'] - block) / 16
+        block = math.floor((n['on'] - s) / span) * span + s
+        pos[n['id']] = (n['on'] - block) / span
     return pos
 
 
@@ -140,7 +142,8 @@ def apply(project, overrides=None, seed=1):
         gates = lrc(len(onsets), rng, prof['beta'])
         cycle = rng.uniform(-1, 1, 16)
         melodic = t.get('role') in ('melody', 'countermelody')
-        pos = phrase_positions(t, project['sections'], melodic) if prof['arch'] else {}
+        meter = project['clock']['meter']
+        pos = phrase_positions(t, project['sections'], melodic, meter[0] * 4 / meter[1]) if prof['arch'] else {}
         mean_pitch = sum(n['pitch'] for n in notes) / len(notes)
         by_onset = {}
         for n in notes:

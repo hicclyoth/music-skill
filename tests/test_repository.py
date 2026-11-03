@@ -122,10 +122,20 @@ PERSONAL = [re.compile(p) for p in (
     r'[\w.+-]+@[\w-]+\.[\w.]+', r'(?i)api[_-]?key\s*[:=]\s*[\'"]?\w{12,}')]
 
 
+def repository_files():
+    """The repository's own files: git's list in a checkout (a local .venv or render is not part of it), every file in
+    an unpacked archive."""
+    try:
+        listed = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, check=True).stdout.decode('utf-8')
+        return [ROOT / f for f in listed.split('\0') if f]
+    except (OSError, subprocess.CalledProcessError):
+        return [p for p in ROOT.rglob('*') if p.is_file()]
+
+
 def test_no_personal_data():
     """Nothing of the people who made it: no paths on their machines, no keys, no addresses."""
     hits = []
-    for p in ROOT.rglob('*'):
+    for p in repository_files():
         if not p.is_file() or {'.git', '__pycache__', '.pytest_cache'} & set(p.parts) or p.resolve() == Path(__file__).resolve():
             continue
         if p.suffix == '.mp3':
@@ -134,7 +144,7 @@ def test_no_personal_data():
             if re.search(rb'[A-Za-z]:\\|/Users/|/home/|@', data[10:10 + size]):  # the ID3 tags, not the audio
                 hits.append(f'{p.relative_to(ROOT)}: a path or address in the tags')
             continue
-        if p.suffix not in ('.py', '.md', '.json', '.txt', '.yaml', '.yml', '.toml', '.cfg', ''):
+        if p.suffix not in ('.py', '.md', '.json', '.txt', '.yaml', '.yml', '.toml', '.cfg', '.svg', ''):
             continue
         for i, line in enumerate(p.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
             for allowed in ALLOWED:
@@ -195,4 +205,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (72 if CONFIG else 56), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (84 if CONFIG else 68), [c['name'] for c in report['checks']]

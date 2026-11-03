@@ -33,7 +33,10 @@ chord) starts from the bank's legato preset (bank 32 + k): the same take entered
 regions do with `offset`.  The earlier note keeps sounding for `crossfade_ms` and the two cross over with equal-power
 curves (two pitches, so uncorrelated).  Successive notes of a slur alternate between two renders so each can be faded
 on its own.  A legato note speaks at once, so it leaves out the part's `offset_ms`.  A part that keeps the slur mode
-(a glide on one sample, for solo lines in small steps) keeps it here too, on every dynamic.
+(a glide on one sample, for solo lines in small steps) keeps it here too, on every dynamic.  A crossfade also ends before the next note on
+the outgoing note's render starts: after a long note, fast notes would otherwise enter while that render is still
+fading out.  Where a chord starts during a crossfade, both renders are busy, so the note it would slur into is struck
+with the chord instead.
 
 Bow changes.  A looped sample holds a note for ever on one bow; a string player changes bow every few seconds, a
 small break in the tone.  With `performance.bow_change_s`, a note longer than one and a half times that is cut into
@@ -48,6 +51,7 @@ instead.
 Round robins.  With `performance.round_robin`, a note repeating a pitch within 1.2 s plays a neighbouring key's
 recording, the wheel bringing it back to pitch (musiclib/variation.py).
 """
+import bisect
 import math
 from pathlib import Path
 import threading
@@ -113,12 +117,17 @@ def plan(track, clock):
     onsets = {}
     for n in notes:
         onsets[n['tick']] = onsets.get(n['tick'], 0) + 1
+    # Where a chord starts during a crossfade, both renders are busy (one fading out, one in), so the note it would
+    # slur into is struck instead, with the chord.
+    chords = sorted(n['start_seconds'] for n in notes if onsets[n['tick']] > 1)
+    crowded = lambda a, b: bisect.bisect_left(chords, b) > bisect.bisect_right(chords, a)
     prev, slur, others = None, [], -1.0  # `others`: the latest end among the notes outside the current slur
     for n in notes:
         if n.get('bow_change') and prev is not None:
             # A bow change: the same note re-entered from the legato preset, crossing over in `bow_ms`.
             start = n['start_seconds']
             length = min(track['performance'].get('bow_ms', 60) / 1000, .8 * (start - prev['start_seconds']))
+            prev.setdefault('own_end', prev['end_seconds'])
             prev['end_seconds'] = max(prev['end_seconds'], start + length)
             prev['fade_out'] = (start, length)
             n.update(legato=True, fade_in=(start, length), parity=1 - prev['parity'])
@@ -127,12 +136,13 @@ def plan(track, clock):
             continue
         if (prev is not None and onsets[n['tick']] == 1 and onsets[prev['tick']] == 1 and n['pitch'] != prev['pitch']
                 and abs(n['pitch'] - prev['pitch']) <= span and n['start_seconds'] - prev['end_seconds'] <= gap
-                and others <= n['start_seconds']):
+                and others <= n['start_seconds'] and not crowded(prev['start_seconds'], n['start_seconds'] - early + fade)):
             shift = -early  # back to the written time: the legato preset has no attack to anticipate
             start = max(prev['start_seconds'] + .02, n['start_seconds'] + shift)
             length = min(fade, .8 * (start - prev['start_seconds']))
             if glide_s and abs(n['pitch'] - prev['pitch']) >= 3:
                 n['glide'] = (glide_from * (prev['pitch'] - n['pitch']), glide_s)
+            prev.setdefault('own_end', prev['end_seconds'])
             prev['end_seconds'] = max(prev['end_seconds'], start + length)
             prev['fade_out'] = (start, length)
             n.update(start_seconds=start, end_seconds=max(start + .02, n['end_seconds'] + shift), legato=True,
@@ -142,6 +152,18 @@ def plan(track, clock):
             others = max([others] + [x['end_seconds'] for x in slur])
             slur = [n]
         prev = n
+    # Each crossfade also ends before the next note on the outgoing note's render: the slur alternates between two
+    # renders, so after a long note a fast one would otherwise enter while that render is still fading out.
+    for i, b in enumerate(notes):
+        a = notes[i - 1] if i and b['fade_in'] else None
+        if a is None or a['fade_out'] != b['fade_in']:
+            continue
+        start, length = b['fade_in']
+        c = min((x for x in notes if x['parity'] == a['parity'] and x['start_seconds'] > start), key=lambda x: x['start_seconds'], default=None)
+        if c is not None and c['start_seconds'] < start + length:
+            length = .8 * (c['start_seconds'] - start)
+            a['fade_out'] = b['fade_in'] = (start, length)
+            a['end_seconds'] = max(a['own_end'], start + length)
     for n in notes:
         n['tick'] = max(0, round(clock.beat(n['start_seconds']) * TPQ))
         n['end_tick'] = max(n['tick'] + 1, min(round(clock.total_beats * TPQ), round(clock.beat(n['end_seconds']) * TPQ)))
@@ -339,7 +361,7 @@ def layer_profile(font_path, program, layers):
                 if sid is None or bank['samples'][sid]['type'] == 2:  # a stereo pair is measured on its left channel
                     continue
                 root = z['gens'].get(58, bank['samples'][sid]['root'])
-                roots.setdefault(root, (sid, z['gens'].get(48, 0) / 10))
+                roots.setdefault(root, (sid, z['gens'].get(48, 0) * sf2.EMU_ATTENUATION / 10))  # dB as FluidSynth plays it
         takes.append(roots)
     measured = {}
     def measure(sid):

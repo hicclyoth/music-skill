@@ -1,2 +1,2 @@
 """Original MIT music-production helpers. No external DAW API required."""
-VERSION = '1.0.0'
+VERSION = '0.1.0'

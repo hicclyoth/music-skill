@@ -37,6 +37,9 @@ MAX_RECORDS = 2_000_000
 # it).  SF2 default 1: velocity to attenuation, concave, 960 cB.  Default 2: velocity to filter cutoff, -2400 cents;
 # FluidSynth applies it only from velocity 64 (a switch as second source), so both forms are listed.
 VELOCITY_TO_ATTENUATION = ((0x0502, 48, 0),)
+# FluidSynth applies a zone's initialAttenuation (generator 48) at 0.4 of its centibels, as the EMU8000 did, so a bank
+# that wants N cB heard writes N / 0.4 (measured with FluidSynth 2.6.1: 120 written, 4.8 dB heard).
+EMU_ATTENUATION = 0.4
 VELOCITY_TO_FILTER = ((0x0102, 8, 0), (0x0102, 8, 0x0C02))
 
 def override(identities, amount):

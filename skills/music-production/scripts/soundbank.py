@@ -28,7 +28,7 @@ import os
 import re
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import numpy as np
 from musiclib import sf2, wavfile
 from musiclib.model import file_hash, save_json
@@ -402,6 +402,17 @@ def _note_run(names):
         raise ValueError(f'Run {names} goes down')
     return list(range(lo, hi + 1))
 
+def contained(root, rel, what):
+    """`root`/`rel` for a relative path that stays inside `root` (no absolute path, "..", drive or backslash, and no
+    link out of it); a manifest or spec from elsewhere cannot reach other files."""
+    parts = PurePosixPath(rel).parts if isinstance(rel, str) else ()
+    if not parts or rel.startswith('/') or '..' in parts or ':' in rel or '\\' in rel:
+        raise ValueError(f'{what} {rel!r}: expected a relative path inside its folder')
+    path = Path(root) / rel
+    if not path.resolve().is_relative_to(Path(root).resolve()):
+        raise ValueError(f'{what} {rel!r} leads out of its folder')
+    return path
+
 def _cut_note(x, start, end, fade, rate, path):
     """Write samples start..end of `x` as a float WAV, the last `fade` samples faded out; returns the file's SHA-256."""
     y = np.array(x[start:end], dtype=np.float32)
@@ -425,14 +436,20 @@ def cut_sources(manifest, src_root, out_root):
     against its recorded SHA-256: an installer reproduces the intake's notes exactly without re-running the note finder,
     whose floating-point decisions could differ by a frame on another platform."""
     src_root, out_root = Path(src_root), Path(out_root)
-    by_source = {}
+    by_source, targets = {}, {}
     for n in manifest['notes']:
+        contained(src_root, n['source'], 'source')
+        path = targets[n['file']] = contained(out_root, n['file'], 'note file')
+        if path.exists():
+            raise ValueError(f'{n["file"]} exists; cut writes into a new folder')
         by_source.setdefault(n['source'], []).append(n)
+    if len(targets) != len(manifest['notes']):
+        raise ValueError('Two notes of the manifest write one file')
     for source, notes in by_source.items():
         x, info = read_audio(src_root / source)
         x = np.asarray(x, dtype=np.float32)
         for n in notes:
-            path = out_root / n['file']
+            path = targets[n['file']]
             path.parent.mkdir(parents=True, exist_ok=True)
             if _cut_note(x, n['start'], n['end'], n['fade'], info['rate'], path) != n['sha256']:
                 raise ValueError(f'{n["file"]}: the cut does not reproduce the recorded note')
@@ -460,7 +477,7 @@ def split_sources(split, src_root, out_root):
         tolerance = group.get('tolerance_cents', 80)
         candidates = {}
         for entry in group['files']:
-            path = src_root / entry['file']
+            path = contained(src_root, entry['file'], 'source')
             x, info = read_audio(path)
             rate = info['rate']
             x = np.asarray(x, dtype=np.float32)
@@ -516,7 +533,7 @@ def split_sources(split, src_root, out_root):
                 candidates.setdefault(key, []).append({'entry': entry, 'x': x, 'rate': rate, 'start': a, 'end': b, 'note': n})
         prefer = group.get('strings')
         order = list(prefer) if prefer else []
-        folder = out_root / group['name']
+        folder = contained(out_root, group['name'], 'group')
         folder.mkdir(parents=True, exist_ok=True)
         written = 0
         for (dyn, which), cands in sorted(candidates.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
@@ -1034,7 +1051,7 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             match = None
             if loop and (layer.get('loop_repair') or layer.get('loop') == 'found'):
                 x, loop, match = steady_loop(x, info['rate'], loop, **layer.get('loop_repair', {}),
-                                             found=layer.get('loop') == 'found', f0=440 * 2 ** ((named - 69) / 12))
+                                             found=layer.get('loop') == 'found', f0=440 * 2 ** ((e['named'] - 69) / 12))
             elif loop and len(x) - loop[1] < 8:
                 # Interpolation reads a few frames past the loop end: there they repeat the loop's first frames.
                 x = np.concatenate([x[:loop[1]], x[loop[0]:loop[0] + 16]])
@@ -1256,6 +1273,13 @@ def build(spec, root, output, ffmpeg=None):
         _derived_presets(pspec, contexts, stored, instruments, presets, receipt)
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    # Attenuations are kept in the centibels meant to be heard and written for FluidSynth (sf2.EMU_ATTENUATION).
+    seen = set()
+    for item in instruments + presets:
+        for gens in [item.get('global') or {}] + [z['gens'] for z in item.get('zones', [])]:
+            if id(gens) not in seen and gens.get(48):
+                gens[48] = min(1440, int(round(gens[48] / sf2.EMU_ATTENUATION)))
+            seen.add(id(gens))
     sf2.write(output, spec['name'], samples, instruments, presets, comment=spec.get('comment', ''),
               copyright_notice=spec.get('copyright', ''))
     receipt['output'] = {'path': str(output), 'sha256': file_hash(output), 'bytes': output.stat().st_size,

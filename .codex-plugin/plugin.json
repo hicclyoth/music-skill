@@ -8,7 +8,7 @@
   },
   "homepage": "https://github.com/owoevan-dev/music-skill",
   "repository": "https://github.com/owoevan-dev/music-skill",
-  "license": "MIT",
+  "license": "MIT AND GPL-3.0-or-later",
   "keywords": [
     "music",
     "composition",

@@ -33,6 +33,7 @@ import os
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import sys
 import tarfile
 import time
 import urllib.error
@@ -43,15 +44,32 @@ from musiclib.model import file_hash, save_json
 HOSTS = {'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com', 'raw.githubusercontent.com',
          'api.github.com', 'theremin.music.uiowa.edu'}
 SKILL = Path(__file__).resolve().parents[1]
+NUMPY_BUILD = '2.1.2'  # the NumPy the locked builds were made with
 
-def fetch(url, dest, size=None, max_bytes=2_000_000_000, tries=4):
-    """Download `url` to `dest` through a .partial file.  A dropped connection, a timeout or a server error is tried
-    again after a pause (3, 6, 12 s); a refused host, a missing file or a size over the lock is not."""
-    if urllib.parse.urlsplit(url).hostname not in HOSTS:
+class Allowed(urllib.request.HTTPRedirectHandler):
+    """Follows a redirect only to an allowed host over HTTPS, checked before the request is made."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parts = urllib.parse.urlsplit(newurl)
+        if parts.scheme != 'https' or parts.hostname not in HOSTS:
+            raise ValueError('Redirect to a host that is not allowed: ' + newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+OPENER = urllib.request.build_opener(Allowed)
+
+class Damaged(OSError):
+    """A download that ended short or does not match what the lock expects: tried again like a dropped connection."""
+
+def fetch(url, dest, size=None, max_bytes=2_000_000_000, tries=4, check=None):
+    """Download `url` to `dest` through a .partial file, which becomes `dest` only when it is complete (its locked
+    `size`, or the server's Content-Length) and passes `check` (a function of the file, e.g. its hash).  A dropped
+    connection, a short or damaged file, a timeout or a server error is tried again after a pause (3, 6, 12 s); a
+    refused host, a missing file or a size over the lock is not."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != 'https' or parts.hostname not in HOSTS:
         raise ValueError('Host not allowed: ' + url)
     for attempt in range(tries):
         try:
-            return _fetch_once(url, dest, size, max_bytes)
+            return _fetch_once(url, dest, size, max_bytes, check)
         except (OSError, http.client.HTTPException) as e:
             final = isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
             if final or attempt == tries - 1:
@@ -59,44 +77,88 @@ def fetch(url, dest, size=None, max_bytes=2_000_000_000, tries=4):
             print(f'retrying {url} after {type(e).__name__}', flush=True)
             time.sleep(3 * 2 ** attempt)
 
-def _fetch_once(url, dest, size, max_bytes):
+def _fetch_once(url, dest, size, max_bytes, check):
     req = urllib.request.Request(url, headers={'User-Agent': 'MusicProductionSkill/2.0'})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        if urllib.parse.urlsplit(r.url).hostname not in HOSTS:
-            raise ValueError('Unexpected redirect to ' + r.url)
-        temp = dest.with_name(dest.name + '.partial')
-        count = 0
-        with temp.open('wb') as out:
-            while chunk := r.read(1 << 20):
-                count += len(chunk)
-                if count > (size or max_bytes):
-                    raise ValueError('Download exceeds locked size')
-                out.write(chunk)
-    if size is not None and count != size:
-        raise ValueError('Download size mismatch')
-    temp.replace(dest)
+    temp = dest.with_name(dest.name + '.partial')
+    try:
+        with OPENER.open(req, timeout=120) as r:
+            if urllib.parse.urlsplit(r.url).hostname not in HOSTS:
+                raise ValueError('Unexpected redirect to ' + r.url)
+            # A connection the server closes early ends the reads without an error: the length tells.
+            announced = r.headers.get('Content-Length')
+            expected = size if size is not None else int(announced) if announced and announced.isdigit() else None
+            count = 0
+            with temp.open('wb') as out:
+                while chunk := r.read(1 << 20):
+                    count += len(chunk)
+                    if count > (size or max_bytes):
+                        raise ValueError('Download exceeds locked size')
+                    out.write(chunk)
+        if expected is not None and count != expected:
+            raise Damaged(f'{url}: {count} of {expected} bytes arrived')
+        if check and not check(temp):
+            raise Damaged(f'{url}: the download does not match the lock')
+        temp.replace(dest)
+    finally:
+        temp.unlink(missing_ok=True)
+
+def cached(url, dest, offline, size=None, check=None, max_bytes=2_000_000_000):
+    """`dest` from an earlier run if it still passes `check`; otherwise (a file left damaged, or none) downloaded."""
+    if dest.exists():
+        if (size is None or dest.stat().st_size == size) and (check is None or check(dest)):
+            return
+        if offline:
+            raise ValueError(f'Offline, and the cached {dest} does not match the lock')
+        print(f'{dest.name}: the cached copy does not match the lock; downloading it again', flush=True)
+        dest.unlink()
+    elif offline:
+        raise ValueError('Offline cache missing ' + str(dest))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fetch(url, dest, size, max_bytes, check=check)
+
+def sha256_is(expected):
+    return lambda path: file_hash(path) == expected
 
 def safe_member(name):
     p = PurePosixPath(name)
     return not (p.is_absolute() or '..' in p.parts or ':' in name or '\\' in name)
 
 def archive_tool():
-    """A libarchive tar for the .7z banks: Windows' own tar.exe, macOS's tar, or bsdtar (Linux: libarchive-tools).
-    GNU tar cannot read 7z."""
-    if os.name == 'nt':
-        return str(Path(os.environ['SystemRoot']) / 'System32' / 'tar.exe')
-    for name in ('bsdtar', 'tar'):
-        tool = shutil.which(name)
-        if tool and 'bsdtar' in subprocess.run([tool, '--version'], capture_output=True, text=True).stdout:
-            return tool
-    raise ValueError('The .7z banks need bsdtar (libarchive): on Debian/Ubuntu `sudo apt install libarchive-tools`')
+    """A reader for the .7z banks (LZMA-compressed): a libarchive tar built with liblzma (Windows 11's own tar.exe,
+    macOS's tar, or bsdtar: on Linux, libarchive-tools), or else 7-Zip's 7z.  GNU tar cannot read 7z, and the
+    tar.exe of Windows 10 lacks LZMA.  Returns (kind, path)."""
+    candidates = ([str(Path(os.environ['SystemRoot']) / 'System32' / 'tar.exe')] if os.name == 'nt' and os.environ.get('SystemRoot') else []) + \
+                 [t for t in (shutil.which('bsdtar'), shutil.which('tar')) if t]
+    for tool in candidates:
+        try:
+            version = subprocess.run([tool, '--version'], capture_output=True, text=True, timeout=30,
+                                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+        except OSError:
+            continue
+        if 'bsdtar' in version and 'liblzma' in version:
+            return 'tar', tool
+    sevenzip = shutil.which('7z') or shutil.which('7za') or next(
+        (str(p) for p in [Path(os.environ.get(v, '')) / '7-Zip' / '7z.exe' for v in ('ProgramFiles', 'ProgramFiles(x86)')] if p.is_file()), None)
+    if sevenzip:
+        return '7z', sevenzip
+    raise ValueError('The .7z banks need a tar with LZMA (bsdtar/libarchive with liblzma; on Debian/Ubuntu '
+                     '`sudo apt install libarchive-tools`) or 7-Zip (Windows 10\'s own tar.exe cannot read them)')
+
+def _run(argv):
+    done = subprocess.run(argv, capture_output=True, text=True, timeout=1800, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    if done.returncode:
+        raise ValueError(f'{Path(argv[0]).name} failed ({done.returncode}): ' + (done.stderr or done.stdout).strip()[-600:])
+    return done.stdout
 
 def list_members(archive, fmt):
     if fmt == 'tar.xz':
         with tarfile.open(archive, 'r:xz') as t:
             return [m.name for m in t.getmembers()], [m.name for m in t.getmembers() if m.issym() or m.islnk()]
-    out = subprocess.run([archive_tool(), '-tf', str(archive)], capture_output=True, text=True, check=True,
-                         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+    kind, tool = archive_tool()
+    if kind == '7z':
+        out = _run([tool, 'l', '-ba', '-slt', str(archive)])
+        return [line[7:].replace('\\', '/') for line in out.splitlines() if line.startswith('Path = ')], []
+    out = _run([tool, '-tf', str(archive)])
     return [line for line in out.splitlines() if line.strip()], []
 
 def extract(archive, fmt, members, target):
@@ -106,8 +168,11 @@ def extract(archive, fmt, members, target):
             for name in members:
                 t.extract(t.getmember(name), target, filter='data')
         return
-    subprocess.run([archive_tool(), '-xf', str(archive), '-C', str(target), *members], check=True,
-                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+    kind, tool = archive_tool()
+    if kind == '7z':
+        _run([tool, 'x', '-y', f'-o{target}', str(archive), *members])
+    else:
+        _run([tool, '-xf', str(archive), '-C', str(target), *members])
 
 def git_blob_sha1s(path):
     """Blob hashes a file may match: as stored, and for text files also with CRLF -> LF (a Windows
@@ -118,10 +183,7 @@ def git_blob_sha1s(path):
 
 def install_archive(item, runtime, cache, offline):
     archive = cache / Path(urllib.parse.urlsplit(item['url']).path).name
-    if not archive.exists():
-        if offline:
-            raise ValueError('Offline cache missing ' + str(archive))
-        fetch(item['url'], archive, item['bytes'])
+    cached(item['url'], archive, offline, item['bytes'], sha256_is(item['sha256']))
     if archive.stat().st_size != item['bytes'] or file_hash(archive) != item['sha256']:
         raise ValueError('Archive integrity failed: ' + item['name'])
     names, links = list_members(archive, item['format'])
@@ -156,10 +218,11 @@ def install_prebuilt(item, asset, runtime, cache, release, offline, local=None):
     grow past the locked SF2 size, and must give the build's locked hash before it takes the built bank's place."""
     target = runtime / 'build' / f'{item["name"]}-{item["version"].split()[-1]}.sf2'
     packed = Path(local) / asset['file'] if local else cache / asset['file']
-    if not packed.exists():
-        if local or offline:
+    if local:
+        if not packed.exists():
             raise ValueError('Missing prebuilt asset ' + str(packed))
-        fetch(release + urllib.parse.quote(asset['file']), packed, asset['bytes'])
+    else:
+        cached(release + urllib.parse.quote(asset['file']), packed, offline, asset['bytes'], sha256_is(asset['sha256']))
     if packed.stat().st_size != asset['bytes'] or file_hash(packed) != asset['sha256']:
         raise ValueError('Prebuilt asset does not match the lock: ' + asset['file'])
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -194,7 +257,6 @@ def requested(lock, only):
     return names
 
 def install_build(item, runtime, source, offline, ffmpeg=None):
-    from soundbank import build
     commit, repo = item['commit'], item['repository']
     ready = built(item, runtime)
     if ready:
@@ -203,10 +265,13 @@ def install_build(item, runtime, source, offline, ffmpeg=None):
                 'verified_samples': None}
     tree_file = runtime / 'sources' / f'{repo.replace("/", "_")}_{commit}_tree.json'
     tree_file.parent.mkdir(parents=True, exist_ok=True)
-    if not tree_file.exists():
-        if offline:
-            raise ValueError('Offline: tree listing missing ' + str(tree_file))
-        fetch(f'https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1', tree_file, max_bytes=20_000_000)
+    def listing(path):
+        try:
+            t = json.loads(path.read_text(encoding='utf-8'))
+        except ValueError:
+            return False
+        return t.get('sha') == commit or t.get('url', '').endswith(commit)
+    cached(f'https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1', tree_file, offline, check=listing, max_bytes=20_000_000)
     tree = json.loads(tree_file.read_text(encoding='utf-8'))
     if tree.get('sha') != commit and not tree.get('url', '').endswith(commit):
         raise ValueError('Tree listing does not belong to the pinned commit')
@@ -215,30 +280,38 @@ def install_build(item, runtime, source, offline, ffmpeg=None):
     root = runtime / 'sources' / f'{repo.split("/")[1]}-{commit[:12]}'
     for path in wanted:
         dest = root / path
-        if not dest.exists():
-            local = Path(source) / path if source else None
-            if local and local.exists():
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(local, dest)
-            elif offline:
-                raise ValueError('Offline: missing sample ' + path)
-            else:
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                fetch(f'https://raw.githubusercontent.com/{repo}/{commit}/{urllib.parse.quote(path)}', dest, max_bytes=200_000_000)
-        if blobs[path] not in git_blob_sha1s(dest):
-            raise ValueError('Sample does not match the pinned commit: ' + path)
+        matches = lambda f, sha=blobs[path]: sha in git_blob_sha1s(f)
+        local = Path(source) / path if source else None
+        if not dest.exists() and local and local.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(local, dest)
+        cached(f'https://raw.githubusercontent.com/{repo}/{commit}/{urllib.parse.quote(path)}', dest, offline, check=matches, max_bytes=200_000_000)
     output = runtime / 'build' / f'{item["name"]}-{item["version"].split()[-1]}.sf2'
-    if not output.exists():
-        receipt = build(json.loads((SKILL / 'references' / item['spec']).read_text(encoding='utf-8')), root, output, ffmpeg)
-        save_json(output.with_suffix('.receipt.json'), receipt)
-    if file_hash(output) != item['output_sha256']:
-        raise ValueError('Rebuilt bank does not reproduce the locked hash: ' + item['name'])
+    build_bank(item, json.loads((SKILL / 'references' / item['spec']).read_text(encoding='utf-8')), root, output, ffmpeg)
     return {'path': str(output), 'sha256': item['output_sha256'], 'license': item['license'],
             'source': f'https://github.com/{repo} at {commit} with references/{item["spec"]}', 'version': item['version'],
             'verified_samples': len(wanted)}
 
+def build_bank(item, spec, root, output, ffmpeg):
+    """Build into a .partial file that becomes the bank only with the locked hash, so a failed build is never kept."""
+    from soundbank import build
+    if output.exists() and file_hash(output) == item['output_sha256']:
+        return
+    partial = output.with_name(output.stem + '.partial.sf2')
+    try:
+        receipt = build(spec, root, partial, ffmpeg)
+        if file_hash(partial) != item['output_sha256']:
+            import numpy
+            raise ValueError(f'Rebuilt bank does not reproduce the locked hash: {item["name"]}.  The lock was built with '
+                             f'NumPy {NUMPY_BUILD} (this is NumPy {numpy.__version__}); a different NumPy can round a few '
+                             'samples differently.  Install the prebuilt bank instead (leave out --from-source).')
+        partial.replace(output)
+        save_json(output.with_suffix('.receipt.json'), receipt)
+    finally:
+        partial.unlink(missing_ok=True)
+
 def install_split(item, runtime, offline, ffmpeg=None):
-    from soundbank import build, cut_sources, save_manifest
+    from soundbank import cut_sources, save_manifest
     ready = built(item, runtime)
     if ready:
         return {'path': str(ready), 'sha256': item['output_sha256'], 'license': item['license'],
@@ -247,13 +320,7 @@ def install_split(item, runtime, offline, ffmpeg=None):
     source = runtime / 'sources' / item['source_folder']
     for f in item['files']:
         dest = source / f['path']
-        if not dest.exists():
-            if offline:
-                raise ValueError('Offline: missing recording ' + f['path'])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            fetch(item['base'] + urllib.parse.quote(f['path']), dest, f['bytes'])
-        if dest.stat().st_size != f['bytes'] or file_hash(dest) != f['sha256']:
-            raise ValueError('Recording does not match the lock: ' + f['path'])
+        cached(item['base'] + urllib.parse.quote(f['path']), dest, offline, f['bytes'], sha256_is(f['sha256']))
     spec = json.loads((SKILL / 'references' / item['spec']).read_text(encoding='utf-8'))
     version = item['version'].split()[-1]
     notes = runtime / 'sources' / f'{item["name"]}-{version}-notes'
@@ -267,11 +334,7 @@ def install_split(item, runtime, offline, ffmpeg=None):
         save_manifest(partial / 'split.json', manifest)
         partial.replace(notes)
     output = runtime / 'build' / f'{item["name"]}-{version}.sf2'
-    if not output.exists():
-        receipt = build(spec, notes, output, ffmpeg)
-        save_json(output.with_suffix('.receipt.json'), receipt)
-    if file_hash(output) != item['output_sha256']:
-        raise ValueError('Rebuilt bank does not reproduce the locked hash: ' + item['name'])
+    build_bank(item, spec, notes, output, ffmpeg)
     return {'path': str(output), 'sha256': item['output_sha256'], 'license': item['license'],
             'source': f'{item["page"]} ({len(item["files"])} recordings) with references/{item["spec"]}',
             'version': item['version'], 'verified_samples': len(item['files'])}
@@ -299,38 +362,49 @@ def main():
     runtime = args.runtime.resolve()
     cache = (args.archive_cache or runtime / 'archives').resolve()
     cache.mkdir(parents=True, exist_ok=True)
-    config = json.loads(args.config.read_text(encoding='utf-8'))
-    for key in ('fluidsynth', 'ffmpeg', 'soundfont'):
-        p = Path(config[key]['path'])
-        if not p.is_absolute():
-            config[key]['path'] = str((args.config.resolve().parent / p).resolve())
+    from musiclib.audio import absolute_paths
+    config = absolute_paths(json.loads(args.config.read_text(encoding='utf-8')), args.config.resolve().parent)
     fonts = config.setdefault('soundfonts', {})
+    failed = {}
     for item in lock['archives']:
         if only is None or item['name'] in only:
-            fonts[item['name']] = install_archive(item, runtime, cache, args.offline)
-            print('VERIFIED', item['name'], flush=True)
+            try:
+                fonts[item['name']] = install_archive(item, runtime, cache, args.offline)
+                print('VERIFIED', item['name'], flush=True)
+            except (OSError, ValueError, http.client.HTTPException) as e:
+                failed[item['name']] = str(e)
+                print('FAILED', item['name'], '|', e, flush=True)
     for item in lock['builds']:
         if only is None or item['name'] in only:
-            used = None
-            if item['name'] in prebuilt and not built(item, runtime):
-                try:
-                    install_prebuilt(item, prebuilt[item['name']], runtime, cache, lock['prebuilt']['release'], args.offline,
-                                     args.prebuilt_from)
-                    name = prebuilt[item['name']]['file']
-                    used = str(args.prebuilt_from.resolve() / name) if args.prebuilt_from else lock['prebuilt']['release'] + name
-                    print('PREBUILT', item['name'], flush=True)
-                except (OSError, ValueError, EOFError, lzma.LZMAError, http.client.HTTPException) as e:
-                    print(f'{item["name"]}: no prebuilt bank ({e}); building it from its sources', flush=True)
-            if item.get('kind') == 'split':
-                fonts[item['name']] = install_split(item, runtime, args.offline, config['ffmpeg']['path'])
-            else:
-                fonts[item['name']] = install_build(item, runtime, args.vsco_source, args.offline, config['ffmpeg']['path'])
-            if used:
-                fonts[item['name']]['prebuilt'] = used
-            count = fonts[item['name']]['verified_samples']
-            print('VERIFIED', item['name'], f'{count} samples' if count is not None else '(the built bank matches its lock)', flush=True)
+            try:
+                used = None
+                if item['name'] in prebuilt and not built(item, runtime):
+                    try:
+                        install_prebuilt(item, prebuilt[item['name']], runtime, cache, lock['prebuilt']['release'], args.offline,
+                                         args.prebuilt_from)
+                        name = prebuilt[item['name']]['file']
+                        used = str(args.prebuilt_from.resolve() / name) if args.prebuilt_from else lock['prebuilt']['release'] + name
+                        print('PREBUILT', item['name'], flush=True)
+                    except (OSError, ValueError, EOFError, lzma.LZMAError, http.client.HTTPException) as e:
+                        print(f'{item["name"]}: no prebuilt bank ({e}); building it from its sources', flush=True)
+                if item.get('kind') == 'split':
+                    fonts[item['name']] = install_split(item, runtime, args.offline, config['ffmpeg']['path'])
+                else:
+                    vsco = args.vsco_source if item['repository'].endswith('/VSCO-2-CE') else None
+                    fonts[item['name']] = install_build(item, runtime, vsco, args.offline, config['ffmpeg']['path'])
+                if used:
+                    fonts[item['name']]['prebuilt'] = used
+                count = fonts[item['name']]['verified_samples']
+                print('VERIFIED', item['name'], f'{count} samples' if count is not None else '(the built bank matches its lock)', flush=True)
+            except (OSError, ValueError, EOFError, lzma.LZMAError, http.client.HTTPException) as e:
+                failed[item['name']] = str(e)
+                print('FAILED', item['name'], '|', e, flush=True)
+    # The banks that did install are written to the configuration either way; a failure is listed and ends in exit 2.
     save_json(args.output.resolve(), config)
     print('Saved', args.output.resolve())
+    if failed:
+        raise ValueError(f'{len(failed)} bank(s) failed: ' + '; '.join(f'{k}: {v}' for k, v in failed.items()) +
+                         '.  The others are configured; run again with --only ' + ','.join(failed) + ' (and a new --output) to retry.')
     if args.delete_sources:
         delete_sources(lock, only, runtime, cache)
 
@@ -370,4 +444,10 @@ def delete_sources(lock, only, runtime, cache):
     print(f'Freed {freed / 1e6:.0f} MB of downloaded sources')
 
 if __name__ == '__main__':
-    main()
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors='backslashreplace')
+    try:
+        main()
+    except (ValueError, OSError) as e:
+        print('ERROR:', e, file=sys.stderr)
+        sys.exit(2)

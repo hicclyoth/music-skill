@@ -334,8 +334,8 @@
       "checksum_evidence": "Size and SHA-256 of each file recorded at retrieval on 2026-11-03 (the publisher lists none); every cut note is checked against the hash in the notes manifest",
       "spec": "soundbanks/iowa_brass.json",
       "notes": "soundbanks/iowa_brass.notes.json",
-      "version": "Iowa MIS (1997-2013 recordings) build b1",
-      "output_sha256": "8e71e7df5a3bae2ccb6a89e609acbab26a9c2622a624d9dc6cf25d1271ceeafb",
+      "version": "Iowa MIS (1997-2013 recordings) build b2",
+      "output_sha256": "19fba7b2497fcd7302127b687560ea61ced2638e91b9ae26060c7ef46a6abed0",
       "files": [
         {
           "path": "sound files/MIS/Brass/basstrombone/BassTrombone.ff. Db1B1.aiff",
@@ -494,8 +494,8 @@
       "checksum_evidence": "Size and SHA-256 of each file recorded at retrieval on 2026-11-03 (the publisher lists none); every cut note is checked against the hash in the notes manifest",
       "spec": "soundbanks/iowa_winds.json",
       "notes": "soundbanks/iowa_winds.notes.json",
-      "version": "Iowa MIS (1997-2013 recordings) build b3",
-      "output_sha256": "6a60003e9db6fd094be2a59ea718d27eabc5fc3655686cd5f7ce0bb1feb40fd3",
+      "version": "Iowa MIS (1997-2013 recordings) build b4",
+      "output_sha256": "567a4a14ec91899e8fbcef45a459794928f58aba5f85521327f78e3b7713fa29",
       "files": [
         {
           "path": "sound files/MIS/Woodwinds/Ebclarinet/EbClar.ff.C4B4.aiff",
@@ -786,8 +786,8 @@
       "checksum_evidence": "Size and SHA-256 of each file recorded at retrieval on 2026-11-03 (the publisher lists none); every cut note is checked against the hash in the notes manifest",
       "spec": "soundbanks/iowa_strings.json",
       "notes": "soundbanks/iowa_strings.notes.json",
-      "version": "Iowa MIS (1997-2013 recordings) build b3",
-      "output_sha256": "feacd614de18e2e73bec8605bc74e7844ae2fb6a40dfd4cbb6cd07b5ba49e9ae",
+      "version": "Iowa MIS (1997-2013 recordings) build b4",
+      "output_sha256": "be8e992a1e92c21d4ee367b18f5b7f287091eab3bf30c6c89dc9e178b3971f43",
       "files": [
         {
           "path": "sound files/MIS/Strings/cello/Cello.arco.ff.sulA.A3B3.aiff",
@@ -2500,8 +2500,8 @@
       "checksum_evidence": "Size and SHA-256 of each file recorded at retrieval on 2026-11-03 (the publisher lists none); every cut note is checked against the hash in the notes manifest",
       "spec": "soundbanks/iowa_perc.json",
       "notes": "soundbanks/iowa_perc.notes.json",
-      "version": "Iowa MIS (1997-2013 recordings) build b2",
-      "output_sha256": "20931bb8b94f2a7bdc090de3691f61c333c277223a6015139851a421b9c57b0e",
+      "version": "Iowa MIS (1997-2013 recordings) build b3",
+      "output_sha256": "3a8779ec4c8fe89233a27bd51a8b53ce5df339e5518db798722fd03d697bc8be",
       "files": [
         {
           "path": "sound files/MIS/Percussion/Bells/bells.plastic.ff.C5B5.aif",
@@ -3374,9 +3374,9 @@
         "Woodwinds/Flute/susvib/",
         "Woodwinds/Oboe/Vib/"
       ],
-      "output_sha256": "5cf323b9e5184a74fed915428ce2100899242bfc8dc398f3930688444ec3a391",
+      "output_sha256": "dfb5f0ff2d8b9251a293706d200667bc40d0abfaccede9bae2224c0ca172c1ad",
       "license": "CC0-1.0 source samples: VSCO 2 Community Edition by Versilian Studios (the library also asks that the samples are not sold as such and encourages credit and a link to its homepage); built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     },
     {
       "name": "vcsl_keys",
@@ -3438,9 +3438,9 @@
         "Aerophones/Reed Aerophones/Tenor Saxophone/Staccato/",
         "Aerophones/Reed Aerophones/Tenor Saxophone/Vibrato/"
       ],
-      "output_sha256": "fad6aa64e581887d33defc015223bdec11e9913b10e1afa453d4985c09b1f459",
+      "output_sha256": "f88a7137b11baa0903f380e9d84526f9881be761ea8470ef418019ceff8d5d00",
       "license": "CC0-1.0 source samples: VCSL by Versilian Studios; built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     },
     {
       "name": "vcsl_world",
@@ -3693,9 +3693,9 @@
         "Samples/*_s_vl?_rr?_*.wav",
         "Samples/*_ss_vl?_rr?_*.wav"
       ],
-      "output_sha256": "5e853634cb4cebbb2e35c274d6d2b3dbbb45ee94ba2a5d447dbe32da8ac08a37",
+      "output_sha256": "5a5771d7ef28a5cb95dd4a4793fec47d2dbd4a839bf5f0165c97181e89117682",
       "license": "CC0-1.0 source samples (sfzinstruments/karoryfer.war-tuba); built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     },
     {
       "name": "sax_bear",
@@ -3786,33 +3786,33 @@
         "sf2_bytes": 336163344
       },
       "iowa_brass": {
-        "file": "iowa_brass-b1.sf2.xz",
-        "bytes": 20732240,
-        "sha256": "4247ed4eef3867579af9e0912e7834ac0597ff7e58543a730baff641c2a16ccc",
-        "sf2_bytes": 41976460
+        "file": "iowa_brass-b2.sf2.xz",
+        "bytes": 20729092,
+        "sha256": "84daacd29198f98d2ef35c9682d11da76774c89144dbe03fcc8d44578ccf88b2",
+        "sf2_bytes": 41967838
       },
       "iowa_winds": {
-        "file": "iowa_winds-b3.sf2.xz",
+        "file": "iowa_winds-b4.sf2.xz",
         "bytes": 47445724,
-        "sha256": "976acc3ce51e1ae1ba84fd19a6f6034f906524a6acef97e0f445e931d63fe4ff",
+        "sha256": "171a044a0670c505622e66ecbcdfc4ca55c85cfe14052eec8dd2219c19d55510",
         "sf2_bytes": 72748772
       },
       "iowa_strings": {
-        "file": "iowa_strings-b3.sf2.xz",
-        "bytes": 101240488,
-        "sha256": "02090d75cf1744d24db2e25fc28877e6f16c8fff6c50cd4b753f946953b407ec",
+        "file": "iowa_strings-b4.sf2.xz",
+        "bytes": 101240156,
+        "sha256": "ea3a0fae7ad2aa5192c10666a003e75274c099e2e1ad5acb7b6644b009e1dff8",
         "sf2_bytes": 171586396
       },
       "iowa_perc": {
-        "file": "iowa_perc-b2.sf2.xz",
-        "bytes": 131961748,
-        "sha256": "8b60eae341f6173b74ea5464be42896f49942a7c6d65427ad3d73103d2efc134",
+        "file": "iowa_perc-b3.sf2.xz",
+        "bytes": 131961776,
+        "sha256": "a1fa1554971d16339a03cb0b7c0beefd3e3ab04f87c0067e35bd88322e150dbb",
         "sf2_bytes": 465159782
       },
       "vsco_colors": {
-        "file": "vsco_colors-b1.sf2.xz",
-        "bytes": 167946416,
-        "sha256": "5a3c177ed446ffd52f32f452bb9b698b8d5c3e5b537298ada281adb0eee9828a",
+        "file": "vsco_colors-b2.sf2.xz",
+        "bytes": 167946352,
+        "sha256": "a954fb6bbf2244a0cbbe8e3722d2ae4f68384c736e4380c3725beaf57830f46e",
         "sf2_bytes": 373648170
       },
       "vcsl_keys": {
@@ -3822,10 +3822,10 @@
         "sf2_bytes": 798603008
       },
       "vcsl_winds": {
-        "file": "vcsl_winds-b1.sf2.xz",
-        "bytes": 235728620,
-        "sha256": "48d1a627400c27b9e28fc27466c2d25ce9d068bc05a0e3e833db504c5f23fec6",
-        "sf2_bytes": 363451994
+        "file": "vcsl_winds-b2.sf2.xz",
+        "bytes": 235720936,
+        "sha256": "b9ce9ea441fbe7a46ca0355370ce91f8e8a422f345fe3bb665e877198947a0ae",
+        "sf2_bytes": 363445338
       },
       "vcsl_world": {
         "file": "vcsl_world-b1.sf2.xz",
@@ -3858,10 +3858,10 @@
         "sf2_bytes": 117100834
       },
       "tuba_war": {
-        "file": "tuba_war-b1.sf2.xz",
-        "bytes": 24980640,
-        "sha256": "7d25018166f4d8514c0d5dd13ce4791d2735b56447f1ee8ef798ba1552b6f755",
-        "sf2_bytes": 79901084
+        "file": "tuba_war-b2.sf2.xz",
+        "bytes": 24899448,
+        "sha256": "a0b93bdfb0d6825dcde01d04dec11a45f2c6e9681474c5d17ac91ed8f9a9c414",
+        "sf2_bytes": 79631236
       },
       "sax_bear": {
         "file": "sax_bear-b1.sf2.xz",

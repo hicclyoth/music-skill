@@ -223,7 +223,7 @@ def encode_ogg(cfg, wav, ogg, start_f, end_f, logs, name):
     """Vorbis copy of a loop WAV with LOOPSTART/LOOPLENGTH, and whether its length and tags came out right."""
     # Vorbis comments live in the stream's header, so the tags go on the audio stream, not the container.
     audio.ffmpeg(cfg, ['-i', wav, '-c:a', 'libvorbis', '-q:a', '6', '-metadata:s:a:0', f'LOOPSTART={start_f}',
-                       '-metadata:s:a:0', f'LOOPLENGTH={end_f - start_f}', ogg], logs, name)
+                       '-metadata:s:a:0', f'LOOPLENGTH={end_f - start_f}', '-fflags', '+bitexact', ogg], logs, name)
     frames, tags = ogg_check(cfg, ogg, logs)
     return frames == end_f, tags == {'LOOPSTART': start_f, 'LOOPLENGTH': end_f - start_f}
 
@@ -237,15 +237,17 @@ def deliver(p, clock, cfg, output, mastering=None):
     folded = fold(master, start_f, end_f)
     cues = markers(p, clock, end_f)
     wav, ogg = output / 'loop.wav', output / 'loop.ogg'
+    # The tail can add to a peak near the loop start, even past full scale: the peak is measured on a float copy,
+    # before the 24-bit file would clip it, and the whole loop comes down rather than clip.
+    probe = logs / 'loop_float.wav'
+    audio.write_wav(probe, folded)
+    peak = audio.measure(cfg, probe, logs, 'measure_loop_float')['true_peak_dbtp']
+    probe.unlink()
+    gain = -1.05 - peak if peak > -1 else 0.0
+    if gain:
+        folded = folded * 10 ** (gain / 20)
     write_wav(wav, folded, start_f, end_f, cues)
     measured = audio.measure(cfg, wav, logs, 'measure_loop')
-    gain = 0.0
-    if measured['true_peak_dbtp'] > -1:
-        # The tail can add to a peak near the loop start; bring the whole loop down rather than clip it.
-        gain = -1.05 - measured['true_peak_dbtp']
-        folded = folded * 10 ** (gain / 20)
-        write_wav(wav, folded, start_f, end_f, cues)
-        measured = audio.measure(cfg, wav, logs, 'measure_loop')
     loops = read_smpl(wav)
     checks = {'loop_length_exact': measured['frames'] == end_f, 'loop_points_in_wav': loops == [(0, start_f, end_f - 1)],
               'loop_true_peak_ceiling': measured['true_peak_dbtp'] <= -1, 'loop_cues_in_wav': read_cues(wav) == cues}

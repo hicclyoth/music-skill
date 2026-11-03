@@ -114,9 +114,14 @@ def filter_sweep(stem, track, clock):
 def saturate(stem, track):
     drive = track['mix']['saturate']
     k = 1 + 9 * drive
-    up = np.fft.irfft(np.pad(np.fft.rfft(stem, axis=0), ((0, len(stem) * 3 // 2), (0, 0))), n=len(stem) * 4, axis=0) * 4
-    y = np.tanh(k * up) / math.tanh(k)
-    out = resample_down(y, 4)[:len(stem)]
+    n = len(stem)
+    # One channel at a time: the four-times signal of a long stem is large (the result is the same either way).
+    cols = []
+    for c in range(stem.shape[1]):
+        up = np.fft.irfft(np.pad(np.fft.rfft(stem[:, c:c + 1], axis=0), ((0, n * 3 // 2), (0, 0))), n=n * 4, axis=0) * 4
+        cols.append(resample_down(np.tanh(k * up) / math.tanh(k), 4)[:n])
+        del up
+    out = np.concatenate(cols, axis=1)
     # Equal loudness in, equal loudness out: saturation adds density, not level.
     p_in, p_out = float(np.mean(stem ** 2)), float(np.mean(out ** 2))
     return out * (math.sqrt(p_in / p_out) if p_out > 0 else 1.0), {'drive': drive}

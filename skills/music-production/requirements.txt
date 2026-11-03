@@ -1,1 +1,4 @@
-numpy==2.1.2
+# NumPy 2.1.2 is the version the sound banks were built with: fetch_soundbanks.py --from-source reproduces their
+# hashes with it.  It has no wheels for Python 3.14 and newer, which take a current NumPy 2 instead.
+numpy==2.1.2; python_version < "3.14"
+numpy>=2.3,<3; python_version >= "3.14"

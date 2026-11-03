@@ -10,7 +10,7 @@
   "homepage": "https://github.com/owoevan-dev/music-skill",
   "repository": "https://github.com/owoevan-dev/music-skill",
   "privacyPolicyUrl": "https://github.com/owoevan-dev/music-skill/blob/main/PRIVACY.md",
-  "license": "MIT",
+  "license": "MIT AND GPL-3.0-or-later",
   "icon": "./assets/brand/icon-512.png",
   "keywords": [
     "music",

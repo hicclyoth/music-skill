@@ -291,6 +291,9 @@ def analyze(render_dir, bar_spans=(), reference=None):
     clock = Clock(p)
     spans = section_spans(p, clock)
     bpb = clock.beats_per_bar
+    for name, first, last in bar_spans:
+        if last > p['clock']['bars']:
+            raise ValueError(f'--span {name}:{first}-{last}: the piece has {p["clock"]["bars"]} bars')
     extra = [(f'span:{name}', round(clock.seconds((first - 1) * bpb) * RATE), round(clock.seconds(last * bpb) * RATE))
              for name, first, last in bar_spans]
     regions = spans + extra
@@ -352,8 +355,8 @@ def analyze(render_dir, bar_spans=(), reference=None):
     if squeezed:
         worst = max(squeezed, key=squeezed.get)
         warnings.append(f'the delivery limiter took {squeezed[worst]:g} dB of level from {worst} '
-                        f'({", ".join(f"{k} {v:g}" for k, v in squeezed.items())}): past about 3 dB a dense section sounds '
-                        'squashed and can end quieter than sparser ones; lower target_lufs, or lower that section\'s peaks '
+                        f'({", ".join(f"{k} {v:g}" for k, v in squeezed.items())}): past about 3 dB of limiting a dense section '
+                        'loses its transients and can measure quieter than sparser ones; have it heard, lower target_lufs, or lower that section\'s peaks '
                         '(mix.saturate on its loudest parts, ducking, less level on what it adds).')
     receipts_file = render_dir / 'stem_receipts.json'
     for r in json.loads(receipts_file.read_text(encoding='utf-8')) if receipts_file.is_file() else []:

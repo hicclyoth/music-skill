@@ -21,14 +21,22 @@ def default_jobs():
     """Parallel parts: one per processor, at most 8 (each holds a few hundred MB of audio while it works)."""
     return max(1,min(8,os.cpu_count() or 1))
 
+def synthesis_identity(p,clock,t,deps,renderer):
+    """What a part's raw synthesis depends on, hashed into its cache key: the clock and the tempo as played (phrase
+    rubato slows into section boundaries, so moving a section changes it), the part without its mix, the configured
+    dependencies and the synthesis code and preset files.  A mix edit leaves it unchanged and reuses the part."""
+    return {'cache':2,'clock':p['clock'],'played_tempo':clock.tempo,'track':{k:v for k,v in t.items() if k!='mix'},'dependencies':deps,'renderer':renderer,'sample_rate':audio.RATE}
+
 def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
     started=time.monotonic();p=load_project(project_file);clock=Clock(p);cfg=audio.load_config(config_file)
     output=Path(output).resolve();cache=Path(cache).resolve() if cache else output.parent/'cache'
     project_key=digest(p);marker=output/'render_input.json'
     code_hash=engine_hash()
-    synthesis_hash=digest({n:file_hash(Path(__file__).with_name(n)) for n in ('model.py','midi.py','audio.py','layered.py','sf2.py','synth.py','drums.py','variation.py','surge.py')})
+    # A cached part depends on this code and on the preset files the built-in synth and Surge parts read.
+    synthesis_hash=digest({**{n:file_hash(Path(__file__).with_name(n)) for n in ('model.py','midi.py','audio.py','layered.py','sf2.py','synth.py','drums.py','variation.py','surge.py','wavfile.py')},
+                           'synth-presets':file_hash(synth.PRESETS_FILE),'surge-presets':file_hash(surge.PRESETS_FILE)})
     if output.exists():
-        if not resume or not marker.is_file() or json.loads(marker.read_text())['project_sha256']!=project_key:
+        if not resume or not marker.is_file() or json.loads(marker.read_text(encoding='utf-8'))['project_sha256']!=project_key:
             raise ValueError('Output exists; choose a fresh directory or resume the same project')
     for d in (output,cache,output/'logs',output/'stems',output/'midi',output/'returns'):d.mkdir(parents=True,exist_ok=True)
     save_json(marker,{'project_sha256':project_key,'renderer_sha256':code_hash})
@@ -47,7 +55,7 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         font_name,font=audio.soundfont_for(cfg,t) if t['engine']=='soundfont' else (None,None)
         deps={'fluidsynth':cfg['fluidsynth']['sha256'],'soundfont':font['sha256'] if font else None}
         if t['engine']=='surge':deps['surge']=surge.dependencies(cfg,t)
-        identity={'clock':p['clock'],'track':{k:v for k,v in t.items() if k!='mix'},'dependencies':deps,'renderer':synthesis_hash,'sample_rate':audio.RATE}
+        identity=synthesis_identity(p,clock,t,deps,synthesis_hash)
         key=digest(identity);folder=cache/key;folder.mkdir(exist_ok=True)
         raw=folder/'raw.wav';receipt=folder/'receipt.json'
         track_midi=output/'midi'/(t['id']+'.mid')
@@ -56,7 +64,7 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         with lock:
             cached=False
             if raw.is_file() and receipt.is_file():
-                old=json.loads(receipt.read_text())
+                old=json.loads(receipt.read_text(encoding='utf-8'))
                 cached=old['key']==key and audio.audio_hash(raw)==old['sha256']
             if not cached:
                 if not t['notes']:audio.write_wav(raw,np.zeros((frames,2),dtype=np.float32))

@@ -22,10 +22,11 @@ exponentially (time constant `decay` seconds): the punch of an 808-style bass, a
 Filter.  The low-, high- and band-pass filters are the RBJ biquads (Bristow-Johnson, Audio EQ Cookbook) with the
 cutoff recomputed every sample, so an envelope or LFO sweeps them as on an analog synthesizer.  They run in direct
 form I: the feed-forward part on the input, then the recursion y[n] = v[n] - a1[n] y[n-1] - a2[n] y[n-2] on the
-filter's own output, so its state is the signal itself and a cutoff may move fast, or jump, without a burst.  The
+filter's own output, so its state is the signal itself, which takes a moving cutoff better than the transposed forms;
+a large, sudden jump at high resonance can still ring up for a moment (a state-variable filter would take it better).  The
 recursion is a linear one in the state [y[n], y[n-1]]: it is solved in blocks of 64 samples at once (products of the
 2x2 state matrices and the block's own response), and the blocks are joined by the same method one level up, so no
-Python loop runs per sample.  Poles inside the unit circle at every cutoff keep it stable at full resonance.  Two
+Python loop runs per sample.  Poles inside the unit circle at every cutoff keep each setting stable at full resonance.  Two
 sections in series give 24 dB per octave (Zavalishin 2018 discusses the analog models these approximate).
 
 Everything is deterministic: noise and unison phases come from the note's id.
@@ -47,6 +48,7 @@ DEFAULT = {'oscillators': [{'wave': 'saw', 'level': 1.0}], 'amp': {'attack': 0.0
 
 
 WAVES = ('saw', 'supersaw', 'square', 'pulse', 'triangle', 'sine', 'fm', 'noise')
+MONO_LINE_S = 30.0
 
 
 def validate(track):
@@ -125,6 +127,28 @@ def patch_of(track):
         base.update(lib[name]['patch'])
     base.update(spec)
     return base
+
+
+def voices(notes, patch):
+    """The notes grouped as the patch plays them: one group per voice (see render)."""
+    groups = []
+    if patch.get('arpeggio'):
+        # Notes that start within 30 ms of each other are one chord, played as one voice cycling through its pitches.
+        for e in notes:
+            if groups and e['start_seconds'] - groups[-1][0]['start_seconds'] < .03:
+                groups[-1].append(e)
+            else:
+                groups.append([e])
+    elif patch.get('mono'):
+        for e in notes:
+            if (groups and e['start_seconds'] <= groups[-1][-1]['end_seconds'] + .001
+                    and e['start_seconds'] - groups[-1][0]['start_seconds'] < MONO_LINE_S):
+                groups[-1].append(e)
+            else:
+                groups.append([e])
+    else:
+        groups = [[e] for e in notes]
+    return groups
 
 
 def seed(text):
@@ -388,25 +412,11 @@ def render(project, track, path, clock=None):
     release = (patch.get('amp') or {}).get('release', .2)
     rate = RATE * OVER
     glide = patch.get('glide_ms', 0) / 1000
-    # A mono patch plays one line: a note that starts while the previous one still sounds takes over its voice, gliding
-    # from its pitch; the envelope restarts only after a gap.
-    groups = []
+    # A mono patch plays one line: a note that starts while the previous one still sounds, or as it ends, takes over
+    # its voice, gliding from its pitch; the envelope restarts only after a gap.  A line is synthesized whole at four
+    # times the rate, about 60 MB a second, so after MONO_LINE_S of unbroken legato the next note starts afresh.
+    groups = voices(notes, patch)
     arp = patch.get('arpeggio')
-    if arp:
-        # Notes that start within 30 ms of each other are one chord, played as one voice cycling through its pitches.
-        for e in notes:
-            if groups and e['start_seconds'] - groups[-1][0]['start_seconds'] < .03:
-                groups[-1].append(e)
-            else:
-                groups.append([e])
-    elif patch.get('mono'):
-        for e in notes:
-            if groups and e['start_seconds'] <= groups[-1][-1]['end_seconds'] + .001:
-                groups[-1].append(e)
-            else:
-                groups.append([e])
-    else:
-        groups = [[e] for e in notes]
     for group in groups:
         first, last = group[0], group[-1]
         start = first['start_seconds']

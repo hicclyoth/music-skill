@@ -36,6 +36,9 @@ def main():
     configure=sub.add_parser('configure')
     for arg in ('fluidsynth','ffmpeg','soundfont','output'):configure.add_argument('--'+arg,type=Path,required=True)
     args=parser.parse_args()
+    def fresh(path,source=None):
+        if path.exists():raise ValueError(f'{path} exists; outputs never overwrite, so choose a new path')
+        if source is not None and path.resolve()==Path(source).resolve():raise ValueError('The output would replace its own input')
     if args.command=='configure':
         if args.output.exists():raise ValueError('Choose a new configuration path')
         cfg={key:{'path':str(getattr(args,key).resolve()),'sha256':file_hash(getattr(args,key)),'license':'User-supplied; retain upstream notices','source':'User-configured local file; hash is integrity, not provenance or antivirus certification'} for key in ('fluidsynth','ffmpeg','soundfont')}
@@ -44,14 +47,12 @@ def main():
         import re
         if args.output.exists():raise ValueError('Choose a new configuration path')
         if args.name=='default' or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',args.name):raise ValueError('Name must be lower-case letters/digits/underscores and not "default"')
-        base=json.loads(args.config.read_text(encoding='utf-8'));fonts=base.setdefault('soundfonts',{})
+        from musiclib.audio import absolute_paths
+        base=absolute_paths(json.loads(args.config.read_text(encoding='utf-8')),args.config.resolve().parent);fonts=base.setdefault('soundfonts',{})
         if args.name in fonts:raise ValueError('SoundFont name already configured')
         from musiclib import sf2
         bank=sf2.read(args.path)
         fonts[args.name]={'path':str(args.path.resolve()),'sha256':file_hash(args.path),'license':args.license,'source':args.source,'version':args.version,'presets':[[p['bank'],p['program'],p['name']] for p in bank['presets']]}
-        for key in ('fluidsynth','ffmpeg','soundfont'):
-            entry=base[key];p=Path(entry['path'])
-            if not p.is_absolute():entry['path']=str((args.config.resolve().parent/p).resolve())
         save_json(args.output,base);print('Saved',args.output,'with',len(bank['presets']),'presets in',args.name);return
     if args.command=='doctor':
         from musiclib.audio import load_config,run
@@ -65,6 +66,7 @@ def main():
             print('SoundFont',name,'|',entry.get('version',''),'|',entry.get('license',''))
         print('PASS: paths and pinned checksums verified; no malware scan implied');return
     if args.command=='inspect-midi':
+        if args.output:fresh(args.output,args.file)
         m=midi.read(args.file);result={'division':m['division'],'tracks':len(m['tracks']),'notes':sum(len(t['notes']) for t in m['tracks']),'unclosed':sum(t['unclosed'] for t in m['tracks']),'stray_offs':sum(t['stray_offs'] for t in m['tracks']),'sha256':file_hash(args.file)}
         if args.output:save_json(args.output,result)
         print(json.dumps(result));return
@@ -72,13 +74,13 @@ def main():
         from musiclib.analysis import analyze,load_reference
         from musiclib.audio import load_config
         import re
-        spans=[]
+        spans=[];out=args.output or args.render/'analysis.json';fresh(out)
         for x in args.span:
             m=re.fullmatch(r'([A-Za-z0-9_-]{1,40}):(\d+)-(\d+)',x)
             if not m or int(m.group(2))<1 or int(m.group(3))<int(m.group(2)):raise ValueError(f'--span {x}: write NAME:FIRST-LAST with 1 <= FIRST <= LAST')
             spans.append((m.group(1),int(m.group(2)),int(m.group(3))))
         reference=load_reference(args.reference,load_config(args.config) if args.config else None) if args.reference else None
-        r=analyze(args.render,spans,reference);out=args.output or args.render/'analysis.json';save_json(out,r)
+        r=analyze(args.render,spans,reference);save_json(out,r)
         tone={k:r['tonal_balance'][k] for k in ('slope_db_per_octave_100hz_4khz','low_end_vs_line_db','top_end_vs_line_db')}
         compared={k:v for k,v in (r['reference_comparison'] or {}).items() if k!='side_minus_mid_difference_db'} or None
         print(json.dumps({'output':str(out),'sections':[{k:s[k] for k in ('section','level_lufs_ungated','lr_correlation')} for s in r['sections']],'lead_presence':r['lead_presence'],'melody_groups':[{k:m[k] for k in m if k!='balance'} | {'balance':m['balance'][:3]} for m in r['melody_groups']],'tonal_balance':tone,'master':r['master'],'reference_comparison':compared,'warnings':r['warnings']}));return
@@ -88,14 +90,13 @@ def main():
         from musiclib.profile import profile
         r=profile(p)
         if not args.output:print(json.dumps(r,ensure_ascii=False,indent=1));return
-        if args.output.exists():raise ValueError('Output already exists')
-        save_json(args.output,r)
+        fresh(args.output);save_json(args.output,r)
         brief={k:{f:v.get(f) for f in ('notes_per_bar','register','rhythm_repeat_pct','offbeat_onsets_pct') if f in v}|({'top_line':{f:v['top_line'][f] for f in ('mean_abs_interval','leaps_pct','recurring_cells_pct')}} if v.get('top_line') else {}) for k,v in r['parts'].items()}
         print(json.dumps({'output':str(args.output),'seconds':r['seconds'],'notes_per_bar':r['notes_per_bar'],'parts':brief},ensure_ascii=False));return
     if args.command=='review':
         from musiclib.review import review
         from musiclib.audio import load_config
-        r=review(p,args.output,load_config(args.config) if args.config else None);print(json.dumps({'tracks':len(r['tracks']),'sections':len(r['sections']),'prompts':r['prompts']}));return
+        fresh(args.output);r=review(p,args.output,load_config(args.config) if args.config else None);print(json.dumps({'tracks':len(r['tracks']),'sections':len(r['sections']),'prompts':r['prompts']}));return
     if args.command=='export-midi':
         if args.output.exists():raise ValueError('Output already exists')
         args.output.parent.mkdir(parents=True,exist_ok=True);midi.write(p,args.output);print(str(args.output));return
@@ -106,7 +107,10 @@ def main():
     if args.command=='revise':
         if args.output.exists() or args.output.resolve()==args.project.resolve():raise ValueError('Revision must use a fresh output path')
         if args.pitch is None and args.velocity is None and args.duration is None:raise ValueError('Specify a change')
-        revised=copy.deepcopy(p);t=next(t for t in revised['tracks'] if t['id']==args.track);n=next(n for n in t['notes'] if n['id']==args.note)
+        revised=copy.deepcopy(p);t=next((t for t in revised['tracks'] if t['id']==args.track),None)
+        if t is None:raise ValueError(f'No track {args.track!r}; the tracks are '+', '.join(x['id'] for x in revised['tracks']))
+        n=next((n for n in t['notes'] if n['id']==args.note),None)
+        if n is None:raise ValueError(f'No note {args.note!r} in {args.track}; its first notes are '+', '.join(x['id'] for x in t['notes'][:8]))
         if args.pitch is not None:n['pitch']=args.pitch
         if args.duration is not None:n['duration']=args.duration
         if args.velocity is not None:t['performance']['notes'][n['id']]['velocity']=args.velocity
@@ -114,6 +118,10 @@ def main():
         validate(revised);save_json(args.output,revised);print(str(args.output));return
 
 if __name__=='__main__':
+    # A console that cannot show a character (a CJK title on a Western code page) gets an escape, not a crash.
+    for stream in (sys.stdout,sys.stderr):stream.reconfigure(errors='backslashreplace')
     try:main()
-    except (ValueError,KeyError,StopIteration) as e:
+    except KeyError as e:
+        print('ERROR: missing field',e,file=sys.stderr);sys.exit(2)
+    except (ValueError,OSError,RuntimeError,TimeoutError) as e:
         print('ERROR:',str(e),file=sys.stderr);sys.exit(2)

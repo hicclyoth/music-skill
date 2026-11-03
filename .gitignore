@@ -14,6 +14,7 @@ local-config*.json
 *.mid
 render_*/
 cache/
+out/
 
 # Local secrets
 .env

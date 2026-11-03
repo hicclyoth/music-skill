@@ -502,8 +502,9 @@ def checks(work,config=None):
         for z in zones:
             note=names[z['gens'][58]-60]
             assert z['gens'].get(52,0)==-round(cents[note]),(note,z['gens'])
-            assert z['gens'].get(48,0)==(100 if z['gens'][44][1]<=63 else 0),z['gens']
-        return {'zones':len(zones),'borrowed_attenuation_cb':100}
+            # 10 dB quieter as heard: FluidSynth applies the generator at 0.4 of its centibels, so 250 is written.
+            assert z['gens'].get(48,0)==(250 if z['gens'][44][1]<=63 else 0),z['gens']
+        return {'zones':len(zones),'borrowed_attenuation_heard_cb':100,'written_cb':250}
     check('soundbank_tunes_split_notes_and_quiets_borrowed_dynamics',split_bank)
     def crossfade_gains():
         from musiclib import layered
@@ -522,6 +523,17 @@ def checks(work,config=None):
                {'parity':0,'start_seconds':1.,'fade_in':(1.,.1),'fade_out':None}]
         g=layered.legato_gains(notes,48000*2);i=np.arange(int(.5*48000),int(.6*48000))
         assert np.allclose(g[0][i]**2+g[1][i]**2,1,atol=1e-3) and g[0][int(.7*48000)]==0 and g[1][int(1.2*48000)]==0 and g[0][int(1.5*48000)]==1
+        # A long note, then sixteenths at 160 BPM (94 ms apart) with a 100 ms crossfade: each fade ends before the next
+        # note on the same render starts, so no fade is cut short and no released note comes back.
+        from musiclib.model import Clock
+        p=example();p['clock']={'bars':2,'meter':[4,4],'tempo':[[0,160]]};p['sections']=[{'id':'a','start_bar':0,'bars':2}]
+        t=copy.deepcopy(p['tracks'][0]);t['notes']=[{'id':'n0','on':0,'duration':1,'pitch':60}]+[{'id':f'n{k}','on':1+.25*(k-1),'duration':.25,'pitch':60+k%5+1} for k in range(1,8)]
+        t['performance']={'notes':{n['id']:{'velocity':80} for n in t['notes']},'legato':{'mode':'crossfade'}}
+        planned=layered.plan(t,Clock(p))
+        for k,a in enumerate(planned):
+            nxt=[c for c in planned[k+1:] if c['parity']==a['parity']]
+            if a['fade_out'] and nxt:assert a['fade_out'][0]+a['fade_out'][1]<=nxt[0]['start_seconds']+1e-9,(a,nxt[0])
+        assert sum(n['legato'] for n in planned)==7
         return {'level_spread_db':{'same_take':round(float(np.ptp(same)),2),'unrelated':round(float(np.ptp(free)),2),'half_antiphase':round(float(np.ptp(anti)),2)}}
     check('dynamics_crossfade_keeps_power_and_legato_fades_cross',crossfade_gains)
     def take_mode():
@@ -944,6 +956,147 @@ def checks(work,config=None):
         c['role']='bass';assert analysis.balance(q,levels,group)==[]  # a bass may sit 3 dB under the tune
         return {'group':group,'suggestion':cut[0]}
     check('analysis_groups_octave_doublings_and_suggests_cuts',melody_group_and_balance)
+    def strict_projects():
+        # A JSON float where MIDI needs an integer (100.0) and a section id that is not text stop in validation, with
+        # the place and the value; a misspelt optional field is reported with the name it was probably meant to be.
+        p=example();t=p['tracks'][0];n=t['notes'][0]
+        t['performance']['notes'][n['id']]['velocity']=100.0
+        try:validate(p);raise AssertionError('accepted a float velocity')
+        except ValueError as e:assert f'{t["id"]}/{n["id"]} velocity' in str(e) and 'write 100, not 100.0' in str(e),e
+        p=example();p['sections'][0]['id']=1;rejects(lambda:validate(p))
+        p=example();p['clock']['meter']=[4,4.0];rejects(lambda:validate(p))
+        p=example();p['tracks'][0]['mix']['revrb_db']=-12;p['tracks'][0]['performance']['timming_ms']=3;p['mixx']={}
+        warnings=validate(p)['warnings']
+        assert any("'revrb_db' (did you mean 'reverb_db'?)" in w for w in warnings) and any("'timming_ms'" in w for w in warnings) and any("'mixx'" in w for w in warnings),warnings
+        assert validate(example())['warnings']==[]
+        p=example();del p['tracks'][0]['performance']['notes'][p['tracks'][0]['notes'][0]['id']]['velocity']
+        try:validate(p);raise AssertionError('accepted a note without velocity')
+        except ValueError as e:assert 'velocity' in str(e) and p['tracks'][0]['id'] in str(e),e
+        return {'warnings':len(warnings)}
+    check('integer_fields_and_unknown_fields_are_reported',strict_projects)
+    def cache_identity():
+        from musiclib.render import synthesis_identity
+        from musiclib.model import digest
+        p=example();p['clock']['rubato']={'phrase_beats':2,'phrase_ratio':.8};p['clock']['bars']=8
+        p['sections']=[{'id':'a','start_bar':0,'bars':4},{'id':'b','start_bar':4,'bars':4}]
+        q=copy.deepcopy(p);q['sections']=[{'id':'a','start_bar':0,'bars':2},{'id':'b','start_bar':2,'bars':6}]
+        r=copy.deepcopy(p);r['tracks'][0]['mix']['level_dbfs']-=3
+        key=lambda x:digest(synthesis_identity(x,Clock(x),x['tracks'][0],{},'code'))
+        assert key(p)!=key(q) and key(p)==key(r)
+        return {'sections_moved':'new key','mix_changed':'same key'}
+    check('synthesis_cache_follows_the_played_tempo',cache_identity)
+    def slow_rubato_midi():
+        p=example();p['clock']={'bars':2,'meter':[4,4],'tempo':[[0,30]],'rubato':{'final_beats':8,'final_ratio':.3}}
+        p['sections']=[{'id':'a','start_bar':0,'bars':2}]
+        for t in p['tracks']:
+            keep=[n for n in t['notes'] if n['on']+n['duration']<=8][:2];t['notes']=keep
+            t['performance']['notes']={n['id']:t['performance']['notes'][n['id']] for n in keep}
+            t['performance'].pop('cc',None);t['mix'].pop('automation',None)
+        p['tracks']=[t for t in p['tracks'] if t['notes']]
+        validate(p);out=work/'slow.mid';midi.write(p,out);m=midi.read(out)
+        slowest=60_000_000/max(v for _,v in m['tempos'])
+        assert slowest<15 and sum(len(t['notes']) for t in m['tracks'])==sum(len(t['notes']) for t in p['tracks'])
+        return {'slowest_bpm':round(slowest,2)}
+    check('slow_rubato_reads_back_from_its_midi',slow_rubato_midi)
+    def drum_ports():
+        p=example();kit=copy.deepcopy(next(t for t in p['tracks'] if t.get('drums')) if any(t.get('drums') for t in p['tracks']) else p['tracks'][0])
+        kit.update(drums=True,program=0);a=copy.deepcopy(kit);a['id']='kit_a';b=copy.deepcopy(kit);b['id']='kit_b';b['program']=16
+        p['tracks']=[x for x in p['tracks'] if not x.get('drums')]+[a,b];route=midi.write(p,work/'two_kits.mid')
+        kits=[(r['port'],r['channel']) for r in route if r['track'] in ('kit_a','kit_b')]
+        assert kits==[(0,9),(1,9)],kits
+        return {'kits':kits}
+    check('drum_parts_get_their_own_ports',drum_ports)
+    def meter_arches():
+        from musiclib.expression import phrase_positions
+        t={'notes':[{'id':str(b),'on':b,'duration':1} for b in (0,3,6,9,12,15,16)]}
+        pos=phrase_positions(t,[{'start_bar':0},{'start_bar':4}],False,3.0)
+        assert pos['12']==0 and pos['0']==0 and abs(pos['9']-.75)<1e-9,pos
+        return {'three_four_section_starts_at_beat':12}
+    check('phrase_arches_follow_the_meter',meter_arches)
+    def excerpt_curves():
+        from musiclib.model import curve_at
+        p=example();t=p['tracks'][0];total=p['clock']['bars']*Clock(p).beats_per_bar
+        t['performance']['bend_range']=2;t['performance']['bend']=[[2,0],[6,1.5],[9,-1]]
+        t['mix']['filter_sweep']={'type':'lowpass','points':[[0,300],[total,8000]]}
+        validate(p);q=extract(p,2,2);u=q['tracks'][0];start=Clock(p).beats_per_bar
+        for b in (0,1.5,3.9):
+            assert abs(curve_at(u['performance']['bend'],b)-curve_at(t['performance']['bend'],b+start))<1e-9
+            assert abs(curve_at(u['mix']['filter_sweep']['points'],b)-curve_at(t['mix']['filter_sweep']['points'],b+start))<1e-6
+        return {'bend_points':len(u['performance']['bend'])}
+    check('excerpt_moves_bends_sweeps_and_dynamics',excerpt_curves)
+    def mono_lines():
+        from musiclib import synth
+        notes=[{'start_seconds':k*.5,'end_seconds':k*.5+.5,'pitch':40} for k in range(100)]
+        lines=synth.voices(notes,{'mono':True})
+        assert len(lines)==2 and lines[1][0]['start_seconds']==synth.MONO_LINE_S,[len(x) for x in lines]
+        return {'unbroken_legato_seconds':synth.MONO_LINE_S}
+    check('a_long_mono_line_starts_afresh_after_thirty_seconds',mono_lines)
+    def fluidsynth_log():
+        from musiclib import audio as au
+        real=au.run
+        try:
+            au.run=lambda *a,**k:"Rendering audio to file 'work/terror-game/failed takes/raw.wav'..\n"
+            au.fluidsynth({'fluidsynth':{'path':'x'}},'f.sf2','in.mid','out.wav',work)
+            au.run=lambda *a,**k:'fluidsynth: warning: Instrument not found on channel 0 [bank=0 prog=5], substituted [bank=0 prog=0]\n'
+            rejects(lambda:au.fluidsynth({'fluidsynth':{'path':'x'}},'f.sf2','in.mid','out.wav',work))
+        finally:au.run=real
+        return {'paths_with_error_words':'accepted'}
+    check('fluidsynth_diagnostics_ignore_its_paths',fluidsynth_log)
+    def files_stay_inside():
+        from soundbank import cut_sources
+        root=work/'cut_check';src=root/'src';src.mkdir(parents=True,exist_ok=True);victim=root/'victim.txt';victim.write_text('keep',encoding='utf-8')
+        audio.write_wav(src/'s.wav',np.zeros((16,2),dtype=np.float32))
+        bad={'groups':[],'sources':[],'notes':[{'source':'s.wav','file':'../victim.txt','start':0,'end':8,'fade':0,'sha256':'0'*64}]}
+        rejects(lambda:cut_sources(bad,src,root/'out'))
+        bad['notes'][0]['file']=str(victim.resolve());rejects(lambda:cut_sources(bad,src,root/'out'))
+        assert victim.read_text(encoding='utf-8')=='keep'
+        return {'refused':['..','absolute']}
+    check('a_cut_manifest_writes_only_inside_its_folder',files_stay_inside)
+    def no_overwrite():
+        import subprocess,sys
+        here=Path(__file__).resolve().parent;mid=work/'own.mid';midi.write(example(),mid);before=mid.read_bytes()
+        done=subprocess.run([sys.executable,str(here/'studio.py'),'inspect-midi',str(mid),'--output',str(mid)],capture_output=True,text=True)
+        assert done.returncode==2 and mid.read_bytes()==before,done.stderr
+        return {'exit':done.returncode}
+    check('inspect_midi_keeps_its_input',no_overwrite)
+    def relative_banks():
+        import subprocess,sys
+        here=Path(__file__).resolve().parent;old=work/'cfg_old';new=work/'cfg_new';old.mkdir(exist_ok=True);new.mkdir(exist_ok=True)
+        for name in ('fs.exe','ff.exe'):(old/name).write_bytes(name.encode())
+        bank=xf_bank();shutil.copy2(bank,old/'own.sf2')
+        cfg={k:{'path':n,'sha256':file_hash(old/n)} for k,n in (('fluidsynth','fs.exe'),('ffmpeg','ff.exe'),('soundfont','own.sf2'))}
+        cfg['soundfonts']={'named':{'path':'own.sf2','sha256':file_hash(old/'own.sf2')}};save_json(old/'config.json',cfg)
+        done=subprocess.run([sys.executable,str(here/'studio.py'),'add-soundfont','--config',str(old/'config.json'),'--name','added','--path',str(bank),
+                             '--license','test','--source','test','--version','1','--output',str(new/'config.json')],capture_output=True,text=True)
+        assert done.returncode==0,done.stderr
+        loaded=audio.load_config(new/'config.json');assert Path(loaded['soundfonts']['named']['path'])==(old/'own.sf2').resolve()
+        return {'named_bank':'still found'}
+    check('a_config_written_elsewhere_keeps_relative_banks',relative_banks)
+    def short_downloads():
+        import http.server,threading
+        import fetch_soundbanks as fs
+        body=b'x'*1000
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200);self.send_header('Content-Length','1000');self.end_headers()
+                self.wfile.write(body[:400] if self.path=='/short' else body)
+            def log_message(self,*a):pass
+        server=http.server.HTTPServer(('127.0.0.1',0),Handler);threading.Thread(target=server.serve_forever,daemon=True).start()
+        base=f'http://127.0.0.1:{server.server_port}';hosts=fs.HOSTS
+        try:
+            fs.HOSTS=hosts|{'127.0.0.1'};dest=work/'dl.bin'
+            try:fs._fetch_once(base+'/short',dest,None,10**6,None);raise AssertionError('kept a short download')
+            except fs.Damaged:pass
+            assert not dest.exists() and not dest.with_name('dl.bin.partial').exists()
+            dest.write_bytes(b'damaged')
+            fs.fetch=lambda url,d,size=None,max_bytes=0,tries=4,check=None:fs._fetch_once(base+'/ok',d,size,10**6,check)
+            fs.cached('https://example.invalid/ok',dest,False,1000,lambda f:f.read_bytes()==body)
+            assert dest.read_bytes()==body
+        finally:
+            fs.HOSTS=hosts;server.shutdown()
+            import importlib;importlib.reload(fs)
+        return {'short_read':'tried again, never cached','damaged_cache':'downloaded again'}
+    check('a_short_or_damaged_download_is_never_kept',short_downloads)
     if config:
         from musiclib.render import render
         p=example();save_json(work/'example.json',p);cache=work/'cache'
@@ -955,7 +1108,7 @@ def checks(work,config=None):
             assert first['master']['sha256']==repeat['master']['sha256']==parallel['master']['sha256']
             assert repeat['cache_hits']==len(p['tracks']) and parallel['cache_hits']==0 and parallel['jobs']>1
             # Fresh syntheses of the same parts hash alike: the raw hash covers the audio, not the writer's timestamp.
-            raws=lambda name:[x['raw_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text())]
+            raws=lambda name:[x['raw_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))]
             assert raws('render_first')==raws('render_parallel')
             return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'parallel_jobs':parallel['jobs'],'checks':repeat['checks']}
         check('actual_render_repeat_is_sample_identical',integration)
@@ -963,7 +1116,7 @@ def checks(work,config=None):
             q=copy.deepcopy(p);q['tracks'][0]['notes'][0]['pitch']+=2;save_json(work/'edited.json',q)
             r=render(work/'edited.json',work/'render_edited',config,cache)
             assert r['cache_hits']==len(q['tracks'])-1
-            before=json.loads((work/'render_first'/'stem_receipts.json').read_text());after=json.loads((work/'render_edited'/'stem_receipts.json').read_text())
+            before=json.loads((work/'render_first'/'stem_receipts.json').read_text(encoding='utf-8'));after=json.loads((work/'render_edited'/'stem_receipts.json').read_text(encoding='utf-8'))
             changed=[a['track'] for a,b in zip(before,after) if a['raw_sha256']!=b['raw_sha256']]
             assert changed==['piano']
             return {'raw_changed_tracks':changed,'cache_hits':r['cache_hits']}
@@ -972,11 +1125,11 @@ def checks(work,config=None):
             q=copy.deepcopy(p);q['tracks'][2]['mix']['level_dbfs']+=1;save_json(work/'mix_edit.json',q)
             r=render(work/'mix_edit.json',work/'render_mix_edit',config,cache)
             assert r['cache_hits']==len(q['tracks'])
-            before=json.loads((work/'render_first'/'report.json').read_text());assert r['master']['sha256']!=before['master']['sha256']
+            before=json.loads((work/'render_first'/'report.json').read_text(encoding='utf-8'));assert r['master']['sha256']!=before['master']['sha256']
             return {'cache_hits':r['cache_hits'],'master_changed':True}
         check('mix_revision_reuses_all_synthesis',mix_edit)
         def bad_hash():
-            cfg=json.loads(Path(config).read_text())
+            cfg=json.loads(Path(config).read_text(encoding='utf-8'))
             for key in ('fluidsynth','ffmpeg','soundfont'):
                 value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
             cfg['soundfont']['sha256']='0'*64;save_json(work/'bad_config.json',cfg);rejects(lambda:audio.load_config(work/'bad_config.json'))
@@ -989,13 +1142,13 @@ def checks(work,config=None):
                 t['notes']=[{'id':ident+'_n0','on':0,'duration':6,'pitch':62}];t['performance']={'notes':{ident+'_n0':{'velocity':90}},'cc':[[0,2,100]]}
                 q['tracks'].append(t)
             save_json(work/'bank.json',q);r=render(work/'bank.json',work/'render_bank',config,cache)
-            raws=[x['raw_sha256'] for x in json.loads((work/'render_bank'/'stem_receipts.json').read_text())]
-            levels=[x['reference_level_dbfs'] for x in json.loads((work/'render_bank'/'stem_receipts.json').read_text())]
+            raws=[x['raw_sha256'] for x in json.loads((work/'render_bank'/'stem_receipts.json').read_text(encoding='utf-8'))]
+            levels=[x['reference_level_dbfs'] for x in json.loads((work/'render_bank'/'stem_receipts.json').read_text(encoding='utf-8'))]
             assert raws[0]!=raws[1] and min(levels)>-80
             return {'bank0_vs_bank17_raw_differs':True,'reference_levels':[round(x,2) for x in levels]}
         check('bank_lsb_selects_bank_on_default_soundfont',bank_select)
         def named_soundfont():
-            cfg=json.loads(Path(config).read_text());base=Path(cfg['soundfont']['path'])
+            cfg=json.loads(Path(config).read_text(encoding='utf-8'));base=Path(cfg['soundfont']['path'])
             if not base.is_absolute():base=Path(config).resolve().parent/base
             cfg['soundfonts']={'alt':{**cfg['soundfont'],'path':str(base)}}
             for key in ('fluidsynth','ffmpeg','soundfont'):
@@ -1003,7 +1156,7 @@ def checks(work,config=None):
             save_json(work/'two_fonts.json',cfg)
             q=copy.deepcopy(p);q['tracks'][0]['soundfont']='alt';save_json(work/'alt.json',q)
             r=render(work/'alt.json',work/'render_alt',work/'two_fonts.json',cache)
-            fonts=[x['soundfont'] for x in json.loads((work/'render_alt'/'stem_receipts.json').read_text())]
+            fonts=[x['soundfont'] for x in json.loads((work/'render_alt'/'stem_receipts.json').read_text(encoding='utf-8'))]
             assert fonts[0]=='alt' and set(r['dependencies']['soundfonts'])=={'alt','default'}
             q['tracks'][0]['soundfont']='missing';save_json(work/'missing.json',q)
             rejects(lambda:render(work/'missing.json',work/'render_missing',work/'two_fonts.json',cache))
@@ -1064,7 +1217,7 @@ def checks(work,config=None):
             assert r['chain']=='bus' and r['cache_hits']==len(q['tracks']) and all(r['checks'].values()),r['checks']
             assert r['checks']['mp3_loudness_matches_master'] and abs(r['master']['integrated_lufs']-q['mix']['target_lufs'])<=.3
             out=work/'render_bus';assert all((out/'returns'/f'{s}_ir.wav').is_file() for s in ('room','plate','hall'))
-            change=json.loads((out/'bus_level_change_db.json').read_text())
+            change=json.loads((out/'bus_level_change_db.json').read_text(encoding='utf-8'))
             assert set(change)==set(r['buses']['assignment'].values()) and all(abs(v)<6 for v in change.values()),change
             return {'buses':r['buses']['assignment'],'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
         check('bus_chain_render_and_delivery_checks',bus_render)
@@ -1100,7 +1253,7 @@ def checks(work,config=None):
             corr=float(np.sum(both*mix)/np.sqrt(np.sum(both**2)*np.sum(mix**2)))
             assert all(len(x)==end for x in parts) and loop.read_cues(out/'layers'/'top.wav')==[(s['start_sample'],s['id']) for s in lp['sections']]
             assert corr>.98 and abs(lp['layers']['sum_minus_loop_db'])<3 and 0<lp['layers']['aligned_frames']<1000,(corr,lp['layers'])
-            saved=json.loads((out/'loop.json').read_text());assert set(saved['layers'])=={'base','top'}
+            saved=json.loads((out/'loop.json').read_text(encoding='utf-8'));assert set(saved['layers'])=={'base','top'}
             return {'gain_db':lp['layers']['gain_db'],'sum_minus_loop_db':lp['layers']['sum_minus_loop_db'],'correlation_with_loop':round(corr,4)}
         check('loop_layers_render_and_add_up_to_the_mix',layer_render)
         def wide_render():
@@ -1133,7 +1286,7 @@ def checks(work,config=None):
                     'hot_peak_held_db':held,'hot_true_peak_dbtp':hot['master']['true_peak_dbtp']}
         check('wide_dynamics_master_keeps_the_mix_range',wide_render)
         def layered_render():
-            bank=xf_bank();cfg=json.loads(Path(config).read_text())
+            bank=xf_bank();cfg=json.loads(Path(config).read_text(encoding='utf-8'))
             for key in ('fluidsynth','ffmpeg','soundfont'):
                 value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
             cfg['soundfonts']={'xf':{'path':str(bank),'sha256':file_hash(bank)}};save_json(work/'xf_config.json',cfg)
@@ -1147,7 +1300,7 @@ def checks(work,config=None):
                 t['mix']={**t['mix'],'reverb_db':None,'delay_db':None,'level_dbfs':-20,'pan':0};q['tracks'].append(t)
             q['mix']={'chain':'bus','dynamics':'wide','target_lufs':-20};save_json(work/'xf.json',q)
             render(work/'xf.json',work/'render_xf',work/'xf_config.json',cache)
-            rec={x['track']:x for x in json.loads((work/'render_xf'/'stem_receipts.json').read_text())};spb=60/90;out={}
+            rec={x['track']:x for x in json.loads((work/'render_xf'/'stem_receipts.json').read_text(encoding='utf-8'))};spb=60/90;out={}
             for ident in ('leg','plain'):
                 m=audio.read_wav(work/'render_xf'/'stems'/f'{ident}.wav')[0].mean(axis=1)
                 env=20*np.log10(np.sqrt(np.mean(m[:len(m)//480*480].reshape(-1,480)**2,axis=1))+1e-9);at=lambda k:int(k*spb*100)
@@ -1174,7 +1327,7 @@ def checks(work,config=None):
             t['notes']=[{'id':f'deep_{b}_{k}','on':b*4+k,'duration':1,'pitch':x} for b in range(8) for k,x in enumerate((48,55,60,64))]
             t['performance']={'notes':{n['id']:{'velocity':50 if n['on']<16 else 124,'gate':1.0} for n in t['notes']}}
             q['tracks']=[t];save_json(work/'stage.json',q);r=render(work/'stage.json',work/'render_stage',config,cache);m=r['mastering']
-            rec=json.loads((work/'render_stage'/'stem_receipts.json').read_text())[0]
+            rec=json.loads((work/'render_stage'/'stem_receipts.json').read_text(encoding='utf-8'))[0]
             send=-12+stage.send_boost_db(t['mix'].get('pan',0),8)
             assert f'volume={send:.6f}dB' in (work/'render_stage'/'mix.filtergraph.txt').read_text(encoding='utf-8') and rec['stage']['reflection_share_db']>-8,rec
             assert m['range']['lra_before_lu']>6.5 and m['range']['lra_after_lu']<=6.3 and r['master']['true_peak_dbtp']<=-1,m
@@ -1192,18 +1345,18 @@ def checks(work,config=None):
             t['notes']=[{**n,'id':f'{n["id"]}_{i}'} for i,n in enumerate(t['notes'])]
             t['performance']={'notes':{n['id']:{'velocity':80,'gate':1.0} for n in t['notes']}}
             q['tracks']=[t];save_json(work/'surge.json',q)
-            cfg=json.loads(Path(config).read_text());has=bool(cfg.get('surge') and cfg.get('pedalboard'))
+            cfg=json.loads(Path(config).read_text(encoding='utf-8'));has=bool(cfg.get('surge') and cfg.get('pedalboard'))
             for key in ('fluidsynth','ffmpeg','soundfont'):
                 value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
             cfg.pop('surge',None);cfg.pop('pedalboard',None);save_json(work/'no_surge_config.json',cfg)
             render(work/'surge.json',work/'render_surge_fallback',work/'no_surge_config.json',work/'cache_surge')
-            fell=json.loads((work/'render_surge_fallback'/'stem_receipts.json').read_text())[0]['surge']
+            fell=json.loads((work/'render_surge_fallback'/'stem_receipts.json').read_text(encoding='utf-8'))[0]['surge']
             assert fell['rendered_with']=='built-in synth' and fell['fallback']==surge.presets()['presets']['juno_60_strings']['fallback'] and 'not installed' in fell['reason'],fell
             out={'without_surge':fell['fallback']}
             if has:
                 first=render(work/'surge.json',work/'render_surge',config,work/'cache_surge')
                 again=render(work/'surge.json',work/'render_surge_again',config,work/'cache_surge')
-                a,b=(json.loads((work/n/'stem_receipts.json').read_text())[0] for n in ('render_surge','render_surge_again'))
+                a,b=(json.loads((work/n/'stem_receipts.json').read_text(encoding='utf-8'))[0] for n in ('render_surge','render_surge_again'))
                 x,_=audio.read_wav(work/'render_surge'/'stems'/'pad.wav')
                 assert a['surge']['rendered_with']=='Surge XT' and b['cache_hit'] and a['raw_sha256']==b['raw_sha256'],(a.get('surge'),b['cache_hit'])
                 assert first['master']['sha256']==again['master']['sha256'] and float(np.sqrt(np.mean(np.asarray(x,dtype=float)**2)))>1e-4

@@ -18,9 +18,9 @@ The genre guides behind them are in the skill: [electronic.md](../../skills/musi
 Set up the renderer and the sound banks as the repository README describes, then, for example:
 
 ```
-python examples/genre-demos/signal_fire.py signal_fire
-python skills/music-production/scripts/studio.py render signal_fire/song.json --config <folder>/local-config.studio.json --output signal_fire/render --cache cache
-python skills/music-production/scripts/studio.py analyze signal_fire/render --reference house
+python examples/genre-demos/signal_fire.py out/signal_fire
+python skills/music-production/scripts/studio.py render out/signal_fire/song.json --config <folder>/local-config.studio.json --output out/signal_fire/render --cache out/cache
+python skills/music-production/scripts/studio.py analyze out/signal_fire/render --reference house
 ```
 
 Each script writes the same project file as the one published here (`signal_fire.json` and so on). `genre_kit.py` holds the small helpers they share: the score, synth and drum-machine parts, step patterns, arpeggios and rolls.
