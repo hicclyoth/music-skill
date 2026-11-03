@@ -442,7 +442,8 @@ def render(project, track, path, clock=None):
             pitch = pitch + pe.get('semitones', 12) * np.exp(-np.arange(n) / rate / pe.get('decay', .03))
         bends = track['performance'].get('bend')
         if bends:
-            from .model import curve_at
+            from .model import bend_curve, curve_at
+            bends = bend_curve(bends)
             pitch = pitch + np.array([curve_at(bends, clock.beat(x)) for x in t[::OVER * 48]]).repeat(OVER * 48)[:n]
         y = voice(patch, pitch, n_on, n, first['velocity'] / 127, first['id'], rate, beat_seconds)
         y = resample_down(np.pad(y, ((0, (-len(y)) % OVER + OVER * 64), (0, 0))), OVER)

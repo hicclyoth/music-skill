@@ -68,8 +68,9 @@ def fallback_track(track):
 def dependencies(cfg, track):
     """What a Surge part's sound depends on, for the render cache."""
     entry = presets()['presets'][track['surge']['preset']]
+    from .model import file_hash
     return {'surge': (cfg.get('surge') or {}).get('sha256'), 'pedalboard': (cfg.get('pedalboard') or {}).get('sha256'),
-            'patch': entry['sha256'], 'fallback': fallback_track(track)['synth']['preset']}
+            'patch': entry['sha256'], 'fallback': fallback_track(track)['synth']['preset'], 'host': file_hash(SCRIPTS / 'surge_host.py')}
 
 
 def _decode(text):

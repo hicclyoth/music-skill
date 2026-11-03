@@ -15,7 +15,9 @@ from . import audio, drums, layered, midi, production, stage, surge, synth, vari
 from .model import Clock, load_project, validate, performed, save_json, digest, file_hash, TPQ
 
 def engine_hash():
-    return digest({p.name:file_hash(p) for p in Path(__file__).parent.glob('*.py')})
+    """The renderer's code: every musiclib module and the Surge host the renderer starts."""
+    host=Path(__file__).resolve().parents[1]/'surge_host.py'
+    return digest({**{p.name:file_hash(p) for p in Path(__file__).parent.glob('*.py')},'surge_host.py':file_hash(host)})
 
 def free_memory():
     """Bytes of memory free for new work, or None where it cannot be read (macOS gives half its installed memory)."""

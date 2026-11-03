@@ -1007,6 +1007,10 @@ def checks(work,config=None):
         r=copy.deepcopy(p);r['tracks'][0]['mix']['level_dbfs']-=3
         key=lambda x:digest(synthesis_identity(x,Clock(x),x['tracks'][0],{},'code'))
         assert key(p)!=key(q) and key(p)==key(r)
+        # A Surge part's key also holds the host program that plays it.
+        from musiclib import surge
+        st=copy.deepcopy(p['tracks'][0]);st.update(engine='surge',surge={'preset':'juno_60_strings'})
+        assert surge.dependencies({},st)['host']==file_hash(Path(__file__).resolve().parent/'surge_host.py')
         return {'sections_moved':'new key','mix_changed':'same key'}
     check('synthesis_cache_follows_the_played_tempo',cache_identity)
     def slow_rubato_midi():
@@ -1046,6 +1050,18 @@ def checks(work,config=None):
         for b in (0,1.5,3.9):
             assert abs(curve_at(u['performance']['bend'],b)-curve_at(t['performance']['bend'],b+start))<1e-9
             assert abs(curve_at(u['mix']['filter_sweep']['points'],b)-curve_at(t['mix']['filter_sweep']['points'],b+start))<1e-6
+        # The wheel an excerpt plays is the source's at every eighth of a beat: a bend rests at 0 before its first point
+        # and a jump (two points on one beat) on either cut stays a jump.
+        from excerpt import crop
+        from musiclib.model import bend_events
+        def wheel(curve,b):
+            v=8192
+            for beat,value in bend_events({'performance':{'bend':curve,'bend_range':2}}):
+                if beat<=b+1e-9:v=value
+            return v
+        for pts,a,b in (([[8,2],[12,2]],0,16),([[0,0],[4,0],[4,2],[8,2]],0,4),([[4,0],[4,2],[6,2]],4,8),([[2,0],[6,1.5],[9,-1]],4,12)):
+            cut=crop(pts,a,b,bend=True)
+            assert all(wheel(pts,a+k/8)==(wheel(cut,k/8) if cut else 8192) for k in range(int((b-a)*8))),(pts,a,b,cut)
         return {'bend_points':len(u['performance']['bend'])}
     check('excerpt_moves_bends_sweeps_and_dynamics',excerpt_curves)
     def mono_lines():
@@ -1124,7 +1140,22 @@ def checks(work,config=None):
         finally:
             fs.HOSTS=hosts;server.shutdown()
             import importlib;importlib.reload(fs)
-        return {'short_read':'tried again, never cached','damaged_cache':'downloaded again'}
+        # A damaged cached wheel is replaced by the one just verified, and that is the file handed back.
+        import bootstrap,hashlib,subprocess as sp
+        good=b'pedalboard wheel';name='pedalboard-0.9.26-cp313-cp313-win_amd64.whl';wc=work/'wheel_cache';wc.mkdir(exist_ok=True)
+        (wc/name).write_bytes(b'damaged')
+        lock={'optional':{'pedalboard':{'version':'0.9.26','wheels':{name:{'bytes':len(good),'sha256':hashlib.sha256(good).hexdigest()}}}}}
+        real=bootstrap.subprocess.run
+        def fake(argv,**k):
+            target=Path(argv[argv.index('-d')+1])
+            (target/name).write_bytes((wc/name).read_bytes() if '--no-index' in argv else good)
+            return sp.CompletedProcess(argv,0,b'',b'')
+        try:
+            bootstrap.subprocess.run=fake
+            path,meta=bootstrap.pedalboard_wheel(lock,wc,False)
+        finally:bootstrap.subprocess.run=real
+        assert path==wc/name and path.read_bytes()==good and file_hash(path)==meta['sha256']
+        return {'short_read':'tried again, never cached','damaged_cache':'downloaded again','damaged_wheel':'replaced'}
     check('a_short_or_damaged_download_is_never_kept',short_downloads)
     if config:
         from musiclib.render import render

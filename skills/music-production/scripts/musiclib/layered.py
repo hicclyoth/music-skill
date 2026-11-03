@@ -60,7 +60,7 @@ import numpy as np
 
 from . import audio, sf2, variation
 from .midi import chunk, meta
-from .model import TPQ, bend_events, cc_events, curve_at, effective_tempo, legato_notes, performed, save_json, wheel_events
+from .model import TPQ, bend_curve, bend_events, cc_events, curve_at, effective_tempo, legato_notes, performed, save_json, wheel_events
 
 LAYER_BANK, LEGATO_BANK = 16, 32
 FRAME = 480    # 10 ms: the step of the gain curves
@@ -520,7 +520,7 @@ def render(project, track, clock, cfg, font, folder, raw):
     if leg and leg.get('mode', 'slur') == 'slur':
         # Slurred notes sound as one sample with the pitch carried by the wheel, as on a plain preset (midi.write).
         notes, slurs = legato_notes(track, notes, clock)
-        bends = wheel_events([track['performance'].get('bend', []), slurs], track['performance'].get('bend_range', 2), clock.total_beats)
+        bends = wheel_events([bend_curve(track['performance'].get('bend', [])), slurs], track['performance'].get('bend_range', 2), clock.total_beats)
     if track['performance'].get('round_robin') and not bends and not bend_events(track):
         attacks = [n for n in notes if not n['legato']]
         for n, s in zip(attacks, variation.round_robin_shifts(attacks, variation.key_samples(font['path'], layers[0], program))):

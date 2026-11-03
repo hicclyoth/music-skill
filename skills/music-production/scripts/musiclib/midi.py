@@ -3,7 +3,7 @@ from collections import Counter, defaultdict, deque
 from pathlib import Path
 import struct
 from . import variation
-from .model import Clock, TPQ, performed, cc_events, bend_events, legato_notes, wheel_events
+from .model import Clock, TPQ, performed, cc_events, bend_curve, bend_events, legato_notes, wheel_events
 
 def vlq(n):
     if not 0<=n<=0x0fffffff:raise ValueError('VLQ range')
@@ -78,7 +78,7 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
         if render and expressive and t['performance'].get('legato'):
             # Synthesis only: slurred notes sound as one sample with the pitch carried by the wheel.
             notes,slurs=legato_notes(t,notes,clock)
-            bends=wheel_events([t['performance'].get('bend',[]),slurs],t['performance'].get('bend_range',2),clock.total_beats)
+            bends=wheel_events([bend_curve(t['performance'].get('bend',[])),slurs],t['performance'].get('bend_range',2),clock.total_beats)
         else:
             bends=bend_events(t) if expressive else []
         if expressive:

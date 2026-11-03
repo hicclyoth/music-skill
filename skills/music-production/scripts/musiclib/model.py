@@ -477,6 +477,11 @@ def bend_events(track):
     if wheel(pts[-1][1])!=last:out.append((pts[-1][0],wheel(pts[-1][1])))
     return out
 
+def bend_curve(points):
+    """A part's `performance.bend` as a curve for curve_at: the wheel rests at 0 until the first point and may jump
+    there, as the exported MIDI plays it (curve_at alone would hold the first value from the start)."""
+    return [[points[0][0],0.0]]+[list(x) for x in points] if points and points[0][1] else points
+
 def curve_at(points,beat):
     """Value of a [beat, value] curve at `beat`: linear between points, the later of two points on one beat wins."""
     i=bisect.bisect_right([b for b,_ in points],beat)

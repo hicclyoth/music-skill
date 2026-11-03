@@ -5,14 +5,17 @@ from pathlib import Path
 import sys
 from musiclib.model import Clock,curve_at,load_project,save_json,validate
 
-def crop(points,start,end,before=None):
-    """A [beat, value] curve (linear between points) from `start` to `end`, moved to start at 0: the value at each
-    cut, then the points between.  `before` is the value ahead of the first point (a bend rests at 0 until its first
-    point; other curves hold their first value)."""
+def crop(points,start,end,bend=False):
+    """A [beat, value] curve (linear between points, two points on one beat a jump) from `start` to `end`, moved to start
+    at 0: the value just after the start, the points between and the value just before the end, so a jump on either
+    cut stays where it was.  A bend rests at 0 until its first point and jumps there; other curves hold their first
+    value before it."""
     if not points:return points
-    at=lambda b:before if before is not None and b<points[0][0] else curve_at(points,b)
-    inside=[[b-start,v] for b,v in points if start<b<end]
-    return [[0,at(start)]]+inside+[[end-start,at(end)]]
+    first=points[0][0]
+    if bend and end<=first:return []
+    left=lambda b:0.0 if bend and b<=first else curve_at(points,b-1e-9)
+    head=[] if bend and start<first else [[0,curve_at(points,start)]]
+    return head+[[b-start,v] for b,v in points if start<b<end]+[[end-start,left(end)]]
 
 def extract(p,first_bar,bars):
     if first_bar<1 or bars<1 or first_bar-1+bars>p['clock']['bars']:raise ValueError('Excerpt outside source bars')
@@ -45,7 +48,9 @@ def extract(p,first_bar,bars):
         if points:t['mix']['automation']=[[0,value_at(start)]]+[[beat-start,v] for beat,v in points if start<beat<end]+[[end-start,value_at(end)]]
         perf=t['performance']
         if perf.get('dynamics'):perf['dynamics']=crop(perf['dynamics'],start,end)
-        if perf.get('bend'):perf['bend']=crop(perf['bend'],start,end,before=0.0)
+        if perf.get('bend'):
+            perf['bend']=crop(perf['bend'],start,end,bend=True)
+            if not perf['bend']:perf.pop('bend')
         if t['mix'].get('filter_sweep'):t['mix']['filter_sweep']['points']=crop(t['mix']['filter_sweep']['points'],start,end)
     rubato=q['clock'].get('rubato')
     if rubato and first_bar-1+bars<p['clock']['bars']:

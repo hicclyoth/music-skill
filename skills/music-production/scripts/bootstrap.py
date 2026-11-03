@@ -125,7 +125,8 @@ def pedalboard_wheel(lock,cache,offline):
             for f in chosen.glob('*.whl'):
                 w=wheels.get(f.name)
                 if w and f.stat().st_size==w['bytes'] and file_hash(f)==w['sha256']:
-                    if not (cache/f.name).is_file():shutil.copy2(f,cache/f.name)
+                    # The verified bytes take the cached name, over a damaged copy if one is there.
+                    temp=cache/(f.name+'.partial');shutil.copyfile(f,temp);os.replace(temp,cache/f.name)
                     return cache/f.name,w
             return None,None
         finally:shutil.rmtree(chosen,ignore_errors=True)

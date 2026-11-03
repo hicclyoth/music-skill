@@ -45,7 +45,8 @@ UPSTROKE_SPEED, UPSTROKE_VELOCITY = .8, .92
 
 
 def strum_offsets(onset, group, prof, rng):
-    """Per-note delays (ms) and velocity factors of one strummed chord: down on the grid, up between grid steps."""
+    """Per-note delays (ms) and velocity factors of one strummed chord: a downstroke on the even `strum_grid` steps and
+    off the grid, an upstroke on the odd steps."""
     step = onset / prof['strum_grid']
     up = round(step) % 2 == 1 and abs(step - round(step)) < .25
     order = sorted(group, key=lambda n: n['pitch'], reverse=up)
