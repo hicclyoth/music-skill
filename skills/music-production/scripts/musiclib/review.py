@@ -9,6 +9,17 @@ from . import harmony
 from .model import Clock, performed, save_json, validate
 
 FOREGROUND = ('melody', 'countermelody')
+NAMES = ('C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B')
+
+
+def highpass_cut(t):
+    """dB a part's high-pass takes from the fundamental of its lowest note, with that note and its frequency.  FFmpeg's
+    two-pole Butterworth passes r^4/(1+r^4) of the power at r times its cutoff: 3 dB is lost at the cutoff, 1.5 dB a
+    major third above it, 0.3 dB an octave above it; review asks about more than 1.5 dB.  None for parts that do not sound at their written pitch (drums, synthesizers with
+    octave oscillators, Surge)."""
+    if not t['notes'] or t['engine'] not in ('soundfont','additive') or t.get('drums') or (t.get('patch') or t).get('bank',0)==128:return None
+    low=min(n['pitch'] for n in t['notes']);f0=440*2**((low-69)/12)
+    return 10*math.log10(1+(t['mix'].get('highpass',30)/f0)**4),low,f0
 
 def where(clock,beat):
     return f'bar {int(beat//clock.beats_per_bar)+1} beat {beat%clock.beats_per_bar+1:g}'
@@ -121,6 +132,8 @@ def review(p,out,config=None):
         bank=(t.get('patch') or t).get('bank',0)
         if t['engine']=='soundfont' and t.get('soundfont','default')=='default' and bank in (17,18) and not any(c==2 for _,c,_ in t['performance'].get('cc',[])):
             summary['prompts'].append(f'{t["id"]}: MuseScore "Expr." presets (bank 17/18) are near-silent until CC2 is written.')
+        cut=highpass_cut(t)
+        if cut and cut[0]>1.5:summary['prompts'].append(f'{t["id"]}: its high-pass at {t["mix"].get("highpass",30):g} Hz takes {cut[0]:.1f} dB from the fundamental of its lowest note ({NAMES[cut[1]%12]}{cut[1]//12-1}, {cut[2]:.0f} Hz); at {cut[2]/2:.0f} Hz, an octave under that note, it takes 0.3 dB.')
         for n in notes:
             e=t['performance']['notes'][n['id']];a=a_by_id[n['id']]
             csv_rows.append({'track':t['id'],'role':t.get('role'),'note_id':n['id'],'bar_1_based':int(n['on']//clock.beats_per_bar)+1,'beat_in_bar':round(n['on']%clock.beats_per_bar,4),'pitch':n['pitch'],'duration_q':n['duration'],'phrase':n.get('phrase',''),'articulation':n.get('articulation',''),'velocity':e['velocity'],'timing_ms':e.get('timing_ms',0),'gate':e.get('gate',1),'start_seconds':round(a['start_seconds'],6),'end_seconds':round(a['end_seconds'],6)})
@@ -145,6 +158,9 @@ def review(p,out,config=None):
             worst=next(iter(st['by_track']))
             summary['prompts'].append(f'{st["count"]} notes play a sample transposed more than {st["limit_semitones"]} semitones, most in {worst}; the tone and the vibrato rate change with it. Move them, give them to another instrument, or accept the change.')
         if st['outside_count']:summary['prompts'].append(f'{st["outside_count"]} notes fall outside their preset\'s keys and will not sound.')
+        from . import audio,layered
+        cannot=summary['cannot_render']=[m for t in p['tracks'] if t['engine']=='soundfont' for m in [layered.unsupported(t,audio.soundfont_for(config,t)[1]['path'])] if m]
+        summary['prompts']+=['Cannot render: '+m for m in cannot]
     if 'loop' in p:
         from . import loop
         s=summary['loop_seam']=loop.seam(p,clock)

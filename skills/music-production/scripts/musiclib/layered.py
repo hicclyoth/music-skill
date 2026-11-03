@@ -91,6 +91,28 @@ def banks(font_path, program):
     return layers, legato
 
 
+def unsupported(track, font_path):
+    """Why the bank cannot play a part's dynamics or crossfade legato (None when it can), with the programs that can:
+    `review --config` reports it and a render stops on it before any part is synthesized."""
+    if not wanted(track):
+        return None
+    patch = track.get('patch') or {'bank': track.get('bank', 0), 'program': track.get('program', 0)}
+    program = patch.get('program', 0)
+    names = {(x['bank'], x['program']): x['name'] for x in sf2.read(font_path)['presets']}
+    able = ', '.join(f'{p} ({names.get((0, p), "?")})' for p in sorted({p for b, p in names if b == LAYER_BANK}))
+    what = 'performance.dynamics' if 'dynamics' in track['performance'] else 'crossfade legato'
+    hint = f' In this bank, these programs have them, at bank 0: {able or "none"}.'
+    if patch.get('bank', 0) != 0:
+        return (f'{track["id"]}: {what} plays a program\'s recorded dynamics, which belong to its sustained preset at bank 0; '
+                f'bank {patch["bank"]} program {program} ({names.get((patch["bank"], program), "?")}) has none.' + hint)
+    layers, legato = banks(font_path, program)
+    if not layers:
+        return f'{track["id"]}: {what} needs the bank\'s dynamic layers for program {program}, and it has none.' + hint
+    if (track['performance'].get('legato') or {}).get('mode') == 'crossfade' and len(legato) != len(layers):
+        return f'{track["id"]}: crossfade legato needs the bank\'s legato presets for program {program}, and it has none.'
+    return None
+
+
 def plan(track, clock):
     """Performed notes, each with its render (`parity`), whether it enters legato, and its crossfades in seconds."""
     notes = [dict(n, parity=0, legato=False, fade_in=None, fade_out=None, glide=None) for n in performed(track, clock)]

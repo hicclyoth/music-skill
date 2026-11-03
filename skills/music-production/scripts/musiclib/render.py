@@ -51,6 +51,10 @@ def synthesis_identity(p,clock,t,deps,renderer):
 def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
     started=time.monotonic();p=load_project(project_file);clock=Clock(p);cfg=audio.load_config(config_file)
     output=Path(output).resolve();cache=Path(cache).resolve() if cache else output.parent/'cache'
+    # Before anything is synthesized: every part's bank is configured and can play what the part asks of it.
+    fonts={t['id']:audio.soundfont_for(cfg,t)[1] for t in p['tracks'] if t['engine']=='soundfont'}
+    problems=[m for t in p['tracks'] if t['id'] in fonts for m in [layered.unsupported(t,fonts[t['id']]['path'])] if m]
+    if problems:raise ValueError('Parts the banks cannot play as written (review --config lists them too):\n'+'\n'.join(problems))
     project_key=digest(p);marker=output/'render_input.json'
     code_hash=engine_hash()
     # A cached part depends on this code and on the preset files the built-in synth and Surge parts read.

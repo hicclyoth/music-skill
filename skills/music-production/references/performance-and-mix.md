@@ -45,6 +45,8 @@ Build balance with melody, bass and rhythmic anchor first, then support, answers
 
 Check the low end against the bass recording, not only the mix: when a bass sample carries little fundamental (MS Basic picked bass at D2: about 2%), EQ cannot restore it. In one test piece a near-sine additive sub (three harmonics, low-pass 120 Hz, following the bass line, folded into E1–D♯2) raised the chorus share below 60 Hz from about 1% to 12–15% of the power, where a mix-only revision had moved it by less than one point.
 
+A part's `highpass` falls 12 dB per octave: an octave under the part's lowest note keeps that note's fundamental within 0.3 dB, while a cutoff a major third under it takes 1.5 dB, and `review` names such a part. When noise or hiss is heard, find the part and what the noise is before treating it ([noise.md](noise.md)): most of it belongs to the instruments, and the banks' recordings carry little.
+
 Use pan to separate parts while keeping a stable centre; the mix must stay intelligible in mono. Spaced-microphone samples can measure near-zero left/right correlation, so a lead built on them sits diffuse: `mix.width` around 0.3–0.5 puts it in front.
 
 ## The bus chain (`mix.chain: "bus"`)

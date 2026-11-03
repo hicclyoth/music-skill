@@ -429,8 +429,14 @@ def checks(work,config=None):
         build({'name':'xf','presets':[plain]},root,work/'xf_plain.sf2')
         return path
     def expressive_bank():
-        from musiclib import sf2
+        from musiclib import layered,sf2
         bank,plain=sf2.read(xf_bank()),sf2.read(work/'xf_plain.sf2')
+        # Dynamics play a program's recorded layers, which only its bank-0 preset has: review --config and the render
+        # name another bank's preset, or a bank without layers, with the programs that have them.
+        part=lambda patch:{'id':'v','performance':{'notes':{},'dynamics':[[0,64]]},'patch':patch}
+        off=layered.unsupported(part({'bank':1,'program':48}),xf_bank());bare=layered.unsupported(part({'bank':0,'program':48}),work/'xf_plain.sf2')
+        assert layered.unsupported(part({'bank':0,'program':48}),xf_bank()) is None and layered.unsupported({**part({'bank':1,'program':48}),'performance':{'notes':{}}},xf_bank()) is None
+        assert 'bank 1 program 48' in off and '48 (held)' in off and 'has none' in bare and 'at bank 0: none' in bare,(off,bare)
         assert sorted((x['bank'],x['program']) for x in bank['presets'])==[(0,48),(16,48),(17,48),(32,48),(33,48)]
         # The derived presets reuse the stored takes: the samples are the plain build's, byte for byte.
         assert len(bank['samples'])==len(plain['samples']) and all(sf2.load_sample(bank,i).tobytes()==sf2.load_sample(plain,i).tobytes() for i in range(len(plain['samples'])))
@@ -974,7 +980,14 @@ def checks(work,config=None):
         t['notes']=[{'id':f'x{k}','on':k,'duration':1,'pitch':x} for k,x in enumerate((60,64,65,73,86))]
         st=rv.stretched(q,Clock(q),{t['id']:m})
         assert st['count']==2 and st['outside_count']==1 and st['by_track'][t['id']]['worst']['semitones']==18,st
-        return {'flagged':st['count'],'outside':st['outside_count']}
+        # A high-pass close under a part's lowest note thins it: 45 Hz takes 2.8 dB from F#1 and 5.1 dB from D1, under
+        # 1 dB from D2, and an octave under the note takes 0.26 dB; parts that do not sound at their written pitch are
+        # left out (review asks past 1.5 dB).
+        part=lambda hp,low,**k:{'engine':'soundfont','notes':[{'pitch':low},{'pitch':low+12}],'mix':{'highpass':hp},**k}
+        cuts=[rv.highpass_cut(part(45,low))[0] for low in (30,26,38)]
+        assert abs(cuts[0]-2.78)<.02 and abs(cuts[1]-5.13)<.02 and cuts[2]<1 and abs(rv.highpass_cut(part(440*2**((30-69)/12)/2,30))[0]-.26)<.01,cuts
+        assert rv.highpass_cut(part(45,30,drums=True)) is None and rv.highpass_cut(part(45,30,engine='surge')) is None
+        return {'flagged':st['count'],'outside':st['outside_count'],'highpass_cut_db':[round(c,2) for c in cuts]}
     check('review_flags_far_transposed_samples_and_missing_keys',transposed_samples)
     def melody_group_and_balance():
         from musiclib import analysis
