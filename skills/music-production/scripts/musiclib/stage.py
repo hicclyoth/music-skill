@@ -18,6 +18,13 @@ Listeners judge distance in a room mainly by the ratio of direct to reverberant 
 recording that mixes spot microphones with the main pair keeps about half of that, so a part's hall send rises by half
 the distance loss.  The direct sound and its reflections are scaled to keep the part's dry energy, so `level_dbfs`
 still sets its loudness.
+
+A horn's bell points backward, away from the audience: in front of the player its sound above about 2 kHz is some
+10 dB weaker than on the bell's axis, and much of what the hall hears comes off the wall behind (Meyer 2009, on the
+directivity of orchestral instruments).  With `facing: "back"` the direct sound and the reflections that leave the
+player toward the hall lose 8 dB above 2 kHz (a first-order shelf), while the reflections off the stage shell, which the
+bell faces, come back 6 dB stronger; the part keeps its dry energy as before, so it sounds further and darker, not
+quieter.
 """
 import math
 
@@ -66,7 +73,13 @@ def images(src, order=2):
     return out
 
 
-def reflections(pan, depth, length=int(.3 * RATE)):
+def _shelf(freqs, corner=2000.0, cut_db=-8.0):
+    """A first-order high shelf: unity at low frequencies, `cut_db` well above `corner`."""
+    g = 10 ** (cut_db / 20)
+    return (1 + 1j * freqs / (corner / math.sqrt(g)) * math.sqrt(g)) / (1 + 1j * freqs / (corner / math.sqrt(g)))
+
+
+def reflections(pan, depth, length=int(.3 * RATE), facing='front'):
     """Early reflections at the left and right capsule relative to the direct sound (amplitude 1 at the pair's
     centre): an array (length, 2), each order darkened by a first-order low-pass (8 kHz, then 5 kHz), all of them
     high-passed at 250 Hz (second order)."""
@@ -75,6 +88,7 @@ def reflections(pan, depth, length=int(.3 * RATE)):
     direct = distance(src, centre)
     out = np.zeros((length, 2))
     by_order = {1: np.zeros((length, 2)), 2: np.zeros((length, 2))}
+    away = {1: np.zeros((length, 2)), 2: np.zeros((length, 2))}  # with facing "back": paths leaving the bell sideways
     for ch, mic in enumerate(mics()):
         for pos, factor, k in images(src):
             d = distance(pos, mic)
@@ -83,12 +97,18 @@ def reflections(pan, depth, length=int(.3 * RATE)):
                 continue
             i, frac = int(delay), delay - int(delay)
             amp = factor * direct / d
-            by_order[k][i, ch] += amp * (1 - frac)
-            by_order[k][i + 1, ch] += amp * frac
+            shell = pos[1] < 0  # reached the pair off the stage shell, the wall a backward-facing bell points at
+            if facing == 'back' and shell:
+                amp *= 2.0
+            target = by_order[k] if facing != 'back' or shell else away[k]
+            target[i, ch] += amp * (1 - frac)
+            target[i + 1, ch] += amp * frac
     freqs = np.fft.rfftfreq(length, 1 / RATE)
     high = ((1j * freqs / 250.0) / (1 + 1j * freqs / 250.0)) ** 2
     for k, cutoff in ((1, 8000.0), (2, 5000.0)):
         spec = np.fft.rfft(by_order[k], axis=0) * (high / (1 + 1j * freqs / cutoff))[:, None]
+        if facing == 'back':
+            spec += np.fft.rfft(away[k], axis=0) * (high / (1 + 1j * freqs / cutoff) * _shelf(freqs))[:, None]
         out += np.fft.irfft(spec, n=length, axis=0)
     return out
 
@@ -99,19 +119,25 @@ def send_boost_db(pan, depth):
     return 10 * math.log10(distance(source(pan, depth), centre) / distance(source(pan, 0.0), centre))
 
 
-def place(x, pan, depth):
+def place(x, pan, depth, facing='front'):
     """A stereo stem (frames, 2) placed at `depth`: its pan on the direct sound, the reflections from the mono sum,
-    scaled so the result keeps the energy of the panned direct sound alone."""
+    scaled so the result keeps the energy of the panned direct sound alone (with `facing` "back", of the direct sound
+    before its shelf)."""
     x = np.asarray(x, dtype=np.float64)
     g = np.array([math.sqrt(1 - pan), math.sqrt(1 + pan)])
-    er = reflections(pan, depth)
+    er = reflections(pan, depth, facing=facing)
     direct = x * g[None, :]
+    e_ref = float(np.sum(direct ** 2))
+    if facing == 'back':
+        m = fast_length(len(x))
+        spec = np.fft.rfft(direct, n=m, axis=0) * _shelf(np.fft.rfftfreq(m, 1 / RATE))[:, None]
+        direct = np.fft.irfft(spec, n=m, axis=0)[:len(x)]
     mid = x.mean(axis=1)
     m = fast_length(len(x) + len(er))
     spec = np.fft.rfft(mid, n=m)
     wet = np.stack([np.fft.irfft(spec * np.fft.rfft(er[:, ch], n=m), n=m)[:len(x)] for ch in range(2)], axis=1)
     e_direct, e_wet = float(np.sum(direct ** 2)), float(np.sum(wet ** 2))
-    norm = math.sqrt(e_direct / (e_direct + e_wet)) if e_direct + e_wet > 0 else 1.0
+    norm = math.sqrt(e_ref / (e_direct + e_wet)) if e_direct + e_wet > 0 else 1.0
     return ((direct + wet) * norm).astype(np.float32), {'reflection_share_db': round(10 * math.log10(max(e_wet, 1e-30) / max(e_direct, 1e-30)), 2),
                                                          'first_reflection_ms': first_reflection_ms(pan, depth),
                                                          'hall_send_boost_db': round(send_boost_db(pan, depth), 2)}

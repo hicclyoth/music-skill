@@ -67,6 +67,7 @@ Close reading matters more than aggregate counts. In Clara Schumann's `lc5000397
 
 - [Friberg, KTH, A Quantitative Rule System for Musical Performance](https://www.speech.kth.se/music/publications/thesisaf/sammfa2nd.htm): phrase-level and ensemble expression; use style-appropriate amounts and inspect interactions. Only the web summary is the cited reading.
 - [Gillick et al., ICML 2019](https://proceedings.mlr.press/v97/gillick19a.html): expressive drum data and score/performance transformations. We used the dataset and descriptive analysis, not their model or training code.
+- [Yang and Lerch (2020), On the evaluation of generative models in music](https://doi.org/10.1007/s00521-018-3849-7), *Neural Computing and Applications* 32, 4773–4784: the score descriptors `profile` reports.
 - [University of Puget Sound, The Period](https://musictheory.pugetsound.edu/mt21c/PeriodForm.html): contrasting phrase closure. A useful structural lens, not a requirement that all modern music use classical periods.
 - [Ableton / Dennis DeSantis, Mutation Over Generations](https://makingmusic.ableton.com/creating-variation-2-mutation-over-generations): change a meaningful musical dimension while retaining an identifiable relationship. No copied exercises or musical examples are bundled.
 

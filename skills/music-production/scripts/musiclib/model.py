@@ -32,14 +32,59 @@ def number(value, lo, hi, name, integer=False):
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lo <= value <= hi or (integer and int(value) != value):
         raise ValueError(f'{name}: expected {lo}..{hi}' + (' integer' if integer else ''))
 
+def effective_tempo(project):
+    """The tempo map as played: the authored one, with `clock.rubato` applied.  Friberg and Sundberg (1999) model a
+    final ritardando on runners stopping: tempo v(x) = (1 + (w^q - 1) x)^(1/q) over the last `final_beats`, x running
+    from 0 to 1 and w the tempo reached at the end (`final_ratio`; q = 2 is a constant braking force, 3 a softer one).
+    The same curve, shallower, ends each section (`phrase_ratio` over `phrase_beats`): the slight lengthening at a
+    phrase boundary the KTH rule system adds (Friberg, Bresin and Sundberg 2006), released at the next downbeat.  The
+    curve is laid out in steps of an eighth of a beat."""
+    c = project['clock']
+    tempo = [[float(b), float(v)] for b, v in c['tempo']]
+    r = c.get('rubato')
+    if not r:
+        return tempo
+    total = c['meter'][0] * 4 / c['meter'][1] * c['bars']
+    base = lambda b: next(v for beat, v in reversed(tempo) if beat <= b + 1e-9)
+    q = r.get('q', 2.0)
+    spans = []
+    bpb = c['meter'][0] * 4 / c['meter'][1]
+    if r.get('phrase_beats', 0) > 0:
+        for sec in project.get('sections', [])[1:]:
+            end = sec['start_bar'] * bpb
+            if 0 < end < total:
+                spans.append((max(0.0, end - r['phrase_beats']), end, r.get('phrase_ratio', 0.94)))
+    if r.get('final_beats', 0) > 0:
+        spans.append((max(0.0, total - r['final_beats']), total, r.get('final_ratio', 0.6)))
+    steps = {}
+    for a, b, w in spans:
+        k = 0
+        while a + k / 8 < b - 1e-9:
+            beat = a + k / 8
+            x = (beat + 1 / 16 - a) / (b - a)
+            steps[round(beat, 6)] = (w, x)
+            k += 1
+        steps.setdefault(round(b, 6), None)  # back to the written tempo at the boundary
+    out = {round(b, 6): v for b, v in tempo}
+    for beat, item in sorted(steps.items()):
+        if item is None:
+            if beat < total:
+                out[beat] = base(beat)
+            continue
+        w, x = item
+        out[beat] = base(beat) * (1 + (w ** q - 1) * x) ** (1 / q)
+    return [[b, round(v, 4)] for b, v in sorted(out.items())]
+
 class Clock:
     def __init__(self, project):
         c = project['clock']
         self.beats_per_bar = c['meter'][0] * 4 / c['meter'][1]
         self.total_beats = self.beats_per_bar * c['bars']
-        self.beats = [float(x[0]) for x in c['tempo']]
+        tempo = effective_tempo(project)
+        self.tempo = tempo
+        self.beats = [float(x[0]) for x in tempo]
         # MIDI tempo is integral microseconds; share this exact clock with audio.
-        self.spb = [round(60_000_000/x[1])/1_000_000 for x in c['tempo']]
+        self.spb = [round(60_000_000/x[1])/1_000_000 for x in tempo]
         self.times = [0.0]
         for i in range(1,len(self.beats)):
             self.times.append(self.times[-1] + (self.beats[i]-self.beats[i-1])*self.spb[i-1])
@@ -65,6 +110,12 @@ def validate(p):
         raise ValueError('Unsupported meter')
     number(c['meter'][0],1,16,'meter numerator',True)
     number(c.get('tail_seconds',5),1,15,'tail')
+    r=c.get('rubato')
+    if r is not None:
+        if not isinstance(r,dict) or set(r)-{'final_ratio','final_beats','phrase_ratio','phrase_beats','q'}:raise ValueError('clock.rubato takes final_ratio, final_beats, phrase_ratio, phrase_beats and q')
+        number(r.get('final_ratio',.6),.3,1,'rubato final ratio');number(r.get('final_beats',0),0,32,'rubato final beats')
+        number(r.get('phrase_ratio',.94),.7,1,'rubato phrase ratio');number(r.get('phrase_beats',0),0,8,'rubato phrase beats')
+        number(r.get('q',2),1,4,'rubato q')
     if not 1<=len(c['tempo'])<=2048 or c['tempo'][0][0]!=0:
         raise ValueError('Tempo map must start at zero')
     total=c['bars']*c['meter'][0]*4/c['meter'][1]
@@ -99,8 +150,17 @@ def validate(p):
         if not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['id']) or t['id'] in ids:
             raise ValueError('Invalid or duplicate track id')
         ids.add(t['id'])
-        if t['engine'] not in ('soundfont','additive','noise'):
+        if t['engine'] not in ('soundfont','additive','noise','synth','drum_synth','surge'):
             raise ValueError('Unsupported instrument engine')
+        if t['engine']=='synth':
+            from . import synth;synth.validate(t)
+        if t['engine']=='drum_synth':
+            from . import drums;drums.validate(t)
+        if t['engine']=='surge':
+            from . import surge;surge.validate(t)
+        if 'kit' in t and t['engine']!='drum_synth':raise ValueError(f'{t["id"]}: "kit" belongs to engine "drum_synth"')
+        if 'synth' in t and t['engine']!='synth':raise ValueError(f'{t["id"]}: "synth" belongs to engine "synth"')
+        if 'surge' in t and t['engine']!='surge':raise ValueError(f'{t["id"]}: "surge" belongs to engine "surge"')
         if not isinstance(t.get('drums',False),bool):raise ValueError('drums must be boolean')
         # Render-side sound selection; the score/MIDI export keeps program, bank and authored pitches.
         if 'soundfont' in t and (t['engine']!='soundfont' or not isinstance(t['soundfont'],str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,47}',t['soundfont'])):
@@ -173,10 +233,23 @@ def validate(p):
                     raise ValueError(f'{t["id"]}: bend_range must cover the legato interval plus the authored bends')
             else:
                 number(leg.get('crossfade_ms',100),20,400,'legato crossfade ms');number(leg.get('max_interval',12),1,24,'legato max interval',True)
+                number(leg.get('portamento_ms',0),0,300,'legato portamento ms');number(leg.get('portamento_from',.6),.2,1,'legato portamento from')
+                if leg.get('max_interval',12)>12 and leg.get('portamento_ms',0):raise ValueError(f'{t["id"]}: portamento covers intervals up to 12 semitones')
+        perf=t['performance']
+        if perf.get('bow_change_s') is not None:
+            number(perf['bow_change_s'],2,12,'bow change seconds');number(perf.get('bow_ms',60),20,200,'bow change ms')
+            if (leg or {}).get('mode')!='crossfade':raise ValueError(f'{t["id"]}: bow changes need crossfade legato')
+        if perf.get('round_robin') not in (None,True,False):raise ValueError(f'{t["id"]}: round_robin is true or false')
+        if perf.get('swing') is not None:
+            if not isinstance(perf['swing'],dict) or 'ratio' not in perf['swing'] or set(perf['swing'])-{'ratio','unit'}:raise ValueError(f'{t["id"]}: swing takes ratio and optional unit')
+            number(perf['swing']['ratio'],.5,.8,'swing ratio')
+            if perf['swing'].get('unit',.5) not in (.25,.5,1):raise ValueError(f'{t["id"]}: swing unit is 0.25, 0.5 or 1 beat')
+        if perf.get('round_robin') and (t['engine']!='soundfont' or t.get('drums')):raise ValueError(f'{t["id"]}: round_robin is for pitched SoundFont parts')
         dyn=t['performance'].get('dynamics')
         if dyn is not None or (leg or {}).get('mode')=='crossfade':
             # Rendered from a bank's dynamic layers (musiclib/layered.py): a pitched SoundFont part on its own keys.
             if t['engine']!='soundfont' or t.get('drums') or t.get('key_map'):raise ValueError(f'{t["id"]}: dynamics and crossfade legato are for pitched SoundFont parts without a key map')
+        if t['performance'].get('dynamics_mode','take') not in ('crossfade','take'):raise ValueError(f'{t["id"]}: dynamics_mode must be "crossfade" or "take"')
         if dyn is not None:
             if not isinstance(dyn,list) or not dyn:raise ValueError(f'{t["id"]}: dynamics is a list of [beat, 0-127] points')
             last=0
@@ -192,6 +265,13 @@ def validate(p):
         number(mix['level_dbfs'],-60,-6,'reference level')
         number(mix.get('pan',0),-1,1,'pan');number(mix.get('width',1),0,1,'stereo width')
         if mix.get('depth_m') is not None:number(mix['depth_m'],0,10,'stage depth m')
+        from . import production;production.validate(p,t)
+        for e in mix.get('effects',[]):
+            if not isinstance(e,dict) or e.get('type') not in ('chorus','phaser','bitcrush'):raise ValueError(f'{t["id"]}: effects are chorus, phaser or bitcrush')
+            number(e.get('depth',.5),0,1,'effect depth');number(e.get('rate_hz',.5),.05,5,'phaser rate')
+            number(e.get('bits',8),2,16,'bitcrush bits',True);number(e.get('downsample',4),1,32,'bitcrush downsample',True);number(e.get('mix',1),0,1,'bitcrush mix')
+        if mix.get('facing','front') not in ('front','back'):raise ValueError(f'{t["id"]}: mix.facing must be "front" or "back"')
+        if mix.get('facing','front')=='back' and mix.get('depth_m') is None:raise ValueError(f'{t["id"]}: mix.facing needs mix.depth_m')
         if mix.get('bus') is not None and mix['bus'] not in BUSES:raise ValueError(f'{t["id"]}: mix.bus must be one of '+', '.join(BUSES))
         if mix.get('space') is not None and mix['space'] not in SPACES:raise ValueError(f'{t["id"]}: mix.space must be one of '+', '.join(SPACES))
         number(mix.get('highpass',30),15,3000,'HPF')
@@ -236,7 +316,15 @@ def validate(p):
                 owner[tid]=lid
         missing=sorted(ids-set(owner))
         if missing:raise ValueError('Every track needs a layer; missing: '+', '.join(missing))
-    number(p['mix'].get('target_lufs',-16),-30,-10,'master LUFS')
+    if p['mix'].get('loudness','normal') not in ('normal','loud'):raise ValueError('mix.loudness must be "normal" or "loud"')
+    if p['mix'].get('loudness')=='loud' and (p['mix'].get('chain')!='bus' or p['mix'].get('dynamics')=='wide'):raise ValueError('mix.loudness "loud" needs the bus chain without wide dynamics')
+    number(p['mix'].get('target_lufs',-16),-30,-8 if p['mix'].get('loudness')=='loud' else -10,'master LUFS')
+    if p['mix'].get('mono_below_hz') is not None:
+        number(p['mix']['mono_below_hz'],40,250,'mono below Hz')
+        if p['mix'].get('chain')!='bus':raise ValueError('mix.mono_below_hz needs the bus chain')
+    if p['mix'].get('wow_flutter') is not None:
+        from . import production;production.validate_wow(p['mix']['wow_flutter'],'mix')
+        if p['mix'].get('chain')!='bus':raise ValueError('mix.wow_flutter needs the bus chain')
     number(p['mix'].get('peak_ceiling_db',-1.6),-8,-1,'master ceiling')
     number(p['mix'].get('max_limit_db',1.5),0,4,'limiter allowance')
     number(p['mix'].get('room_seconds',1.1),.2,4,'room decay')
@@ -246,10 +334,18 @@ def performed(track,clock,expressive=True):
     """Return actual MIDI-grid onset/release. Trim only overlapping same-key retriggers.
     `performance.offset_ms` shifts a whole part (e.g. sounding earlier to offset slow sample attacks)."""
     notes=[];offset=track['performance'].get('offset_ms',0)/1000 if expressive else 0
+    sw=track['performance'].get('swing') if expressive else None
+    def swung(b):
+        # Swing warps time inside each pair of `unit` notes (0.5 beat swings eighths, 0.25 sixteenths): the first of
+        # the pair stretches to `ratio` of it, so the off-beat lands late and anything between moves in proportion.
+        if not sw:return b
+        u,r=2*sw.get('unit',.5),sw['ratio'];k=math.floor(b/u+1e-9);x=b/u-k
+        return u*(k+(x*2*r if x<=.5 else r+(x-.5)*2*(1-r)))
     for n in track['notes']:
         e=track['performance']['notes'][n['id']]
-        start=clock.seconds(n['on']) + (e.get('timing_ms',0)/1000 if expressive else 0)+offset
-        duration=(clock.seconds(n['on']+n['duration'])-clock.seconds(n['on']))*(e.get('gate',1) if expressive else 1)
+        on,off=swung(n['on']),swung(n['on']+n['duration'])
+        start=clock.seconds(on) + (e.get('timing_ms',0)/1000 if expressive else 0)+offset
+        duration=(clock.seconds(off)-clock.seconds(on))*(e.get('gate',1) if expressive else 1)
         tick=max(0,round(clock.beat(start)*TPQ))
         stop=max(tick+1,min(round(clock.total_beats*TPQ),round(clock.beat(start+duration)*TPQ)))
         notes.append({'id':n['id'],'pitch':n['pitch'],'tick':tick,'end_tick':stop,'velocity':e['velocity'] if expressive else 80})

@@ -1,6 +1,6 @@
 {
  "name": "VCSL (music-production build)",
- "comment": "Built from the Versilian Community Sample Library (VCSL) by Versilian Studios, CC0 1.0. Source: https://github.com/sgossner/VCSL at c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e. Concert harp, marimba, vibraphone (soft mallets), xylophone (medium mallets) and tubular bells, each cut at a few seconds; the mallets and bells keep recorded soft layers 4-8 dB under the loudest (layer_levels_db). Grand Piano, Steinway B, close position, no sustain pedal: 42 notes A#0-G#7 in whole tones serving A0-C8, 3 velocity layers. The library normalized every sample and asks for a velocity curve instead of layer gains, so layers are matched by peak and the synthesizer's velocity curve shapes the dynamics. Changes: pitch-checked against file names, small intonation offsets as fineTune, leading silence trimmed, notes cut at 14 s with a 50 ms fade, 16-bit TPDF dither. Build b3 adds timpani (17 tuning positions of VCSL Timpani 2, each pitch measured from its (1,1) mode and corrected by fine tune; 3 velocity layers, 2 round robins) and an orchestra kit on bank 128 program 48: concert bass drum, snare and snare roll, clash and suspended cymbals with timed swells, gong, tambourine, triangle, sleigh bells and mark tree, keeping the recorded balance between pieces except the small percussion, raised 6-10 dB so it carries in a band mix.",
+ "comment": "Built from the Versilian Community Sample Library (VCSL) by Versilian Studios, CC0 1.0. Source: https://github.com/sgossner/VCSL at c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e. Concert harp, marimba, vibraphone (soft mallets), xylophone (medium mallets) and tubular bells, each cut at a few seconds; the mallets and bells keep recorded soft layers 4-8 dB under the loudest (layer_levels_db). Grand Piano, Steinway B, close position, no sustain pedal: 42 notes A#0-G#7 in whole tones serving A0-C8, 3 velocity layers. The library normalized every sample and asks for a velocity curve instead of layer gains, so layers are matched by peak and the synthesizer's velocity curve shapes the dynamics. Changes: pitch-checked against file names, small intonation offsets as fineTune, leading silence trimmed, notes cut at 14 s with a 50 ms fade, 16-bit TPDF dither. Build b3 adds timpani (17 tuning positions of VCSL Timpani 2, each pitch measured from its (1,1) mode and corrected by fine tune; 3 velocity layers, 2 round robins) and an orchestra kit on bank 128 program 48: concert bass drum, snare and snare roll, clash and suspended cymbals with timed swells, gong, tambourine, triangle, sleigh bells and mark tree, keeping the recorded balance between pieces except the small percussion, raised 6-10 dB so it carries in a band mix. Build b4 keeps each take of the harp, tubular bells, timpani, the Steinway and the struck gong, clash and suspended cymbals until its ring falls 60 dB under its peak (at most 30 s, the timpani 12 s) instead of a fixed cut: low piano notes had been cut while still 27-46 dB down, bells and harp 35-40 dB.",
  "copyright": "Source samples CC0 1.0 (Versilian Studios VCSL)",
  "target_rms": 0.08,
  "presets": [
@@ -35,10 +35,11 @@
       108
      ],
      "level": "peak",
-     "max_seconds": 14,
+     "max_seconds": 30,
      "envelope": {
       "release": 0.6
-     }
+     },
+     "ring_db": -60
     }
    ]
   },
@@ -71,11 +72,12 @@
      "fmin": 30,
      "fmax": 4000,
      "level": "peak",
-     "max_seconds": 8,
+     "max_seconds": 30,
      "envelope": {
       "attack": 0.001,
       "release": 2.5
-     }
+     },
+     "ring_db": -60
     }
    ]
   },
@@ -237,7 +239,7 @@
      "fmin": 100,
      "fmax": 3000,
      "level": "peak",
-     "max_seconds": 10,
+     "max_seconds": 30,
      "envelope": {
       "attack": 0.001,
       "release": 6.0
@@ -246,7 +248,8 @@
      "layer_levels_db": {
       "v2": -6,
       "v4": 0
-     }
+     },
+     "ring_db": -60
     }
    ]
   },
@@ -302,7 +305,7 @@
       59
      ],
      "level": "peak",
-     "max_seconds": 6,
+     "max_seconds": 12,
      "envelope": {
       "attack": 0.001,
       "release": 2.0
@@ -311,7 +314,8 @@
       "v2": -9,
       "v3": -4.5,
       "v5": 0
-     }
+     },
+     "ring_db": -60
     }
    ]
   },
@@ -534,12 +538,13 @@
      "match_notes": false,
      "pitch_check": false,
      "rr_block": 1,
-     "max_seconds": 12,
+     "max_seconds": 30,
      "envelope": {
       "release": 100
      },
      "velocity_attenuation_cb": 60,
-     "velocity_filter_cents": 0
+     "velocity_filter_cents": 0,
+     "ring_db": -60
     },
     {
      "name": "suspended cymbal, stick",
@@ -573,13 +578,14 @@
      "match_notes": false,
      "pitch_check": false,
      "rr_block": 1,
-     "max_seconds": 10,
+     "max_seconds": 30,
      "envelope": {
       "release": 100
      },
      "velocity_attenuation_cb": 60,
      "velocity_filter_cents": 0,
-     "gain": 1.9953
+     "gain": 1.9953,
+     "ring_db": -60
     },
     {
      "name": "gong",
@@ -618,12 +624,13 @@
      "match_notes": false,
      "pitch_check": false,
      "rr_block": 1,
-     "max_seconds": 15,
+     "max_seconds": 30,
      "envelope": {
       "release": 100
      },
      "velocity_attenuation_cb": 60,
-     "velocity_filter_cents": 0
+     "velocity_filter_cents": 0,
+     "ring_db": -60
     },
     {
      "name": "suspended cymbal, bell",
@@ -657,12 +664,13 @@
      "match_notes": false,
      "pitch_check": false,
      "rr_block": 1,
-     "max_seconds": 10,
+     "max_seconds": 30,
      "envelope": {
       "release": 100
      },
      "velocity_attenuation_cb": 60,
-     "velocity_filter_cents": 0
+     "velocity_filter_cents": 0,
+     "ring_db": -60
     },
     {
      "name": "tambourine",
@@ -736,12 +744,13 @@
      "match_notes": false,
      "pitch_check": false,
      "rr_block": 1,
-     "max_seconds": 10,
+     "max_seconds": 30,
      "envelope": {
       "release": 100
      },
      "velocity_attenuation_cb": 60,
-     "velocity_filter_cents": 0
+     "velocity_filter_cents": 0,
+     "ring_db": -60
     },
     {
      "name": "clash cymbals, choked",

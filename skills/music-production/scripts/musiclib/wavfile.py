@@ -19,6 +19,10 @@ def info(path, max_bytes=2_000_000_000):
             f.seek(pos)
             cid, csize = struct.unpack('<4sI', f.read(8))
             if pos + 8 + csize > size + 1:
+                # Trailing metadata that runs past the end (a writer that left out the pad byte after an odd-sized
+                # data chunk shifts the next header by one) is ignored once the audio has been found.
+                if fmt is not None and data is not None:
+                    break
                 raise ValueError(f'Truncated chunk in {path.name}')
             if cid == b'fmt ':
                 fmt = f.read(min(csize, 64))

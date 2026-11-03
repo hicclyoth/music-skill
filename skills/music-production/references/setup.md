@@ -32,6 +32,15 @@ python3 <skill>/scripts/bootstrap.py --system --runtime <work>/.runtime --config
 
 `--system` records the `fluidsynth` and `ffmpeg` found on PATH (or given with `--fluidsynth` and `--ffmpeg`) with their hash and version, and downloads only MS Basic and its licence notice, checked against the lock. It refuses FFmpeg older than 6.0. `libarchive-tools` provides `bsdtar` for the optional .7z banks. The repository's CI renders with FluidSynth 2.3.4 and FFmpeg 6.1 on Ubuntu 24.04 and with FluidSynth 2.6.1 and FFmpeg 9.0 on macOS; other binary versions may produce slightly different samples.
 
+## Surge XT
+
+Unless you pass `--no-surge`, the bootstrap also sets up Surge XT for `surge` parts (fifty curated presets, [electronic.md](electronic.md)):
+
+- Windows: the pinned plugin-only Surge XT 1.3.4 release (49 MB, checked by hash; only its VST3, 21 MB, is kept), the pinned pedalboard 0.9.26 wheel for your Python (about 4 MB, checked against the hashes PyPI publishes, installed into the runtime folder only, never into your Python), and the fifty patches (1.8 MB) from Surge's pinned repository commit, each checked by hash.
+- Linux and macOS: install Surge XT 1.3.4 from https://surge-synthesizer.github.io/ first. The bootstrap finds `Surge XT.vst3` in the usual VST3 folders (or takes `--surge-vst3 <bundle>`), records its hash, then installs pedalboard and the patches as above. This path is not yet covered by CI.
+
+Without Surge XT the bootstrap says so and carries on, and Surge parts play their fallback presets on the built-in synth. Surge XT and pedalboard are GPL-3.0 programs that run in their own process; the skill stays MIT, and what you render with them is yours. A Surge part takes about 20 s to load the plugin when it renders; afterwards the render cache keeps its take.
+
 ## Check the setup
 
 ```text
@@ -39,7 +48,7 @@ python <skill>/scripts/studio.py doctor --config <work>/local-config.json
 python <skill>/scripts/selfcheck.py --work <new empty folder> --config <work>/local-config.json
 ```
 
-`doctor` re-hashes every configured file. The selfcheck runs 46 checks, real renders included, in a minute or two.
+`doctor` re-hashes every configured file. The selfcheck runs 56 checks on its own and 72 with a configuration (`--config`), real renders included, in a few minutes.
 
 ## Optional sound banks
 
@@ -47,17 +56,13 @@ python <skill>/scripts/selfcheck.py --work <new empty folder> --config <work>/lo
 python <skill>/scripts/fetch_soundbanks.py --config <work>/local-config.json --runtime <work>/.runtime --output <work>/local-config.studio.json
 ```
 
-This adds the banks in [soundbanks.md](soundbanks.md) to a new configuration: three FSBS electric guitars (333, 127 and 136 MB), two basses (2–3 MB each), and eight banks built here from CC0 samples fetched one by one from pinned GitHub commits:
-- orchestral strings, solo violin, brass, trumpet and woodwinds from VSCO 2 CE (945 MB of WAVs, 608 MB built);
-- trombone, tuba, solo double bass and piccolo from VSCO 2 CE, the rest of a full orchestra (469 MB of WAVs, 318 MB built);
-- a Steinway grand, harp, mallets, bells, timpani and an orchestra kit from VCSL (1.3 GB of WAVs, 542 MB built);
-- a drum kit from Big Rusty Drums (177 MB of FLAC, 513 MB built);
-- a five-string bass from Black And Blue Basses (525 MB of WAVs, 355 MB built);
-- a grand piano recorded with the dampers down and with the sustain pedal held, from Osiris Piano (177 MB of FLAC, 417 MB built);
-- a solo cello with looped sustains, staccato and pizzicato, from Karoryfer x bigcat cello (127 MB of WAVs, 82 MB built);
-- a pipe organ, full, soft and pedal, with looped sustains, from VCSL (111 MB of WAVs, 83 MB built).
+This adds the banks in [soundbanks.md](soundbanks.md) to a new configuration: three FSBS electric guitars (333, 127 and 136 MB to download), two basses (2–3 MB each), and twenty-four banks built here from the samples of pinned commits or of the University of Iowa site:
+- the orchestra: VSCO 2 CE strings, brass, woodwinds and colours, the section strings, trombone, tuba, double bass and piccolo; the Iowa horn, bass trombone, clarinets, flutes, solo strings and orchestral percussion; the VCSL harp, mallets, bells, timpani and orchestra kit;
+- keyboards: a Steinway grand (VCSL), a pedalled grand (Osiris), a Kawai grand, upright pianos, harpsichords and FM keys (VCSL), a pipe organ (VCSL);
+- band and solo: a rock kit (Big Rusty Drums), a five-string bass, a pizzicato double bass, an archtop guitar, a solo cello, a tuba, a baritone and a tenor saxophone, recorders and harmonicas;
+- world: an erhu, a steel pan, a folk harp, a dan tranh, kalimbas, a balafon and world percussion; and a sung "ah".
 
-`--only vcsl,rusty` limits it to some. Every archive and sample is checked against `soundbank-lock.json`, and each build must reproduce its locked hash. Large banks are loaded only by the tracks that select them.
+The twenty-four come as this project built them: one xz-compressed SF2 each from the repository's release `soundbanks-1`, 2.8 GB in all, checked by size and SHA-256, then unpacked and checked against the build's locked hash, so each is byte for byte what a build from the sources gives. Where the release cannot be reached or a file does not match, that bank is built from its sources instead; `--from-source` builds them all that way (larger downloads, and the builds take a while), and `--prebuilt-from <folder>` takes the assets from a local copy. All twenty-nine are about 3.4 GB to download and 8.1 GB installed; each bank's sizes are in [soundbanks.md](soundbanks.md). `--only` takes bank names (`--only vcsl,rusty`) and groups: `orchestra` (1.5 GB to download), `band` (1.3 GB), `world` (0.5 GB) and `examples`, the banks the published examples use (2.5 GB). `--delete-sources` deletes the downloads once every requested bank is verified (the banks stay; installing one again downloads it again). Every archive, asset and sample is checked against `soundbank-lock.json`, a dropped download is tried again, and each build must reproduce its locked hash. Large banks are loaded only by the tracks that select them. A project that names a bank not yet configured stops with the command that installs it.
 
 ## Your own tools or banks
 

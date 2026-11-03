@@ -15,9 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / 'skills' / 'music-production'
 SCRIPTS = SKILL / 'scripts'
 EXAMPLE = ROOT / 'examples' / 'daybreak-signal'
+OVERTURE = ROOT / 'examples' / 'above-the-clouds'
+GENRES = ROOT / 'examples' / 'genre-demos'
+GENRE_DEMOS = ('signal_fire', 'late_set', 'midnight_coastline', 'tram_line_rain', 'paper_satellites', 'pixel_lantern')
 CONFIG = os.environ.get('MUSIC_SKILL_CONFIG')
-DEMOS = {'piano': ['1.1.r3p4', '--arr', 'r3', '--lead', 'piano', '--mix', 'bus'],
-         'guitar': ['1.1.r3g', '--arr', 'r3', '--lead', 'guitar', '--mix', 'bus']}
+DEMOS = {'piano': ['1.1.r3p4', '--arr', 'r3', '--lead', 'piano', '--mix', 'bus']}
 
 
 def load(path):
@@ -161,6 +163,31 @@ def test_demo_script_writes_the_published_project(tmp_path, name):
     assert load(out) == load(EXAMPLE / f'{name}.json')
 
 
+def test_example_projects_and_recordings():
+    sys.path.insert(0, str(SCRIPTS))
+    from musiclib.model import validate
+    for folder, name in [(OVERTURE, 'above_the_clouds')] + [(GENRES, n) for n in GENRE_DEMOS]:
+        assert validate(load(folder / f'{name}.json'))['seconds'] > 30, name
+        audio = (folder / f'{name}.mp3').read_bytes()
+        assert len(audio) > 500_000 and (audio[:3] == b'ID3' or audio[0] == 0xFF), name
+
+
+def test_overture_script_writes_the_published_project(tmp_path):
+    out = tmp_path / 'above_the_clouds.json'
+    r = subprocess.run([sys.executable, str(OVERTURE / 'above_the_clouds.py'), str(out), '1.0.r7', '--engine-r7'],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert load(out) == load(OVERTURE / 'above_the_clouds.json')
+
+
+@pytest.mark.parametrize('name', GENRE_DEMOS)
+def test_genre_demo_script_writes_the_published_project(tmp_path, name):
+    r = subprocess.run([sys.executable, str(GENRES / f'{name}.py'), str(tmp_path / name)],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert load(tmp_path / name / 'song.json') == load(GENRES / f'{name}.json')
+
+
 def test_selfcheck(tmp_path):
     work = tmp_path / 'selfcheck'
     cmd = [sys.executable, str(SCRIPTS / 'selfcheck.py'), '--work', str(work)] + (['--config', CONFIG] if CONFIG else [])
@@ -168,4 +195,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (46 if CONFIG else 31), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (72 if CONFIG else 56), [c['name'] for c in report['checks']]

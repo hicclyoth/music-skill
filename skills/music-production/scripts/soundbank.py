@@ -14,6 +14,10 @@ build:   a JSON spec maps sample files (regex on file names) to presets.  Each f
          and legato versions of them that enter each take past its attack (`legato`), for the renderer's
          dynamics crossfades and crossfade legato.  FLAC sources are decoded losslessly with FFmpeg (--ffmpeg).  A receipt records every
          source file hash and decision.
+split:   recordings of notes played one at a time (a chromatic scale per file and dynamic, as in the University of
+         Iowa Musical Instrument Samples) cut into one WAV per note, each checked against the run its file is named for;
+         AIFF is read directly.  The manifest (split.json) records every cut and its hash.
+cut:     the notes of a split manifest cut again from the same sources and checked against their hashes (installs).
 Sample data is never executed.  The output inherits the sample set's license.
 """
 import argparse
@@ -87,14 +91,464 @@ def _zones_for(notes, keys):
             out[r] = (lo, hi)
     return out
 
-AUDIO = ('.wav', '.flac')
+AUDIO = ('.wav', '.flac', '.aif', '.aiff')
 
 def audio_files(folder):
     return [f for f in sorted(Path(folder).iterdir()) if f.is_file() and f.suffix.lower() in AUDIO]
 
+def _ext80(b):
+    """An IEEE 754 80-bit extended float (AIFF's sample rate)."""
+    exponent = int.from_bytes(b[:2], 'big') & 0x7FFF
+    mantissa = int.from_bytes(b[2:10], 'big')
+    return mantissa * 2.0 ** (exponent - 16383 - 63) if exponent else 0.0
+
+def read_aiff(path):
+    """Uncompressed AIFF or AIFC (big-endian PCM, or 'sowt' little-endian) as float frames, with read_audio's info."""
+    data = Path(path).read_bytes()
+    if data[:4] != b'FORM' or data[8:12] not in (b'AIFF', b'AIFC'):
+        raise ValueError(f'{Path(path).name}: not an AIFF file')
+    pos, comm, ssnd = 12, None, None
+    while pos + 8 <= len(data):
+        cid, size = data[pos:pos + 4], int.from_bytes(data[pos + 4:pos + 8], 'big')
+        if cid == b'COMM':
+            comm = data[pos + 8:pos + 8 + size]
+        elif cid == b'SSND':
+            ssnd = data[pos + 8:pos + 8 + size]
+        pos += 8 + size + (size & 1)
+    if comm is None or ssnd is None:
+        raise ValueError(f'{Path(path).name}: AIFF without COMM or SSND')
+    channels, frames, bits = int.from_bytes(comm[:2], 'big'), int.from_bytes(comm[2:6], 'big'), int.from_bytes(comm[6:8], 'big')
+    rate = _ext80(comm[8:18])
+    kind = comm[18:22] if data[8:12] == b'AIFC' else b'NONE'
+    if kind not in (b'NONE', b'twos', b'sowt') or bits not in (8, 16, 24, 32) or not 1 <= channels <= 8 or rate <= 0:
+        raise ValueError(f'{Path(path).name}: unsupported AIFF ({kind!r}, {bits} bits)')
+    offset = int.from_bytes(ssnd[:4], 'big')
+    width = bits // 8
+    raw = ssnd[8 + offset:8 + offset + frames * channels * width]
+    order = '<' if kind == b'sowt' else '>'
+    if width == 3:
+        b3 = np.frombuffer(raw, dtype='u1').reshape(-1, 3).astype(np.int32)
+        v = (b3[:, 2] | (b3[:, 1] << 8) | (b3[:, 0] << 16)) if order == '>' else (b3[:, 0] | (b3[:, 1] << 8) | (b3[:, 2] << 16))
+        x = ((v ^ 0x800000) - 0x800000).astype(np.float32) / 8388608
+    else:
+        x = np.frombuffer(raw, dtype=f'{order}i{width}').astype(np.float32) / float(1 << (bits - 1))
+    x = x[:len(x) // channels * channels].reshape(-1, channels)
+    return x, {'rate': int(round(rate)), 'channels': channels, 'bits': bits, 'frames': len(x), 'loops': []}
+
+def write_float_wav(path, x, rate):
+    """A 32-bit float WAV at any rate (the splitter's notes keep their source's rate)."""
+    x = np.asarray(x, dtype='<f4')
+    if x.ndim == 1:
+        x = x[:, None]
+    data = x.tobytes()
+    ch = x.shape[1]
+    fmt = (3).to_bytes(2, 'little') + ch.to_bytes(2, 'little') + int(rate).to_bytes(4, 'little') + (rate * ch * 4).to_bytes(4, 'little') + (ch * 4).to_bytes(2, 'little') + (32).to_bytes(2, 'little')
+    body = b'WAVE' + b'fmt ' + len(fmt).to_bytes(4, 'little') + fmt + b'data' + len(data).to_bytes(4, 'little') + data
+    Path(path).write_bytes(b'RIFF' + len(body).to_bytes(4, 'little') + body)
+
+def pitch_track(mono, rate, fmin, fmax, hop, threshold=0.15, chunk=400, guide=None):
+    """YIN (de Cheveigne and Kawahara 2002) on frames `hop` samples apart: f0 in Hz, nan where no period's
+    cumulative-mean-normalized difference falls under `threshold`.  With `guide` (lowest, highest Hz) only lags in that
+    range count, and the period is the shortest lag whose dip comes within 1.5 times (+0.02) of the range's deepest
+    (an octave-up error needs a dip that deep; the first octave down is a longer lag); frames whose deepest dip stays
+    over 0.4 are unpitched.  Frame i spans samples i*hop .. i*hop + W."""
+    mono = np.asarray(mono, dtype=np.float64)
+    tmin, tmax = max(2, int(rate / fmax)), int(rate / fmin) + 2
+    w = tmax
+    W = w + tmax + 2
+    n = max(0, (len(mono) - W) // hop + 1)
+    f0 = np.full(n, np.nan)
+    if not n:
+        return f0, W
+    if guide:
+        glo, ghi = max(tmin, int(rate / guide[1])), min(tmax - 1, int(rate / guide[0]) + 1)
+    nfft = 1 << int(math.ceil(math.log2(W + w)))
+    cs = np.concatenate([[0.0], np.cumsum(mono ** 2)])
+    taus = np.arange(tmax + 1)
+    for c0 in range(0, n, chunk):
+        idx = np.arange(c0, min(n, c0 + chunk)) * hop
+        frames = mono[idx[:, None] + np.arange(W)]
+        r = np.fft.irfft(np.conj(np.fft.rfft(frames[:, :w], nfft)) * np.fft.rfft(frames, nfft), nfft)[:, :tmax + 1]
+        e1 = cs[idx + w] - cs[idx]
+        e2 = cs[idx[:, None] + taus + w] - cs[idx[:, None] + taus]
+        d = np.maximum(e1[:, None] + e2 - 2 * r, 0.0)
+        d[:, 0] = 0.0
+        cm = np.ones_like(d)
+        cm[:, 1:] = d[:, 1:] * taus[1:] / np.maximum(np.cumsum(d[:, 1:], axis=1), 1e-12)
+        if guide:
+            sub = cm[:, glo:ghi + 1]
+            deepest = sub.min(axis=1)
+            dip = np.zeros_like(sub, dtype=bool)
+            dip[:, 1:-1] = (sub[:, 1:-1] <= sub[:, :-2]) & (sub[:, 1:-1] <= sub[:, 2:])
+            ok = dip & (sub <= (1.5 * deepest + 0.02)[:, None])
+            first = glo + np.argmax(ok, axis=1)
+            rows = np.flatnonzero((deepest < 0.4) & ok.any(axis=1) & (e1 > w * 1e-12))  # digital silence has no pitch
+        else:
+            below = cm[:, tmin:] < threshold
+            first = tmin + np.argmax(below, axis=1)
+            rows = np.flatnonzero(below.any(axis=1))
+        for k in rows:
+            t, row = first[k], cm[k]
+            if not guide:
+                while t + 1 <= tmax and row[t + 1] < row[t]:
+                    t += 1
+            if 1 <= t < tmax:
+                p, q, s = row[t - 1], row[t], row[t + 1]
+                t = t + max(-1.0, min(1.0, 0.5 * (p - s) / max(p - 2 * q + s, 1e-12)))
+            f0[c0 + k] = rate / t
+    return f0, W
+
+def align_run(x, rate, expected, quiet_db=25.0, edge_db=35.0, min_note=0.25, tolerance=0.8, skip=0.1, partial=False,
+              level_db=24.0):
+    """Where each note of `expected` (MIDI numbers, rising, in playing order) lies in a recording of them played one
+    at a time, as a chromatic scale is recorded for a sample library.
+
+    Candidates first: every 10 ms frame gets a YIN pitch searched only around the run's range, and a level; frames more
+    than `quiet_db` under the loudest level within 1.5 s are quiet.  A candidate note runs until a quiet stretch over
+    50 ms or until 25 pitched frames in a row (within 0.5 s) settle 0.6 to 3.5 semitones from the median of its last
+    30 (their median that far, 80% of them over 0.45: the next note slurred in; vibrato and octave slips stay inside), and is kept if it lasts `min_note` seconds and
+    is pitched for 30% of it, and if it rises within `level_db` of the recording's loud notes (the 95th percentile of
+    its frame levels) and within `level_db` + 12 of its loudest moment: far from any note the local test stops working,
+    and the room's hum or a string's faint ring, pitched by the guided search, would otherwise pass for a note.  Then
+    the expected notes are matched to candidates in order by dynamic programming: a match costs its distance in
+    semitones (at most `tolerance`; an octave off counts 0.3 more, a candidate shorter than the typical one up to 0.4
+    more), each candidate left out costs `skip`, so a note played twice keeps its better-tuned
+    take and a stray noise is passed over; with `partial`, a note the file lacks (a string player skipping a note on
+    one string) is left out for 0.5.  Each matched note's edges move out while the level keeps falling away from
+    it and stays within `edge_db` of its median (taking in attack and release but not a breath or a retake), never into
+    another matched note; a plucked note whose candidate begins in its ring starts at the louder attack before it.
+    Returns the notes found, [{'start', 'end', 'midi', 'cents', 'f0'}] in samples, and a summary (candidates,
+    left out, missing notes); raises when a note cannot be matched and the run is not `partial`."""
+    m = np.asarray(x, dtype=np.float64)
+    m = m.mean(axis=1) if m.ndim == 2 else m
+    hop = int(round(0.01 * rate))
+    lo_hz, hi_hz = 440 * 2 ** ((min(expected) - 1.5 - 69) / 12), 440 * 2 ** ((max(expected) + 1.5 - 69) / 12)
+    f0, W = pitch_track(m, rate, lo_hz * 0.9, hi_hz * 1.1, hop, guide=(lo_hz, hi_hz))
+    n = len(f0)
+    if n < 10:
+        raise ValueError('recording too short')
+    centre = np.arange(n) * hop + W // 2
+    seg = np.clip(centre[:, None] + np.arange(-hop // 2, hop // 2)[None, :], 0, len(m) - 1)
+    e = 10 * np.log10(np.maximum((m[seg] ** 2).mean(axis=1), 1e-20))
+    span = int(1.5 / 0.01)
+    pad = np.pad(e, span, mode='edge')
+    local = np.lib.stride_tricks.sliding_window_view(pad, 2 * span + 1).max(axis=1)
+    quiet = e < local - quiet_db
+    semi = np.where(np.isfinite(f0) & ~quiet, 69 + 12 * np.log2(np.where(np.isfinite(f0), f0, 440.0) / 440.0), np.nan)
+    # Candidates: stretches between quiet runs over 50 ms, cut where the pitch moves to a new steady value.
+    cands, i = [], 0
+    while i < n:
+        if quiet[i]:
+            i += 1
+            continue
+        j, hush = i, 0
+        while j < n and hush <= 5:
+            hush = hush + 1 if quiet[j] else 0
+            j += 1
+        a, b = i, j - hush
+        i = j
+        at = np.flatnonzero(np.isfinite(semi[a:b])) + a
+        vals = semi[at]
+        # The next note of a chromatic run lies 1-3 semitones on: a pitch that holds that far from the current note for
+        # 25 pitched frames (within 0.5 s) starts a new candidate; a vibrato peak or an octave slip does not, and
+        # frames an octave or more away are left out of the pitch.
+        # The seed is the commonest semitone of the first 50 pitched frames: an octave slip at the attack cannot set it.
+        head = vals[:50]
+        mode = np.bincount(np.round(head).astype(int) - int(np.round(head).min())).argmax() + int(np.round(head).min()) if len(head) else 0
+        cuts, cur, k, slips = [a], [float(np.median(head[np.round(head) == mode]))] if len(head) else [], 0, set()
+        while k < len(at):
+            ref = float(np.median(cur[-30:]))
+            step = abs(vals[k] - ref)
+            if step > 3.5:
+                slips.add(int(at[k]))
+                k += 1
+                continue
+            if step > 0.6:
+                ahead = vals[k:k + 25]
+                dev = np.abs(ahead - ref)
+                if (len(ahead) == 25 and abs(np.median(ahead) - ref) > 0.6 and np.mean(dev > 0.45) >= 0.8
+                        and np.all(dev < 3.5) and np.ptp(ahead) <= 1.2 and at[min(k + 24, len(at) - 1)] - at[k] <= 50):
+                    cuts.append(int(at[k]))
+                    cur, k = list(ahead), k + 25
+                else:
+                    k += 1
+                continue
+            cur.append(vals[k])
+            k += 1
+        cuts.append(b)
+        for u, v in zip(cuts, cuts[1:]):
+            inside = [t for t in at[(at >= u) & (at < v)] if int(t) not in slips]
+            cands.append({'a': u, 'b': v, 'p': list(semi[inside])})
+    keep = []
+    loud = float(np.percentile(e, 95))
+    # Plucked runs are mostly ringing, so their 95th percentile sits low; a stretch far under the loudest attack (a
+    # previous note's last ring) is no note either.
+    peak = float(np.convolve(e, np.ones(5) / 5, mode='same').max())
+    for c in cands:
+        if (c['b'] - c['a']) * 0.01 < min_note or len(c['p']) < 0.3 * (c['b'] - c['a']):
+            continue
+        top = float(e[c['a']:c['b']].max())
+        if top < loud - level_db or top < peak - level_db - 12:
+            continue
+        q = np.array(c['p'])
+        c['pitch'] = float(np.median(q[len(q) // 4:max(len(q) // 4 + 1, 3 * len(q) // 4)]))
+        if keep and keep[-1]['b'] >= c['a'] - 1 and abs(keep[-1]['pitch'] - c['pitch']) < 0.4:
+            keep[-1]['b'], keep[-1]['p'] = c['b'], keep[-1]['p'] + c['p']
+            continue
+        keep.append(c)
+    cands = keep
+    J, K = len(cands), len(expected)
+    if J < K and not partial:
+        raise ValueError(f'{K} notes named, {J} found: ' + ' '.join(f'{c["pitch"]:.2f}' for c in cands))
+    # Matching in order (an edit-distance alignment): a candidate on a note costs their distance in semitones (at most
+    # `tolerance`), a candidate left out costs `skip`, and with `partial` a note left out costs `miss`.
+    INF = float('inf')
+    # A candidate an octave off (a breathy flute note YIN heard an octave down) still matches, for 0.3 more.
+    P, Wn = np.array([c['pitch'] for c in cands]).reshape(1, J), np.array(expected, dtype=float).reshape(K, 1)
+    options = np.stack([np.abs(P - Wn), np.abs(P + 12 - Wn) + 0.3, np.abs(P - 12 - Wn) + 0.3])
+    octave = np.array([0, 12, -12])[np.argmin(options, axis=0)]
+    dist = options.min(axis=0)
+    dist[dist > tolerance] = INF
+    # A fragment (a stray stretch of bow noise, the tail of a note) loses to a whole take: up to 0.4 more the shorter
+    # it is than the typical candidate.
+    lengths = np.array([c['b'] - c['a'] for c in cands], dtype=float)
+    dist = dist + 0.4 * np.clip(1 - lengths / max(1.0, float(np.median(lengths))), 0, 1)[None, :]
+    miss = 0.5 if partial else INF
+    D = np.full((K + 1, J + 1), INF)
+    move = np.zeros((K + 1, J + 1), dtype=np.int8)
+    D[0, :] = skip * np.arange(J + 1)
+    move[0, 1:] = 2
+    for k in range(1, K + 1):
+        D[k, 0] = D[k - 1, 0] + miss
+        move[k, 0] = 3
+        for j in range(1, J + 1):
+            options = (D[k - 1, j - 1] + dist[k - 1, j - 1], D[k, j - 1] + skip, D[k - 1, j] + miss)
+            best = int(np.argmin(options))
+            D[k, j], move[k, j] = options[best], best + 1
+    if not np.isfinite(D[K, J]):
+        near = [min(((abs(c['pitch'] - w), c['pitch']) for c in cands), default=(INF, float('nan')))[1] for w in expected]
+        bad = [f'MIDI {w} (nearest {p:.2f})' for w, p in zip(expected, near) if not abs(p - w) <= tolerance]
+        raise ValueError(f'{K} notes named, {J} found; no in-order match for '
+                         + (', '.join(bad) or 'the run ' + ' '.join(f'{c["pitch"]:.2f}' for c in cands)))
+    pairs, k, j = [], K, J
+    while k or j:
+        mv = move[k, j]
+        if mv == 1:
+            pairs.append((k - 1, j - 1))
+            k, j = k - 1, j - 1
+        elif mv == 2:
+            j -= 1
+        else:
+            k -= 1
+    pairs.reverse()
+    matched = {kk: jj for kk, jj in pairs}
+    used = sorted(matched.values())
+    out = []
+    for k, w in enumerate(expected):
+        if k not in matched:
+            continue
+        j = matched[k]
+        c = cands[j]
+        a, b = c['a'], c['b']
+        level = float(np.median(e[a:b]))
+        before = [matched[q] for q in matched if matched[q] < j]
+        after = [matched[q] for q in matched if matched[q] > j]
+        lo = cands[max(before)]['b'] if before else 0
+        hi = cands[min(after)]['a'] if after else n
+        # A plucked or struck note: its loudest moment, the attack, is too brief and too rich for a steady pitch, so
+        # the candidate starts in the ringing that follows.  When a louder burst precedes it within 2 s and the sound
+        # does not fall silent in between, the note starts at that burst.
+        back = max(lo, a - 200)
+        if back < a:
+            peak = back + int(np.argmax(e[back:a]))
+            if e[peak] > e[a:b].max() + 3 and e[peak:a].min() >= e[a:b].min() - 6:
+                a = peak
+        while a - 1 >= lo and e[a - 1] > level - edge_db and e[a - 1] <= e[a] + 1.0:
+            a -= 1
+        while b < hi and e[b] > level - edge_db - 5 and e[b] <= e[b - 1] + 1.0:
+            b += 1
+        heard = c['pitch'] + octave[k, j]
+        out.append({'start': int(max(0, centre[a] - hop // 2)), 'end': int(min(len(m), centre[b - 1] + hop // 2)),
+                    'midi': w, 'cents': round((heard - w) * 100, 1), 'f0': round(440 * 2 ** ((heard - 69) / 12), 3)})
+    return out, {'candidates': J, 'left_out': J - len(used), 'missing': [w for k, w in enumerate(expected) if k not in matched]}
+
+def spectral_pitch(x, rate, midi, window=(0.05, 0.65), reach=1.0):
+    """The frequency of the strongest spectral peak within `reach` semitones of `midi`, from a Hann-windowed spectrum
+    of the stretch `window` seconds into `x` (bins of 1 Hz or finer), refined by a parabola through the log magnitudes;
+    None when that peak is more than 30 dB under the stretch's strongest.  For struck metal (crotales, gongs), whose
+    partials are not harmonic, so that YIN's period is not the pitch heard."""
+    seg = np.asarray(x, dtype=np.float64)[int(window[0] * rate):int(window[1] * rate)]
+    n = 1 << int(math.ceil(math.log2(max(len(seg), rate))))
+    spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), n))
+    freqs = np.arange(len(spec)) * rate / n
+    f = 440 * 2 ** ((midi - 69) / 12)
+    band = np.flatnonzero((freqs >= f * 2 ** (-reach / 12)) & (freqs <= f * 2 ** (reach / 12)))
+    k = int(band[np.argmax(spec[band])])
+    if spec[k] < spec.max() * 10 ** (-30 / 20) or not 0 < k < len(spec) - 1:
+        return None
+    a, b, c = np.log(spec[k - 1:k + 2] + 1e-12)
+    shift = 0.5 * (a - c) / (a - 2 * b + c) if a - 2 * b + c else 0.0
+    return (k + shift) * rate / n
+
+NOTE_NAMES = ('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
+
+def note_name(midi):
+    return f'{NOTE_NAMES[midi % 12]}{midi // 12 - 1}'
+
+def _note_run(names):
+    """MIDI numbers of a chromatic run given by its first and last note (one name for a single note)."""
+    lo, hi = note_number(names[0]), note_number(names[-1])
+    if hi < lo:
+        raise ValueError(f'Run {names} goes down')
+    return list(range(lo, hi + 1))
+
+def _cut_note(x, start, end, fade, rate, path):
+    """Write samples start..end of `x` as a float WAV, the last `fade` samples faded out; returns the file's SHA-256."""
+    y = np.array(x[start:end], dtype=np.float32)
+    if fade:
+        y[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32)[:, None]
+    write_float_wav(path, y, rate)
+    return file_hash(path)
+
+def save_manifest(path, manifest):
+    """A split manifest with one record per line: compact enough to keep beside the spec, and line-diffable."""
+    lines = ['{']
+    for i, key in enumerate(('groups', 'sources', 'notes')):
+        rows = ',\n'.join('  ' + json.dumps(r, ensure_ascii=False, separators=(',', ':')) for r in manifest[key])
+        lines.append(f' "{key}": [\n{rows}\n ]' + (',' if i < 2 else ''))
+    lines.append('}')
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
+
+def cut_sources(manifest, src_root, out_root):
+    """Cut the notes a `split` manifest records (source, sample span, fade) from the same source files, each checked
+    against its recorded SHA-256: an installer reproduces the intake's notes exactly without re-running the note finder,
+    whose floating-point decisions could differ by a frame on another platform."""
+    src_root, out_root = Path(src_root), Path(out_root)
+    by_source = {}
+    for n in manifest['notes']:
+        by_source.setdefault(n['source'], []).append(n)
+    for source, notes in by_source.items():
+        x, info = read_audio(src_root / source)
+        x = np.asarray(x, dtype=np.float32)
+        for n in notes:
+            path = out_root / n['file']
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if _cut_note(x, n['start'], n['end'], n['fade'], info['rate'], path) != n['sha256']:
+                raise ValueError(f'{n["file"]}: the cut does not reproduce the recorded note')
+    return len(manifest['notes'])
+
+def split_sources(split, src_root, out_root):
+    """Cut each source file of `split['groups']` into one float WAV per note, named <group>_<dyn>_<note>.wav.
+
+    A file entry gives its dynamic and the chromatic run it holds (`notes`: first and last note, as the publisher named
+    the file); align_run finds each of those notes in order (a retake keeps its better-tuned take, within
+    `tolerance_cents`, default 80) or refuses the file; in a `partial` group or file a note the file lacks is recorded
+    as missing instead.  An entry with `whole` keeps the file as one note (a
+    single crotale, a gong), pitch-checked by YIN, or with `pitch: "spectrum"` by its strongest partial near the name
+    (struck metal), or not at all with `pitch: false` and `out` naming it.  `quiet_db`,
+    `edge_db` and `min_note` tune the note finder per group or file; `fmin` and `fmax` bound the pitch check of a
+    `whole` note.  Where several files hold the same
+    note at the same dynamic (a violin's notes on more than one string), `strings` gives each string's preferred notes
+    and the nearest string that has the note is used.  Returns the manifest: every note's source, sample span, pitch,
+    and each source's noise floor."""
+    src_root, out_root = Path(src_root), Path(out_root)
+    manifest = {'groups': [], 'notes': [], 'sources': []}
+    for group in split['groups']:
+        opts = {k: group[k] for k in ('quiet_db', 'edge_db', 'min_note', 'partial') if k in group}
+        fmin, fmax = group.get('fmin', 25.0), group.get('fmax', 4200.0)
+        tolerance = group.get('tolerance_cents', 80)
+        candidates = {}
+        for entry in group['files']:
+            path = src_root / entry['file']
+            x, info = read_audio(path)
+            rate = info['rate']
+            x = np.asarray(x, dtype=np.float32)
+            source = {'file': entry['file'], 'sha256': file_hash(path), 'rate': rate, 'seconds': round(len(x) / rate, 3)}
+            if entry.get('whole'):
+                mono = x.mean(axis=1)
+                start = max(0, onset(x, rate, entry.get('floor_db', group.get('floor_db', -45.0)), 10.0))
+                end = int(np.flatnonzero(np.abs(mono) > 1e-6)[-1]) + 1
+                midi = cents = f0 = None
+                how = entry.get('pitch', group.get('pitch', True))
+                if how:
+                    want = _note_run(entry['notes'])[0]
+                    seg = mono[start + int(.05 * rate):start + int(.65 * rate)].astype(np.float64)
+                    f0 = spectral_pitch(mono[start:], rate, want) if how == 'spectrum' else None
+                    for threshold in (0.12, 0.2) if how != 'spectrum' else ():
+                        f0 = f0 or yin_f0(seg, rate, entry.get('fmin', fmin), entry.get('fmax', fmax), threshold)
+                    exact = None if not f0 else 69 + 12 * math.log2(f0 / 440.0)
+                    if exact is not None and entry.get('octave_free', group.get('octave_free')):
+                        exact = want + (exact - want + 6) % 12 - 6
+                    if exact is not None and abs(exact - want) * 100 > tolerance:
+                        raise ValueError(f'{entry["file"]}: named {note_name(want)}, measured {exact:.2f}')
+                    midi, cents = want, None if exact is None else round((exact - want) * 100, 1)
+                    f0 = None if not f0 else round(f0, 3)
+                spans = [{'start': start, 'end': end, 'midi': midi, 'cents': cents, 'f0': f0, 'cut': (start, end)}]
+                source['noise_db'] = None
+                source['noise_bands'] = noise_bands(x, rate, spans)
+            else:
+                fo = {**opts, **{k: entry[k] for k in ('quiet_db', 'edge_db', 'min_note', 'partial') if k in entry}}
+                try:
+                    found, summary = align_run(x, rate, _note_run(entry['notes']), tolerance=tolerance / 100, **fo)
+                except ValueError as exc:
+                    raise ValueError(f'{entry["file"]}: {exc}') from None
+                source.update(left_out=summary['left_out'], missing=[note_name(w) for w in summary['missing']])
+                for k, n in enumerate(found):
+                    # 10 ms before the note and 30 ms after its release, never into the next one.
+                    nxt = found[k + 1]['start'] if k + 1 < len(found) else len(x)
+                    n['cut'] = (max(0, n['start'] - int(.01 * rate)), min(nxt - int(.005 * rate), n['end'] + int(.03 * rate)))
+                spans = found
+                # The noise floor: the median level away from every note, under the loudest 5 ms.
+                mono = x.mean(axis=1).astype(np.float64)
+                hop = int(round(.005 * rate))
+                frames = len(mono) // hop
+                e = 10 * np.log10(np.maximum((mono[:frames * hop].reshape(frames, hop) ** 2).mean(axis=1), 1e-20))
+                inside = np.zeros(frames, dtype=bool)
+                for n in found:
+                    inside[max(0, n['start'] // hop - 4):n['end'] // hop + 20] = True
+                source['noise_db'] = round(float(np.median(e[~inside]) - e.max()), 1) if (~inside).sum() > 20 else None
+                source['noise_bands'] = noise_bands(x, rate, found)
+            manifest['sources'].append(source)
+            for n in spans:
+                a, b = n['cut']
+                key = (entry['dyn'], entry.get('out') or n['midi'])
+                candidates.setdefault(key, []).append({'entry': entry, 'x': x, 'rate': rate, 'start': a, 'end': b, 'note': n})
+        prefer = group.get('strings')
+        order = list(prefer) if prefer else []
+        folder = out_root / group['name']
+        folder.mkdir(parents=True, exist_ok=True)
+        written = 0
+        for (dyn, which), cands in sorted(candidates.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            if prefer and len(cands) > 1:
+                def distance(c):
+                    lo, hi = prefer[c['entry']['string']]
+                    m = c['note']['midi']
+                    return (0 if lo <= m <= hi else min(abs(m - lo), abs(m - hi)), order.index(c['entry']['string']))
+                pick = min(cands, key=distance)
+            elif len(cands) > 1:
+                raise ValueError(f'{group["name"]}: {dyn} {which} comes from {len(cands)} files and the group has no `strings` choice')
+            else:
+                pick = cands[0]
+            fade = 0 if pick['entry'].get('whole') else min((pick['end'] - pick['start']) // 4, int(.02 * pick['rate']))
+            name = f'{group["name"]}_{dyn}_{which if isinstance(which, str) else note_name(which)}.wav'
+            digest = _cut_note(pick['x'], pick['start'], pick['end'], fade, pick['rate'], folder / name)
+            written += 1
+            n = pick['note']
+            manifest['notes'].append({'file': f'{group["name"]}/{name}', 'source': pick['entry']['file'],
+                                      'string': pick['entry'].get('string'), 'start': pick['start'], 'end': pick['end'],
+                                      'fade': fade, 'sha256': digest,
+                                      'seconds': round((pick['end'] - pick['start']) / pick['rate'], 3),
+                                      'f0_hz': n['f0'], 'cents': n['cents'],
+                                      'alternatives': [c['entry']['file'] for c in cands if c is not pick]})
+        manifest['groups'].append({'name': group['name'], 'files': len(group['files']), 'notes': written})
+    return manifest
+
 def read_audio(path, ffmpeg=None):
-    """A WAV as it is; a FLAC decoded losslessly by FFmpeg into a temporary float WAV first."""
+    """A WAV as it is; an AIFF read directly; a FLAC decoded losslessly by FFmpeg into a temporary float WAV first."""
     path = Path(path)
+    if path.suffix.lower() in ('.aif', '.aiff', '.aifc'):
+        return read_aiff(path)
     if path.suffix.lower() != '.flac':
         return wavfile.read(path)
     if not ffmpeg:
@@ -131,13 +585,155 @@ def mic_mix(paths, mics, ffmpeg):
             out = np.pad(out, ((0, n - len(out)), (0, 0))) + np.pad(x, ((0, n - len(x)), (0, 0)))
     return out.astype(np.float32), {'rate': rate}
 
-def steady_loop(x, rate, loop, sag_db=2.0, crossfade=0.15, found=False, noise_db=4.0):
+DENOISE_FRAME, DENOISE_HOP = 2048, 512
+
+
+def _stft(x, frame=DENOISE_FRAME, hop=DENOISE_HOP):
+    """Frames of `x` (n, channels) under a periodic square-root Hann window, padded by a frame on each side."""
+    win = np.sqrt(np.hanning(frame + 1)[:-1])
+    xp = np.pad(np.asarray(x, dtype=np.float64), ((frame, frame + hop), (0, 0)))
+    count = (len(xp) - frame) // hop + 1
+    idx = np.arange(frame)[None, :] + hop * np.arange(count)[:, None]
+    return np.fft.rfft(xp[idx] * win[None, :, None], axis=1), win, len(xp)
+
+
+def quiet_power(x, below_db=35.0, share=.2, margin=.05, rate=44100):
+    """Power per bin (mean over channels) of a take's quietest frames: the lowest `share` of frames that are also
+    `below_db` under its loud frames, skipping digital silence and every frame within `margin` seconds of either end
+    (where the analysis pads with zeros and a cut fades), so a quiet frame is the noise a recording carries between
+    and after notes, not a fade."""
+    X, _, _ = _stft(x)
+    P = (np.abs(X) ** 2).mean(axis=2)
+    e = P.sum(axis=1)
+    starts = np.arange(len(P)) * DENOISE_HOP - DENOISE_FRAME
+    edge = int(margin * rate)
+    live = (e > 1e-14) & (starts >= edge) & (starts + DENOISE_FRAME <= len(x) - edge)
+    if live.sum() < 8:
+        return None
+    loud = np.percentile(e[live], 90)
+    cut = min(np.percentile(e[live], 100 * share), loud * 10 ** (-below_db / 10))
+    rows = P[live & (e <= cut)]
+    return rows if len(rows) else None
+
+
+NOISE_BANDS = 20 * 2 ** (np.arange(60) / 6)  # 1/6-octave centres from 20 Hz to about 18 kHz
+
+
+def noise_bands(x, rate, notes, margins=((.3, .5), (.15, .3), (.05, .1)), least=40, spread_db=6.0):
+    """The noise of a recording away from its notes, in dB per 1/6-octave band (the power per bin of the denoiser's
+    frames, averaged over the channels), or None when fewer than `least` frames qualify.
+
+    A frame qualifies when it lies wholly inside the recording and holds no run of 64 exact zeros (a publisher's gate
+    leaves digital silence between notes, and a frame reaching into it reads as less noise), and lies at least
+    `before` seconds ahead of every note and `after` behind it; the (before, after) `margins` narrow in turn until
+    `least` frames remain, for recordings played with short pauses.  Of those frames only the ones within `spread_db`
+    of their quietest tenth count, so a breath, a chair or a note's last ring is left out.  Each bin's power is its
+    median over them per channel over ln 2 (the median of an exponentially spread power), and each band takes the
+    median of its bins, so a hum line or a stray partial does not raise it."""
+    x = np.asarray(x, dtype=np.float64)
+    X, _, _ = _stft(x)
+    P = np.abs(X) ** 2
+    silent = np.all(x == 0, axis=1)
+    edges = np.diff(np.concatenate([[0], silent.astype(np.int8), [0]]))
+    runs = np.stack([np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)], axis=1)
+    runs = runs[runs[:, 1] - runs[:, 0] >= 64]
+    mark = np.zeros(len(x) + 1, dtype=np.int64)
+    np.add.at(mark, runs[:, 0], 1)
+    np.add.at(mark, runs[:, 1], -1)
+    gated = np.concatenate([[0], np.cumsum(np.cumsum(mark)[:-1] > 0)])
+    # Frame t covers samples [t * hop - frame, t * hop) of the recording (_stft pads a frame ahead).
+    end = np.arange(len(P)) * DENOISE_HOP
+    start, centre = end - DENOISE_FRAME, end - DENOISE_FRAME // 2
+    whole = (start >= 0) & (end <= len(x))
+    whole[whole] = gated[end[whole]] == gated[start[whole]]
+    rows = None
+    for before, after in margins:
+        clear = whole.copy()
+        for n in notes:
+            clear &= (centre < n['start'] - before * rate) | (centre > n['end'] + after * rate)
+        if clear.sum() < least:
+            continue
+        e = P[clear].mean(axis=2).sum(axis=1)
+        keep = e <= np.percentile(e, 10) * 10 ** (spread_db / 10)
+        if keep.sum() >= least:
+            rows = P[clear][keep]
+            break
+    if rows is None:
+        return None
+    power = (np.median(rows, axis=0) / math.log(2)).mean(axis=1)
+    f = np.fft.rfftfreq(DENOISE_FRAME, 1 / rate)
+    out = []
+    for c in NOISE_BANDS:
+        band = (f >= c * 2 ** (-1 / 12)) & (f < c * 2 ** (1 / 12))
+        value = np.median(power[band]) if band.any() else power[np.argmin(np.abs(f - c))]
+        out.append(round(float(10 * np.log10(value + 1e-30)), 1))
+    return out
+
+
+def bands_to_bins(bands, rate):
+    """Noise power per bin of the denoiser's frames from 1/6-octave band levels, interpolated over log frequency."""
+    f = np.fft.rfftfreq(DENOISE_FRAME, 1 / rate)
+    db = np.interp(np.log2(np.maximum(f, NOISE_BANDS[0])), np.log2(NOISE_BANDS), np.asarray(bands, dtype=np.float64))
+    return 10 ** (db / 10)
+
+
+def partial_bins(pitch, below, rate):
+    """The bins of the denoiser's frames that hold a note's partials under `below` Hz (`pitch`: a MIDI number with
+    cents): those within the window's main lobe (1.5 bins) or 3 % of each harmonic."""
+    f0 = 440.0 * 2 ** ((pitch - 69) / 12)
+    f = np.fft.rfftfreq(DENOISE_FRAME, 1 / rate)
+    keep = np.zeros(len(f), dtype=bool)
+    for h in range(1, int(below // f0) + 1):
+        keep |= np.abs(f - h * f0) <= max(1.5 * rate / DENOISE_FRAME, .03 * h * f0)
+    return keep
+
+
+def denoise(x, noise, reduce_db=12.0, alpha=.98, keep=None):
+    """Reduce stationary recording noise (`noise`: its power per bin in this frame size) by up to `reduce_db`.
+
+    A short-time Wiener gain per bin from a decision-directed estimate of the a-priori SNR (Ephraim and Malah 1984;
+    Scalart and Filho 1996): the estimate follows the signal with the smoothing `alpha` of the previous frame's
+    gain, which keeps the residual noise from flickering into 'musical noise' (Cappe 1994).  The gain never falls
+    under -reduce_db, is shared by both channels so the stereo image stays, and is smoothed over three bins.  With
+    nothing above the noise the output equals the input to rounding.  The bins in `keep` (partial_bins of the note)
+    stay as recorded: a soft low note can be no louder than the room's rumble, and the gain cannot tell the two
+    apart there."""
+    dtype = np.asarray(x).dtype
+    x = np.asarray(x, dtype=np.float64)
+    n, ch = x.shape
+    X, win, size = _stft(x)
+    gamma = (np.abs(X) ** 2).mean(axis=2) / np.maximum(noise, 1e-30)[None, :]
+    floor = 10 ** (-reduce_db / 20)
+    G = np.empty_like(gamma)
+    prev_g, prev_gamma = np.ones(gamma.shape[1]), np.ones(gamma.shape[1])
+    for t in range(len(gamma)):
+        xi = alpha * prev_g ** 2 * prev_gamma + (1 - alpha) * np.maximum(gamma[t] - 1, 0)
+        g = np.maximum(xi / (1 + xi), floor)
+        G[t], prev_g, prev_gamma = g, g, gamma[t]
+    G[:, 1:-1] = (G[:, :-2] + G[:, 1:-1] + G[:, 2:]) / 3
+    if keep is not None:
+        G[:, keep] = 1.0
+    y = np.fft.irfft(X * G[:, :, None], n=DENOISE_FRAME, axis=1) * win[None, :, None]
+    out = np.zeros((size, ch))
+    count = len(y)
+    for j in range(DENOISE_FRAME // DENOISE_HOP):
+        seg = y[:, j * DENOISE_HOP:(j + 1) * DENOISE_HOP, :].reshape(-1, ch)
+        out[j * DENOISE_HOP:j * DENOISE_HOP + len(seg)] += seg
+    # A periodic Hann window (the product of the two square roots) sums to 2 at a quarter-frame hop.
+    return (out[DENOISE_FRAME:DENOISE_FRAME + n] / 2).astype(dtype)
+
+
+def steady_loop(x, rate, loop, sag_db=2.0, crossfade=0.15, found=False, noise_db=4.0, period_search=False, f0=None,
+                min_loop=0.8, match_seconds=0.0):
     """A recorded loop whose end sags (the player easing off at the end of the take) pulses on every repeat.  This
     keeps the loop start, moves the end back to the last point where the 0.3 s before it stays within `sag_db` of the
     loop's median level, then within 25 ms to where the last 20 ms best match the 20 ms before the loop start, and
     crossfades the final `crossfade` seconds into the audio leading to the loop start (never into the first 0.25 s,
-    the attack).  A loop `found` in a take without one spans the take to its end, release included, so when less than
-    0.8 s stays steady the loop keeps 0.8 s rather than the release.  Returns the data, the new loop and the match (a
+    the attack).  With `period_search` and the note's `f0`, the match compares at least one period (a low brass pedal
+    note at 30-60 Hz has periods longer than 20 ms; `match_seconds` lengthens it, so a vibrato's phase is matched as
+    well as the waveform) and the end is searched over the last 0.3 s of the steady part, keeping at least 0.5 s of
+    loop.  A loop `found` in a take without one spans the take to its end, release included, so when less than
+    `min_loop` seconds (0.8) stay steady the loop keeps that long rather than the release.  Returns the data, the new loop and the match (a
     correlation)."""
     ls, le = loop
     mono = x.mean(axis=1) if x.ndim == 2 else x
@@ -158,14 +754,25 @@ def steady_loop(x, rate, loop, sag_db=2.0, crossfade=0.15, found=False, noise_db
                 ls, le, level = ls + a * hop, ls + b * hop, level[a:b]
     floor = np.median(level) - sag_db
     end = next((ls + k * hop for k in range(len(level), span - 1, -1) if level[k - span:k].min() >= floor), le)
-    if end - ls < int(.8 * rate):
-        end = ls + int(.8 * rate) if found else le
+    if end - ls < int(min_loop * rate):
+        end = ls + int(min_loop * rate) if found else le
     w = int(.02 * rate)
     ref = mono[ls - w:ls]
     def match(c):
         seg = mono[c - w:c]
         return float(np.dot(seg, ref) / (np.linalg.norm(seg) * np.linalg.norm(ref) + 1e-12))
-    end = max(range(end - int(.025 * rate), end + 1), key=match)
+    if period_search and f0:
+        # The end is searched over the last 0.3 s of the steady part, keeping at least 0.5 s of loop, and always over
+        # at least 1.2 periods (or 25 ms) even where the steady part is short.
+        w = min(max(w, int(rate / f0), int(match_seconds * rate)), ls)
+        ref = mono[ls - w:ls]
+        least = max(int(.025 * rate), int(1.2 * rate / f0))
+        lower = max(ls + w, min(max(end - int(.3 * rate), ls + int(min(.5, min_loop) * rate)), end - least))
+        segs = np.lib.stride_tricks.sliding_window_view(mono[lower - w:end], w)
+        scores = segs @ ref / (np.sqrt((segs ** 2).sum(axis=1)) * np.linalg.norm(ref) + 1e-12)
+        end = lower + int(np.argmax(scores))
+    else:
+        end = max(range(end - int(.025 * rate), end + 1), key=match)
     score = match(end)
     n = min(int(crossfade * rate), ls - int(.25 * rate))
     if n > 0:
@@ -194,6 +801,16 @@ def attack_end(x, rate, loop=None, margin=0.02, cap=0.6):
     if loop:
         end = min(end, loop[0] / rate - .02)
     return max(0, int(end * rate))
+
+def _borrowed_cb(layer, src, dyn):
+    """With `borrowed_level: "served"`, a dynamic borrowed from a louder one plays that much quieter (centibels of
+    zone attenuation, from `layer_levels_db`), so a register recorded only at mf still enters softly at pp.  0 when
+    the take is the note's own dynamic, the layer keeps recorded levels, or the borrowed dynamic is the softer one
+    (SF2 attenuation cannot raise a level)."""
+    shape = layer.get('layer_levels_db')
+    if src == dyn or layer.get('borrowed_level') != 'served' or not shape:
+        return 0
+    return max(0, int(round(10 * (shape[src] - shape[dyn]))))
 
 def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
     """The `dynamic_layers` and `legato` presets of a sustained preset.
@@ -232,6 +849,7 @@ def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
                     have = [d for d in order if (note, d) in by]
                     src = dyn if (note, dyn) in by else min(have, key=lambda d: (abs(order.index(d) - order.index(dyn)), -order.index(d)))
                     group = sorted(by[(note, src)], key=lambda e: str(e['rr']))
+                    quieter = _borrowed_cb(layer, src, dyn)
                     for pos, e in enumerate(group):
                         ids = stored[(e['take'], round(e['gain'], 6), e['named'])][0]
                         fine = 0 if e['cents'] is None or abs(e['cents']) > layer.get('max_correction_cents', 45) else -int(round(e['cents']))
@@ -244,6 +862,8 @@ def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
                                 z = {43: (lo_key, hi_key), 44: span, 58: e['named']}
                                 if fine:
                                     z[52] = fine
+                                if quieter:
+                                    z[48] = c['gens'].get(48, 0) + quieter
                                 if offset:
                                     z[0], z[4] = offset % 32768, offset // 32768
                                 if e.get('loop'):
@@ -267,9 +887,17 @@ def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
         report['legato_offset_ms'] = {'min': min(offsets), 'median': float(np.median(offsets)), 'max': max(offsets)}
     receipt.setdefault('derived', []).append(report)
 
+def _split_pitches(root):
+    """Each note file's measured offset in cents from its name, from the manifest `split` wrote beside the notes."""
+    manifest = json.loads((Path(root) / 'split.json').read_text(encoding='utf-8'))
+    return {n['file'].replace('\\', '/'): n['cents'] for n in manifest['notes'] if n.get('cents') is not None}
+
 def _load_layer(layer, root, ffmpeg, loaded, receipt):
     """Match, load, trim and measure one layer's takes; returns its entries (octave-checked) and per-dynamic medians."""
     rx = re.compile(layer['pattern'])
+    # `pitch_source: "split"`: notes cut by `split` keep the pitch measured over their whole steady part, so a low
+    # pedal note that defeats a short YIN excerpt is still tuned.
+    split_cents = _split_pitches(root) if layer.get('pitch_source') == 'split' else None
     mics = layer.get('mics')
     folder = root / (mics[0]['dir'] if mics else layer['dir'])
     entries = []
@@ -292,6 +920,11 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             continue
         named = (layer['root'] if 'root' in layer else round(measured) if measured is not None
                  else note_number(g['note']) + layer.get('octave_offset', 0))
+        if split_cents is not None:
+            rel = f.relative_to(root).as_posix()
+            if rel not in split_cents:
+                raise ValueError(f'{rel}: not in split.json')
+            measured = named + split_cents[rel] / 100
         # Every microphone recorded the same take in its own folder, under the same file name or one that differs by the
         # microphone's own tag (`name`: [text in the first microphone's file name, text in this one's]).
         files = [f] + [root / mic['dir'] / (f.name.replace(*mic['name']) if mic.get('name') else f.name) for mic in (mics or [])[1:]]
@@ -303,12 +936,64 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
         raise ValueError(f'No samples matched {folder.relative_to(root)}')
     # Load, trim, measure pitch and level.
     looped = layer.get('loop') in ('recorded', 'found')
+    dn = layer.get('denoise')
+    noise, per_take, profile_from = {}, {}, {}
+    if dn and (root / 'split.json').is_file():
+        # Notes cut from longer recordings: each take uses its recording's own noise, measured between its notes when
+        # it was split (the manifest stores it, rounded, so every build gets the same numbers).  A recording played
+        # without pauses borrows the median, band by band, of the recordings of the same layer and dynamic that have
+        # one (one session, one setup), or of all the layer's.
+        manifest = json.loads((root / 'split.json').read_text(encoding='utf-8'))
+        bands = {s['file']: s.get('noise_bands') for s in manifest['sources']}
+        source_of = {n['file']: n['source'] for n in manifest['notes']}
+        measured = {}
+        for e in entries:
+            rel = e['file'].relative_to(root).as_posix()
+            if bands.get(source_of.get(rel)):
+                per_take[rel], profile_from[rel] = bands[source_of[rel]], 'recording'
+                measured.setdefault(e['dyn'], {})[source_of[rel]] = bands[source_of[rel]]
+        everywhere = {s: b for found in measured.values() for s, b in found.items()}
+        for e in entries:
+            rel = e['file'].relative_to(root).as_posix()
+            near = measured.get(e['dyn']) or everywhere
+            if rel in source_of and rel not in per_take and near:
+                per_take[rel] = [round(float(v), 1) for v in np.median(np.array([near[s] for s in sorted(near)]), axis=0)]
+                profile_from[rel] = 'same dynamic' if measured.get(e['dyn']) else 'same layer'
+    if dn:
+        # Takes without a measured recording: the noise of each recorded dynamic, the quiet frames of its takes pooled
+        # (one session, one setup).
+        pooled = {}
+        for e in entries:
+            if e['file'].relative_to(root).as_posix() in per_take:
+                continue
+            x, _ = mic_mix(e['files'], mics, ffmpeg) if mics else read_audio(e['file'], ffmpeg)
+            rows = quiet_power(x)
+            if rows is not None:
+                pooled.setdefault(e['dyn'], []).append(rows)
+        everything = [r for rows in pooled.values() for r in rows]
+        for dyn in {e['dyn'] for e in entries}:
+            rows = pooled.get(dyn) or everything
+            if rows and sum(len(r) for r in rows) >= 20:
+                noise[dyn] = np.concatenate(rows).mean(axis=0)
     for e in entries:
-        key = (str(e['file']) if not mics and not looped else
-               json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), looped,
-                           layer.get('loop_repair')] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])))
+        key = (str(e['file']) if not mics and not looped and not dn else
+               json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), layer.get('ring_db'), looped,
+                           layer.get('loop_repair'), dn] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])))
         if key not in loaded:
             x, info = mic_mix(e['files'], mics, ffmpeg) if mics else read_audio(e['file'], ffmpeg)
+            noise_db = noise_from = None
+            rel = e['file'].relative_to(root).as_posix()
+            keep = (partial_bins(e['measured'], dn['keep_partials_below'], info['rate'])
+                    if dn and dn.get('keep_partials_below') and e['measured'] is not None else None)
+            if dn and rel in per_take:
+                profile = bands_to_bins(per_take[rel], info['rate'])
+                x = denoise(x, profile, dn.get('reduce_db', 12.0), keep=keep)
+                noise_db = round(10 * math.log10(4 * profile.sum() / DENOISE_FRAME ** 2 + 1e-30), 1)
+                noise_from = profile_from[rel]
+            elif dn and e['dyn'] in noise:
+                x = denoise(x, noise[e['dyn']], dn.get('reduce_db', 12.0), keep=keep)
+                noise_db = round(10 * math.log10(4 * noise[e['dyn']].sum() / DENOISE_FRAME ** 2 + 1e-30), 1)
+                noise_from = 'quiet frames'
             # Short articulations use a higher threshold so pre-attack bow/breath noise is cut.
             start = onset(x, info['rate'], layer.get('onset_db', -45.0))
             x = x[start:]
@@ -324,11 +1009,22 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
                 # A take recorded without a loop: one is cut from `loop_window` (seconds after the onset), its end
                 # moved back to the last steady point and matched to the start by steady_loop below.
                 a, b = layer.get('loop_window', [.8, 600.0])
+                shortest = layer.get('loop_repair', {}).get('min_loop', .8)
+                # A take too short for the window's start loops from earlier, never inside its first 0.15 s.
+                if len(x) - 8 - int(a * info['rate']) < int(shortest * info['rate']):
+                    a = max(.15, (len(x) - 8) / info['rate'] - shortest - .02)
                 loop = (int(a * info['rate']), min(len(x) - 8, int(b * info['rate'])))
-                if loop[1] - loop[0] < int(.8 * info['rate']):
-                    raise ValueError(f'{e["file"].name}: less than 0.8 s after {a} s to loop')
-            if layer.get('max_seconds'):
-                n = int(layer['max_seconds'] * info['rate'])
+                if loop[1] - loop[0] < int(shortest * info['rate']):
+                    raise ValueError(f'{e["file"].name}: less than {shortest} s after {a} s to loop')
+            # `ring_db`: each take ends where its ring last reaches that far under its own peak (smoothed over 50 ms),
+            # so a low piano note keeps 30 s and a high one 4; `max_seconds` still caps it.
+            ring_end = None
+            if layer.get('ring_db') is not None and not loop:
+                env = np.sqrt(np.convolve((x.astype(np.float64) ** 2).mean(axis=1), np.ones(int(.05 * info['rate'])) / int(.05 * info['rate']), mode='same'))
+                above = np.flatnonzero(env > float(env.max()) * 10 ** (layer['ring_db'] / 20))
+                ring_end = int(above[-1]) + int(0.05 * info['rate']) if len(above) else len(x)
+            if layer.get('max_seconds') or ring_end is not None:
+                n = min(int(layer['max_seconds'] * info['rate']) if layer.get('max_seconds') else len(x), ring_end if ring_end is not None else len(x))
                 if len(x) > n:
                     if loop and loop[1] > n:
                         raise ValueError(f'{e["file"].name}: max_seconds would cut the recorded loop')
@@ -338,19 +1034,20 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             match = None
             if loop and (layer.get('loop_repair') or layer.get('loop') == 'found'):
                 x, loop, match = steady_loop(x, info['rate'], loop, **layer.get('loop_repair', {}),
-                                             found=layer.get('loop') == 'found')
+                                             found=layer.get('loop') == 'found', f0=440 * 2 ** ((named - 69) / 12))
             elif loop and len(x) - loop[1] < 8:
                 # Interpolation reads a few frames past the loop end: there they repeat the loop's first frames.
                 x = np.concatenate([x[:loop[1]], x[loop[0]:loop[0] + 16]])
             seg = x[int(0.25 * info['rate']):int(0.85 * info['rate'])].mean(axis=1)
-            f0 = (yin_f0(seg, info['rate'], fmin=layer.get('fmin', 25.0), fmax=layer.get('fmax', 4200.0))
-                  if layer.get('pitch_check', True) and len(seg) > 2048 else None)
+            f0 = (yin_f0(seg, info['rate'], fmin=layer.get('fmin', 25.0), fmax=layer.get('fmax', 4200.0),
+                         threshold=layer.get('yin_threshold', 0.12))
+                  if layer.get('pitch_check', True) and split_cents is None and len(seg) > 2048 else None)
             body = x[:int(1.0 * info['rate'])]
             # Sustained layers are matched by early RMS; percussive layers by peak.
             level = (float(np.abs(x).max()) * 0.115 if layer.get('level') == 'peak'
                      else float(np.sqrt(np.mean(body ** 2))))
             hashes = [file_hash(f) for f in e['files']]
-            loaded[key] = {'x': x, 'rate': info['rate'], 'loop': loop, 'loop_match': match,
+            loaded[key] = {'x': x, 'rate': info['rate'], 'loop': loop, 'loop_match': match, 'noise_db': noise_db, 'noise_from': noise_from,
                            'trim_ms': round(1000 * start / info['rate'], 1), 'f0': f0,
                            'rms': level, 'sha256': hashes[0] if not mics else hashlib.sha256(''.join(hashes).encode()).hexdigest(),
                            'mic_files': ([{'file': str(f.relative_to(root)), 'sha256': h, 'gain': mic.get('gain', 1.0),
@@ -369,6 +1066,12 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             for e in entries:
                 e['named'] += octave_fix
                 e['cents'] = None if e['cents'] is None else e['cents'] - 100 * octave_fix
+    if layer.get('fold_octaves'):
+        # The pitch tracker can lock onto the second harmonic or an octave below the note: a reading an octave or two
+        # away from the named note, give or take a few cents, is taken as the named note that many cents out.
+        for e in entries:
+            if e['cents'] is not None and abs(e['cents']) > 600:
+                e['cents'] -= 1200 * round(e['cents'] / 1200)
     layer_med = {d: float(np.median([e['rms'] for e in entries if e['dyn'] == d])) for d in layer['dynamics']
                  if any(e['dyn'] == d for e in entries)}
     return entries, octave_fix, layer_med
@@ -427,7 +1130,11 @@ def build(spec, root, output, ffmpeg=None):
         for layer, (entries, octave_fix, layer_med) in zip(pspec['layers'], prepared):
             inst_zones = []
             notes = sorted({e['named'] for e in entries})
-            keymap = _zones_for(notes, layer['keys'])
+            # `keys: "auto"` spans the notes found, after any octave fix, plus `key_margin` (2) semitones each side: for a
+            # library whose names may sit an octave off, where a fixed range would drop the corrected notes.
+            keys = layer['keys'] if layer['keys'] != 'auto' else [max(0, notes[0] - layer.get('key_margin', 2)),
+                                                                     min(127, notes[-1] + layer.get('key_margin', 2))]
+            keymap = _zones_for(notes, keys)
             vel_ranges = layer['velocity']
             env = layer.get('envelope', {})
             gens = {54: 0}
@@ -495,6 +1202,7 @@ def build(spec, root, output, ffmpeg=None):
                     src = dyn if (note, dyn) in by else min(have, key=lambda d: (abs(order.index(d) - order.index(dyn)), -order.index(d)))
                     group = sorted(by[(note, src)], key=lambda e: str(e['rr']))
                     vlo, vhi = vel_ranges[dyn]
+                    quieter = _borrowed_cb(layer, src, dyn)
                     for pos, e in enumerate(group):
                         ids = store(e)
                         fine = 0 if e['cents'] is None or abs(e['cents']) > layer.get('max_correction_cents', 45) else -int(round(e['cents']))
@@ -508,6 +1216,8 @@ def build(spec, root, output, ffmpeg=None):
                                 z = {43: (lo_key, hi_key), 44: span, 58: e['named']}
                                 if fine:
                                     z[52] = fine
+                                if quieter:
+                                    z[48] = gens.get(48, 0) + quieter
                                 if e.get('loop'):
                                     z[54] = 1  # loop continuously; the release envelope ends the note
                                 if layer.get('exclusive_class'):
@@ -517,6 +1227,7 @@ def build(spec, root, output, ffmpeg=None):
                                 inst_zones.append({'gens': z, 'sample': sid})
                         row = {'file': str(e['file'].relative_to(root)), 'sha256': e['sha256'], 'root_key': e['named'],
                                'dynamic': e['dyn'], 'serves_dynamic': dyn, 'round_robin': e['rr'],
+                               **({'served_attenuation_db': quieter / 10} if quieter else {}),
                                'keys': [lo_key, hi_key], 'velocities': [vlo, vhi],
                                'f0_hz': None if e['f0'] is None else round(e['f0'], 2),
                                'deviation_cents': None if e['cents'] is None else round(e['cents'], 1),
@@ -529,6 +1240,9 @@ def build(spec, root, output, ffmpeg=None):
                             row['loop_seconds'] = [round(f / e['rate'], 3) for f in e['loop']]
                         if e.get('loop_match') is not None:
                             row['loop_match'] = round(e['loop_match'], 3)
+                        if e.get('noise_db') is not None:
+                            row['denoised_noise_dbfs'] = e['noise_db']
+                            row['noise_measured_from'] = e['noise_from']
                         receipt['files'].append(row)
             contexts.append({'layer': layer, 'entries': entries, 'notes': notes, 'keymap': keymap, 'gens': dict(gens)})
             instrument = {'name': f'{pspec["name"][:16]} {len(instruments) - first_instrument + 1}', 'global': gens,
@@ -560,12 +1274,34 @@ def main():
     b.add_argument('--output', type=Path, required=True)
     b.add_argument('--receipt', type=Path, required=True)
     b.add_argument('--ffmpeg', type=Path, help='FFmpeg executable, needed for FLAC sources')
+    ct = sub.add_parser('cut', help='re-cut the notes a split manifest records, each checked against its hash')
+    ct.add_argument('manifest', type=Path)
+    ct.add_argument('--root', type=Path, required=True)
+    ct.add_argument('--output', type=Path, required=True)
+    sp = sub.add_parser('split', help="cut a spec's `split` sources into one WAV per note (manifest: split.json)")
+    sp.add_argument('spec', type=Path)
+    sp.add_argument('--root', type=Path, required=True)
+    sp.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
     if args.command == 'inspect':
         result = inspect(args.bank)
         if args.output:
             save_json(args.output, result)
         print(json.dumps(result['presets'], ensure_ascii=False, indent=1))
+        return
+    if args.command == 'cut':
+        if args.output.exists():
+            raise ValueError('Choose a new output folder')
+        manifest = json.loads(args.manifest.read_text(encoding='utf-8'))
+        print(cut_sources(manifest, args.root, args.output), 'notes cut and verified')
+        save_manifest(args.output / 'split.json', manifest)
+        return
+    if args.command == 'split':
+        if args.output.exists():
+            raise ValueError('Choose a new output folder')
+        manifest = split_sources(json.loads(args.spec.read_text(encoding='utf-8'))['split'], args.root, args.output)
+        save_manifest(args.output / 'split.json', manifest)
+        print(json.dumps(manifest['groups'], ensure_ascii=False, indent=1))
         return
     if args.output.exists() or args.receipt.exists():
         raise ValueError('Choose new output and receipt paths')

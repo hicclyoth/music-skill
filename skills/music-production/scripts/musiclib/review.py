@@ -18,7 +18,7 @@ def vertical(p,clock,limit=40):
     part (or inside one part's chord) overlapping >=0.5 beat.  Major sevenths are not flagged."""
     notes=[];by_bar=defaultdict(list)
     for t in p['tracks']:
-        if t.get('drums') or t['engine']=='noise':continue
+        if t.get('drums') or t['engine'] in ('noise','drum_synth'):continue
         for n in t['notes']:
             item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],t['role'] in FOREGROUND)
             notes.append(item)
@@ -56,7 +56,52 @@ def chord_tones(p,clock,limit=40):
             out.append({'track':t['id'],'at':where(clock,n['on']),'pitch':n['pitch'],'duration':n['duration'],'chord':ch['symbol']})
     return {'count':len(out),'unparsed_symbols':unknown,'examples':out[:limit]}
 
-def review(p,out):
+def transposition(bank,bank_no,program):
+    """Key -> semitones between the key and the recorded pitch of the sample that plays it in a preset (the smallest
+    among the zones covering the key; coarse tune counts). None when the bank has no such preset."""
+    pre=next((x for x in bank['presets'] if x['bank']==bank_no and x['program']==program),None)
+    if pre is None:return None
+    shift={}
+    for pz in pre['zones']:
+        if pz['target'] is None:continue
+        plo,phi=pz['gens'].get(43,(0,127));inst=bank['instruments'][pz['target']]
+        top=next((z['gens'] for z in inst['zones'] if z['target'] is None),{})
+        for z in inst['zones']:
+            g,smp=z['gens'],z['target']
+            if smp is None:continue
+            lo,hi=g.get(43,top.get(43,(0,127)))
+            root=g.get(58,top.get(58,bank['samples'][smp]['root']));coarse=g.get(51,top.get(51,0))
+            for k in range(max(lo,plo),min(hi,phi)+1):
+                d=k-root+coarse
+                if k not in shift or abs(d)<abs(shift[k]):shift[k]=d
+    return shift
+def sample_maps(p,config):
+    """transposition() for every pitched SoundFont part, reading each configured bank once."""
+    from . import audio,sf2
+    banks,maps={},{}
+    for t in p['tracks']:
+        if t['engine']!='soundfont' or t.get('drums') or t.get('key_map'):continue
+        _,font=audio.soundfont_for(config,t)
+        if font['path'] not in banks:banks[font['path']]=sf2.read(font['path'])
+        patch=t.get('patch') or {'bank':t.get('bank',0),'program':t.get('program',0)}
+        maps[t['id']]=transposition(banks[font['path']],patch.get('bank',0),patch.get('program',0))
+    return maps
+def stretched(p,clock,maps,limit=4,examples=40):
+    """Notes whose sample is transposed more than `limit` semitones (timbre and vibrato rate change with it), and notes
+    no zone covers (silent)."""
+    far,silent,by=[],[],defaultdict(lambda:{'notes':0,'worst':None})
+    for t in p['tracks']:
+        shift=maps.get(t['id'],{})
+        if t['id'] in maps and shift is None:silent.append({'track':t['id'],'problem':'preset not in bank'});continue
+        for n in t['notes'] if t['id'] in maps else []:
+            d=shift.get(n['pitch'])
+            if d is None:silent.append({'track':t['id'],'at':where(clock,n['on']),'pitch':n['pitch']})
+            elif abs(d)>limit:
+                far.append({'track':t['id'],'at':where(clock,n['on']),'pitch':n['pitch'],'semitones':d})
+                b=by[t['id']];b['notes']+=1
+                if b['worst'] is None or abs(d)>abs(b['worst']['semitones']):b['worst']={'pitch':n['pitch'],'semitones':d,'at':where(clock,n['on'])}
+    return {'limit_semitones':limit,'count':len(far),'by_track':dict(sorted(by.items(),key=lambda kv:-kv[1]['notes'])),'examples':far[:examples],'outside_preset':silent[:examples],'outside_count':len(silent)}
+def review(p,out,config=None):
     out=Path(out);out.mkdir(parents=True,exist_ok=True);clock=Clock(p)
     summary={'validation':validate(p),'title':p['title'],'tracks':[],'sections':[],'prompts':[],'not_a_perceptual_quality_score':True}
     csv_rows=[]
@@ -94,6 +139,12 @@ def review(p,out):
         summary['foreground_outside_chord']=ct
         if ct['count']:summary['prompts'].append(f'{ct["count"]} strong-position foreground notes sit outside the written chord (anticipations excluded); confirm each is a deliberate tension or appoggiatura.')
         if ct['unparsed_symbols']:summary['prompts'].append('Chord symbols not checked: '+', '.join(ct['unparsed_symbols']))
+    if config is not None:
+        st=summary['transposed_samples']=stretched(p,clock,sample_maps(p,config))
+        if st['count']:
+            worst=next(iter(st['by_track']))
+            summary['prompts'].append(f'{st["count"]} notes play a sample transposed more than {st["limit_semitones"]} semitones, most in {worst}; the tone and the vibrato rate change with it. Move them, give them to another instrument, or accept the change.')
+        if st['outside_count']:summary['prompts'].append(f'{st["outside_count"]} notes fall outside their preset\'s keys and will not sound.')
     if 'loop' in p:
         from . import loop
         s=summary['loop_seam']=loop.seam(p,clock)

@@ -26,32 +26,56 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 오디오 생성 모델은 전혀 쓰지 않습니다. MP3와 WAV뿐 아니라 MIDI, 파트별 스템, 그리고 어떤 음이든 고쳐서 다시 렌더링할 수 있는 프로젝트 파일까지 받게 됩니다.
 
 <p align="center">
-  <img src="docs/images/daybreak-signal.png" alt="《Daybreak Signal》의 모든 음을 파트별로 나열한 그림. 빨간색이 멜로디이고 그 아래로 오케스트라, 기타, 베이스, 드럼, 위에는 구간 이름">
+  <img src="docs/images/above-the-clouds.png" alt="《Above the Clouds》의 모든 음을 오케스트라 파트별로 나열한 그림. 빨간색이 멜로디이고 그 아래로 현악, 목관, 금관, 하프와 오르간, 타악기, 위에는 구간 이름">
 </p>
 
 ## 들어 보기
 
-《Daybreak Signal》은 애니메이션 오프닝 풍의 연주곡입니다. TV 사이즈로 87초, 176 BPM이며, 후렴에 들어갈 때 단3도 위로 전조합니다. Claude(Opus 5.5)가 이 스킬로 작곡·편곡·믹싱을 하고, 그 뒤에 다듬었습니다. 끊기는 곳을 줄이고, 멜로디를 레가토로 잇고, 피아노가 멜로디를 맡는 버전도 따로 만들었습니다.
+**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](examples/above-the-clouds/above_the_clouds.mp3)(4:28)이나 [마지막 1분 41초](examples/above-the-clouds/above_the_clouds_highlight.mp3)를 들어 보세요.
 
-- [피아노 버전](examples/daybreak-signal/piano.mp3)
-- [일렉트릭 기타 버전](examples/daybreak-signal/guitar.mp3)
+**[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**: 페스티벌 하우스입니다. 피아노 테마, 빌드업, 슈퍼소 드롭을 스킬에 내장된 신시사이저와 드럼 머신으로 만들었습니다.
 
-두 버전은 멜로디를 연주하는 악기만 다릅니다. [examples/daybreak-signal](examples/daybreak-signal)에 이 곡을 쓴 스크립트와 두 프로젝트 파일이 있습니다. Windows에서 고정된 버전의 도구로 다시 렌더링하면, 24비트 반올림 오차 범위 안에서 같은 마스터가 나옵니다.
+다른 스타일은 [examples/genre-demos](examples/genre-demos)에 있습니다.
+
+- [《Late Set at the Corner》](examples/genre-demos/late_set.mp3): 테너 색소폰과 피아노 트리오의 재즈 블루스
+- [《Midnight Coastline》](examples/genre-demos/midnight_coastline.mp3): 신스웨이브. 스트링 머신 패드 위로 글라이드하는 리드
+- [《Rain on the Tram Line》](examples/genre-demos/tram_line_rain.mp3): 로파이 힙합. 낡은 테이프 느낌의 피아노와 아치톱 기타
+- [《Paper Satellites》](examples/genre-demos/paper_satellites.mp3): 퓨처 베이스. 킥에 맞춰 출렁이는 슈퍼소 코드와 808
+- [《Pixel Lantern》](examples/genre-demos/pixel_lantern.mp3): 패미컴(NES)의 제약에 맞춰 쓴 게임 필드용 루프
+
+모든 곡은 Claude(Opus 5.5)가 이 스킬로 작곡·편곡·믹싱했습니다. 각 예제 폴더에는 곡을 쓴 스크립트와 프로젝트 파일이 있고, Windows에서 고정된 버전의 도구로 다시 렌더링하면 24비트 반올림 오차 범위 안에서 같은 마스터가 나옵니다. [《Daybreak Signal》](examples/daybreak-signal)은 피아노가 멜로디를 맡는 애니메이션 오프닝 풍의 곡으로, 곡을 어떻게 다듬어 가는지 보여 줍니다.
+
+## 빠른 시작
+
+1. 스킬을 설치합니다. Claude Code에서는:
+
+   ```
+   /plugin marketplace add owoevan-dev/music-skill
+   /plugin install music-skill@music-skill
+   ```
+
+   Codex와 다른 에이전트에서는 `npx skills add owoevan-dev/music-skill`.
+2. 에이전트에게 렌더링 도구와 음원 설치를 부탁합니다. [설치](#설치)의 명령을 실행하며, 내려받기는 약 3.6 GB이고 저희 테스트 컴퓨터에서는 그 뒤로 약 5분 걸렸습니다.
+3. 평소 말투로 곡을 부탁합니다.
+
+   > 내 RPG에 쓸 1분짜리 반복되는 마을 테마를 써 줘. 리코더, 하프, 부드러운 현악으로.
+
+MP3와 WAV, MIDI, 파트별 스템, 프로젝트 파일을 받습니다. 24스레드 데스크톱에서 위의 예제 곡들은 30초(재즈 트리오, 칩튠 루프)에서 5분(내장 신시사이저로 만든 하우스) 만에 렌더링되었고, 4분 반짜리 서곡은 3분이 걸렸습니다.
 
 ## 그냥 생성하면 안 되나요?
 
 텍스트로 음악을 만드는 모델이 건네주는 것은 완성된 오디오입니다. 한 마디만 어긋나도 다시 생성하면 다른 곡이 나옵니다. 파일을 열어 음 하나를 옮길 수도 없고, 그 소리가 어디서 왔는지도 설명할 수 없습니다.
 
-여기서는 에이전트가 악보를 쓰기 때문에, 음악은 읽고 고칠 수 있는 결정들로 이루어집니다. 33마디의 멜로디, 화음의 보이싱, 드러머가 크래시를 치는 세기 같은 것들입니다. 음 하나를 바꾸면 그 파트만 다시 렌더링됩니다. 소리는 실제 악기를 멀티샘플링한 녹음이고, 라이선스는 모두 확인할 수 있습니다. 다른 사람의 녹음으로 학습한 모델도 쓰지 않습니다.
+여기서는 에이전트가 악보를 쓰기 때문에, 음악은 읽고 고칠 수 있는 결정들로 이루어집니다. 33마디의 멜로디, 화음의 보이싱, 드러머가 크래시를 치는 세기 같은 것들입니다. 음 하나를 바꾸면 그 파트만 다시 렌더링됩니다. 소리는 실제 악기를 멀티샘플링한 녹음(라이선스는 모두 확인할 수 있습니다)이거나 스킬에 내장된 신시사이저입니다. 다른 사람의 녹음으로 학습한 모델도 쓰지 않습니다.
 
 ## 작동 방식
 
 1. **쓰기**: 에이전트가 곡의 구성과 주제를 정한 뒤 프로젝트 파일을 씁니다. 각 음의 음높이와 길이는 악보에, 연주 방식(벨로시티, 타이밍, 떼는 시점)은 따로 기록합니다. 긴 곡은 보통 에이전트가 짧은 Python 스크립트를 써서 만들기 때문에, 보이싱과 베이스 라인, 드럼 패턴을 읽기도 고치기도 쉽습니다.
 2. **악보 검토**: `review`는 파트끼리 계속 울리는 단2도·단9도와, 적힌 코드에서 벗어난 멜로디 음을 목록으로 보여 줍니다. 그래서 하나하나가 우연이 아니라 의도한 선택이 됩니다.
 3. **연주**: 연주 모델이 사람이 연주할 때 생기는 어긋남을 더합니다. 연주자마다 타이밍과 음량이 천천히 흔들리고, 베이스는 살짝 뒤에 붙고, 프레이즈에는 둥근 억양이 생기며, 화음의 음들은 동시에 눌리지도 동시에 떼어지지도 않습니다. 샘플링한 멜로디는 레가토로 잇거나 벤딩할 수 있습니다.
-4. **렌더링**: FluidSynth가 라이선스가 분명한 SoundFont 음원으로 파트마다 각자의 악기를 연주합니다.
-5. **믹싱과 마스터링**: 각 파트는 드럼, 베이스, 리듬, 앙상블, 멜로디 버스와 자동으로 만든 네 가지 리버브를 거쳐, 마스터 처리로 −14 LUFS, 트루 피크 −1 dBTP 이하로 마무리됩니다. 관현악과 오르간 음악은 컴프레서를 거치지 않고 셈여림의 폭을 그대로 살릴 수 있습니다.
-6. **측정**: `analyze`는 구간마다 음량, 스펙트럼, 스테레오 이미지, 그리고 멜로디가 반주보다 얼마나 앞에 있는지를 잽니다. 숫자는 문제가 있는 곳을 가리킬 뿐, 듣는 일을 대신하지는 못합니다.
+4. **렌더링**: FluidSynth가 라이선스가 분명한 SoundFont 음원으로 샘플 음원 파트를 각자의 악기로 연주합니다. 일렉트로닉 파트는 내장 신시사이저와 드럼 머신, 또는 Surge XT 신시사이저의 프리셋으로 연주합니다.
+5. **믹싱과 마스터링**: 각 파트는 드럼, 베이스, 리듬, 앙상블, 멜로디 버스와 자동으로 만든 네 가지 리버브를 거쳐, 마스터 처리로 −14 LUFS, 트루 피크 −1 dBTP 이하로 마무리됩니다. 관현악과 오르간 음악은 컴프레서를 거치지 않고 셈여림의 폭을 그대로 살릴 수 있습니다. 일렉트로닉 음악에는 사이드체인 더킹, 템포에 맞춘 딜레이, 필터 스윕, 클럽용으로 크게 만든 마스터를 더할 수 있습니다.
+6. **측정**: `analyze`는 구간마다 음량, 스펙트럼, 스테레오 이미지, 멜로디가 반주보다 얼마나 앞에 있는지를 재고, 마스터의 음색 균형을 상업 녹음에 대해 공개된 측정값이나 같은 장르의 레퍼런스와 비교합니다. 숫자는 문제가 있는 곳을 가리킬 뿐, 듣는 일을 대신하지는 못합니다.
 
 음 하나를 바꾸면 그 파트만 다시 렌더링합니다. 믹스만 바꾸면 다시 렌더링할 것이 없습니다.
 
@@ -76,26 +100,26 @@ npx skills add owoevan-dev/music-skill
 
 **렌더링 도구**(컴퓨터마다 한 번만, 에이전트에게 맡겨도 됩니다)
 
-Windows x64에서는 고정된 버전의 FluidSynth와 FFmpeg 포터블 빌드를 내려받습니다.
+Windows x64에서는 고정된 버전의 FluidSynth와 FFmpeg 포터블 빌드, 그리고 Surge XT 신시사이저와 이를 실행하는 플러그인 호스트를 내려받습니다(약 55 MB, `--no-surge`로 뺄 수 있음).
 
 ```
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux(Ubuntu 24.04, Debian 13 이상)와 macOS에서는 시스템 패키지를 씁니다.
+Linux(Ubuntu 24.04, Debian 13 이상)와 macOS에서는 시스템 패키지와, 직접 설치한 Surge XT가 있으면 그것을 씁니다.
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install fluid-synth ffmpeg
 python3 skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-이어서 데모에 쓴 악기를 받습니다(약 1 GB).
+이어서 음원을 받습니다(이 프로젝트에서 구성한 것). 29종 모두 내려받기는 약 3.4 GB, 설치 후 약 8 GB입니다. `--only orchestra`, `band`, `world`, `examples`(예제 곡에 쓰인 음원)로 묶음별로, 또는 음원 이름(`--only vcsl,rusty`)으로 따로 설치할 수 있습니다. 설치하지 않은 음원을 쓰는 프로젝트는 그 음원을 설치하는 명령을 알려 주고 멈춥니다. `--from-source`를 붙이면 배포처의 원본 샘플로 직접 구성합니다.
 
 ```
 python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/local-config.json --runtime <folder>/.runtime --output <folder>/local-config.studio.json
 ```
 
-필요한 것은 Python 3.10 이상과 NumPy뿐입니다. GPU도, 계정도, 오디오 모델도 필요 없습니다. 모든 파일은 배포처의 공식 페이지에서 내려받고, 고정된 SHA-256으로 확인합니다.
+필요한 것은 Python 3.10 이상과 NumPy뿐입니다. GPU도, 계정도, 오디오 모델도 필요 없습니다. 모든 파일은 배포처나 이 프로젝트의 릴리스에서 내려받고, 고정된 SHA-256으로 확인합니다.
 
 ## 사용법
 
@@ -109,6 +133,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 > 풀 오케스트라로 2분짜리 곡을 써 줘. 해돋이 장면으로, 조용한 호른 솔로에서 오케스트라 전체로.
 
+> 레이싱 게임의 밤 드라이브 장면에 맞는 신스웨이브 곡을 만들어 줘. 100 BPM, 게이트 리버브 스네어, 글라이드하는 리드.
+
 > 33마디 후렴 멜로디가 너무 바빠. 단순하게 바꿔서 다시 렌더링해 줘.
 
 > MIDI랑 스템도 줘.
@@ -117,27 +143,37 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 | 악기 | 음원 | 라이선스 |
 |---|---|---|
-| 그랜드 피아노 | VCSL의 Steinway B(Versilian Studios); Osiris Piano(Karoryfer Samples, 서스테인 페달을 밟은 녹음과 밟지 않은 녹음); 둘 다 여기서 구성 | CC0 |
-| 일렉트릭 기타 | FreePats FSBS: 디스토션 2종, 클린 1종 | CC0 |
-| 일렉트릭 베이스 | Bass YR, 피크와 핑거(샘플 녹음: Andrea Biasior); Black And Blue Basses(Karoryfer Samples)의 5현 베이스(고스트 노트 포함), 여기서 구성 | CC0 |
-| 드럼 키트 | Big Rusty Drums(Karoryfer Samples), GM 건반 배치로 구성 | CC0 |
-| 스트링(트레몰로, 피치카토 포함), 솔로 바이올린, 더블베이스, 브라스, 트럼펫, 호른, 트롬본, 튜바, 목관, 피콜로, 글로켄슈필 | VSCO 2 Community Edition(Versilian Studios)으로 구성 | CC0 |
-| 하프, 마림바, 비브라폰, 실로폰, 튜블러 벨, 팀파니, 관현악 타악기(심벌과 심벌 크레센도, 공, 트라이앵글, 슬레이 벨, 윈드 차임), 파이프 오르간 | VCSL(Versilian Studios)로 구성 | CC0 |
-| 솔로 첼로 | Karoryfer x bigcat cello(Karoryfer Lecolds, bigcat instruments), 녹음에 있는 루프 포인트와 함께 여기서 구성 | CC0 |
+| 피아노와 건반 | VCSL(Versilian Studios)의 Steinway B, Kawai 그랜드 피아노, 업라이트 피아노, 하프시코드, Yamaha TX81Z FM 음색, 파이프 오르간; Karoryfer Samples의 Osiris Piano(서스테인 페달을 밟은 녹음과 밟지 않은 녹음) | CC0 |
+| 오케스트라 | VSCO 2 Community Edition(Versilian Studios)의 스트링(파트별, 트레몰로, 피치카토 포함), 브라스, 트롬본, 튜바, 더블베이스, 목관, 피콜로, 글로켄슈필; VCSL의 하프, 건반 타악기, 튜블러 벨, 팀파니, 관현악 타악기; 아이오와 대학교 전자음악 스튜디오의 호른, 베이스 트롬본, 클라리넷, 플루트, 솔로 현악기, 타악기 | CC0; 아이오와: 용도에 제한 없이 자유롭게 사용 가능 |
+| 밴드 | FreePats FSBS 일렉트릭 기타(디스토션 2종, 클린 1종); Bass YR 피크와 핑거(샘플 녹음: Andrea Biasior); Karoryfer Samples의 Big Rusty Drums, 5현 베이스, 피치카토 더블베이스, 아치톱 기타, 바리톤 색소폰, 튜바; Karoryfer Lecolds와 bigcat instruments의 솔로 첼로 | CC0 |
+| 솔로와 세계 악기 | VCSL의 테너 색소폰, 색셀로, 리코더, 오카리나, 하모니카, 포크 하프, 베트남 쟁(đàn tranh), 프살테리, 칼림바, 발라폰, 세계 타악기; 얼후; 테너 스틸 팬; 노래하는 "아" | CC0; 스틸 팬: Unlicense |
+| 신시사이저 | 내장 신시사이저와 드럼 머신; Surge XT와 엄선한 팩토리 프리셋 50개(선택 사항, 기본 설치) | 내장: MIT; Surge XT: GPL-3.0, 별도 프로그램으로 실행 |
 | 그 밖의 악기 | MuseScore MS Basic | MIT |
 
-녹음 음원은 모두 CC0라서, 이 음원으로 만든 음악에는 출처 표기가 필요 없습니다. MS Basic의 MIT 고지는 음원 파일 자체의 사본에 따르며, 렌더링한 음악에는 해당하지 않습니다. 출처는 [THIRD_PARTY.md](THIRD_PARTY.md)에 있습니다.
+녹음 음원은 모두 CC0이거나, 용도에 제한 없이 자유롭게 쓸 수 있거나(아이오와 대학교 녹음), 퍼블릭 도메인으로 공개된 것(스틸 팬)이라서, 이 음원으로 만든 음악에는 출처 표기가 필요 없습니다. Surge XT는 GPL-3.0이며 별도 프로그램으로 실행됩니다. GPL이 적용되는 것은 프로그램 자체이지, 그것이 연주한 음악이 아닙니다. MS Basic의 MIT 고지는 음원 파일 자체의 사본에 따르며, 렌더링한 음악에는 해당하지 않습니다. 출처는 [THIRD_PARTY.md](THIRD_PARTY.md)에 있습니다.
 
 ## 어디까지 되나요
 
-`selfcheck.py`에는 46가지 검사가 있으며, MIDI 왕복 변환과 압축 파일 안전성부터 실제 렌더링까지 포함합니다. 예를 들어 음 하나를 고치면 그 파트만 다시 렌더링되는지, 예전의 단일 리버브 믹스가 이전 릴리스를 비트 단위로 재현하는지, 라우드니스 측정이 BS.1770 기준 음을 −3.01 LUFS로 읽는지 확인합니다. CI에서는 Ubuntu(FluidSynth 2.3, FFmpeg 6.1)와 macOS(FluidSynth 2.6, FFmpeg 9.0)에서 렌더링을 포함한 모든 검사를 실행합니다.
+`selfcheck.py`에는 72가지 검사(렌더링 설정이 없으면 56가지)가 있으며, MIDI 왕복 변환과 압축 파일 안전성부터 실제 렌더링까지 포함합니다. 예를 들어 음 하나를 고치면 그 파트만 다시 렌더링되는지, 예전의 단일 리버브 믹스가 이전 릴리스를 비트 단위로 재현하는지, 라우드니스 측정이 BS.1770 기준 음을 −3.01 LUFS로 읽는지 확인합니다. CI에서는 Ubuntu(FluidSynth 2.3, FFmpeg 6.1)와 macOS(FluidSynth 2.6, FFmpeg 9.0)에서 렌더링을 포함한 모든 검사를 실행합니다.
 
-음악으로서 좋은지는 다른 문제이고, 직접 들어 봐야만 알 수 있습니다. 위의 데모가 이 저장소가 보여 줄 수 있는 가장 좋은 증거입니다.
+음악으로서 좋은지는 다른 문제이고, 직접 들어 봐야만 알 수 있습니다. 위의 곡들이 이 저장소가 보여 줄 수 있는 가장 좋은 증거입니다.
+
+## 자주 묻는 질문
+
+**만든 음악을 영상, 게임, 상업 작품에 써도 되나요?** 도구 쪽에는 걸림돌이 없습니다. 음원은 CC0이거나 용도 제한 없이 쓸 수 있어 출처 표기가 필요 없고, GPL 프로그램(FFmpeg, Surge XT)이 적용되는 것은 프로그램 자체이지 그것을 거친 음악이 아닙니다. 에이전트가 써 준 음악에 당신의 저작권이 생기는지는 사는 나라의 법과 당신이 얼마나 손을 댔는지에 달려 있습니다.
+
+**어떤 에이전트에서 쓸 수 있나요?** Agent Skills를 불러오고 Python을 실행할 수 있는 에이전트라면 됩니다. Claude Code(플러그인), Codex, 그리고 `npx skills`로 설치한 다른 에이전트.
+
+**인터넷이나 GPU가 필요한가요?** 인터넷은 설치할 때만 필요하고, 렌더링은 CPU에서 오프라인으로 돌아갑니다. 프로젝트 파일은 누구에게도 가지 않으며, 에이전트가 읽은 내용을 자기 모델에 보낼 때만 밖으로 나갑니다.
+
+**내 악기를 쓸 수 있나요?** SF2 음원이면 됩니다. `studio.py add-soundfont`로 설정에 추가하고 파트에서 지정합니다([soundbanks.md](skills/music-production/references/soundbanks.md)). 추가한 음원은 각자의 라이선스를 따르니, 작품을 공개하기 전에 확인하세요.
 
 ## 한계
 
-- 노래를 부르거나 가사를 쓰지 못하고, VST 플러그인도 지원하지 않습니다.
+- 노래를 부르거나 가사를 쓰지 못합니다. 플러그인은 Surge XT만 지원하며, 가지고 있는 VST 플러그인은 아직 쓸 수 없습니다.
 - 소리의 수준은 무료 음원에 달려 있습니다. YR 베이스는 벨로시티 레이어가 하나뿐이고, 스트링은 어택이 느린 편이며, 마림바·실로폰·피콜로는 샘플이 듬성듬성합니다. 샘플링한 기타의 벤딩은 샘플 전체의 음정만 바꾸기 때문에 실제 줄처럼 음색이 변하지는 않습니다.
+- 어쿠스틱 기타, 합창, 그리고 얼후와 베트남 쟁을 뺀 동아시아 악기 음원은 아직 없습니다. 이런 파트는 샘플이 적은 MS Basic의 General MIDI 음색으로 연주됩니다.
+- Surge XT는 오실레이터를 무작위 위상에서 시작하므로, Surge 파트는 합성할 때마다 조금씩 다른 테이크가 됩니다. 렌더 캐시는 파트가 바뀔 때까지 한 테이크를 보관합니다. 나머지는 매번 똑같이 렌더링됩니다.
 - 에이전트는 소리를 듣지 못합니다. `review`와 `analyze`는 문제가 있는 곳을 찾을 뿐이고, 결과는 사람이 들어야 합니다. 스킬은 듣지 않았으면서 들었다고 말하지 않도록 에이전트에게 요구합니다.
 - Linux와 macOS에서는 시스템의 FluidSynth와 FFmpeg를 쓰기 때문에, 고정 버전을 쓰는 Windows와 샘플 단위로 조금 다를 수 있습니다.
 
@@ -150,6 +186,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | [arrangement.md](skills/music-production/references/arrangement.md) | 구성, 멜로디, 보이싱, 각 파트의 역할 |
 | [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 연주, 버스 믹싱, `analyze` 읽는 법 |
 | [soundbanks.md](skills/music-production/references/soundbanks.md) | 각 음원의 특징과 버릇, 직접 음원을 추가하는 방법 |
+| [장르별 가이드](skills/music-production/references) | 일렉트로닉, 비트, 재즈와 펑크, 애니메이션 오프닝, 게임과 장면 음악, 오케스트라, 오르간, 피아노와 실내악 |
 | [setup.md](skills/music-production/references/setup.md) | Windows, Linux, macOS에 렌더링 도구 설치하기 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 외부 악보, MIDI, 샘플을 쓸 때 주의할 점 |
 
@@ -161,4 +198,4 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 라이선스
 
-코드와 문서는 [MIT](LICENSE)입니다. 데모 녹음과 곡 자체는 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)으로 퍼블릭 도메인에 공개합니다. 서드파티 도구와 음원은 각자의 라이선스를 따르며, 이 저장소에 포함하지 않고 배포처에서 내려받습니다. 곡 그림은 피아노 버전의 프로젝트 파일에서 코드로 그린 것이고, 로고의 글자는 Noto Serif TC(SIL Open Font License)를 아웃라인으로 바꾼 것입니다.
+코드와 문서는 [MIT](LICENSE)입니다. 예제 녹음과 곡은 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)으로 퍼블릭 도메인에 공개합니다. 서드파티 도구와 음원은 각자의 라이선스를 따르며, 이 저장소에 포함하지 않고 배포처에서 내려받습니다. 서곡 그림은 그 프로젝트 파일에서 코드로 그린 것이고, 로고의 글자는 Noto Serif TC(SIL Open Font License)를 아웃라인으로 바꾼 것입니다.

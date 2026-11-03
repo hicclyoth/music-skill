@@ -22,7 +22,11 @@ mix (musiclib/stage.py) and sends more to its space, half the distance loss.
 
 Master.  The premix is brought to -18 LUFS for glue compression (about 2 dB on the loudest passages), an air shelf, a
 little presence and a -1 dBFS limiter.  One gain toward mix.target_lufs then feeds a -1.5 dBFS sample-peak limiter;
-if limiting costs loudness the gain is corrected (at most three passes).  With mix.dynamics "wide" (orchestral and
+if limiting costs loudness the gain is corrected (at most three passes).  With mix.loudness "loud" the gained mix first
+passes a soft clipper computed in NumPy at four times the sample rate (FFmpeg's oversampled asoftclip would cost the
+flat 5.8 dB above): linear up to three quarters of the limiter's ceiling and rounding toward the ceiling above, so the
+limiter only catches what is left.  mastering.limiting_db reports, per section, how much level clipper and limiter
+together took.  With mix.dynamics "wide" (orchestral and
 organ music), no bus compresses or saturates and the master keeps only its EQ: one gain brings the mix to the target
 unless its true peak would pass -1.2 dBTP, in which case the music stays quieter instead of being limited; with
 mix.range_lu it first lifts the quieter passages until the loudness range is that many LU.  The
@@ -201,9 +205,41 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
             'level_change_db': change}
 
 
+def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):
+    """Peaks rounded toward `ceiling` (linear amplitude): unchanged below `knee` times it, a tanh curve above that
+    meets the line with the same slope and approaches the ceiling.  Computed at `factor` times the rate, in blocks
+    whose margins are discarded, and brought back through an FFT low-pass, so the harmonics the curve adds above the
+    band do not fold back."""
+    n, t = len(x), knee * ceiling
+    out = np.empty((n, x.shape[1]), dtype=np.float32)
+    for s in range(0, n, block):
+        a, b = max(0, s - margin), min(n, s + block + margin)
+        seg = np.asarray(x[a:b], dtype=np.float64)
+        m = len(seg)
+        up = np.fft.irfft(np.fft.rfft(seg, axis=0), n=m * factor, axis=0) * factor
+        mag = np.abs(up)
+        over = mag > t
+        up[over] = np.sign(up[over]) * (t + (ceiling - t) * np.tanh((mag[over] - t) / (ceiling - t)))
+        down = np.fft.irfft(np.fft.rfft(up, axis=0)[:m // 2 + 1], n=m, axis=0) / factor
+        keep = min(block, n - s)
+        out[s:s + keep] = down[s - a:s - a + keep]
+    return out
+
+
 def master(p, cfg, output):
     """premix.wav -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit)."""
     logs = output / 'logs'
+    if p['mix'].get('wow_flutter') or p['mix'].get('mono_below_hz'):
+        # Tape wobble over the whole mix, then low frequencies mono (musiclib/production.py), before the master
+        # measures and compresses the premix.
+        from . import production
+        x, _ = audio.read_wav(output / 'premix.wav')
+        x = x.astype('float64')  # releases the mapped file
+        if p['mix'].get('wow_flutter'):
+            x, _ = production.wow_flutter(x, p['mix']['wow_flutter'], 'premix')
+        if p['mix'].get('mono_below_hz'):
+            x = production.mono_below(x, p['mix']['mono_below_hz'])
+        audio.write_wav(output / 'premix.wav', x.astype('float32'))
     before = audio.measure(cfg, output / 'premix.wav', logs, 'measure_premix')
     gain = MIX_LUFS - before['integrated_lufs']
     wide = p['mix'].get('dynamics') == 'wide'
@@ -223,23 +259,57 @@ def master(p, cfg, output):
             delivered['range'] = ranged
         return before, delivered
     delivery, passes, ceiling = target - source['integrated_lufs'], [], LIMIT_DBFS
+    loud = p['mix'].get('loudness') == 'loud'
+    clipped = output / 'clipped.wav'
     for k in range(4):
-        limiter = f'volume={delivery:.6f}dB,alimiter=limit={10 ** (ceiling / 20):.6f}:attack=5:release=60:level=disabled'
-        audio.ffmpeg(cfg, ['-i', mixed, '-af', limiter, '-ar', str(RATE), '-c:a', 'pcm_s24le', output / 'master.wav'], logs, f'deliver_{k}')
+        # A loud master (dense electronic genres) rounds the peaks with an oversampled soft clipper before the limiter,
+        # so the limiter works less and pumps less at -8 to -10 LUFS.
+        if loud:
+            x, _ = audio.read_wav(mixed)
+            audio.write_wav(clipped, soft_clip(np.asarray(x, dtype=np.float64) * 10 ** (delivery / 20), 10 ** (ceiling / 20)))
+            del x
+            source_file, limiter = clipped, f'alimiter=limit={10 ** (ceiling / 20):.6f}:attack=5:release=60:level=disabled'
+        else:
+            source_file = mixed
+            limiter = f'volume={delivery:.6f}dB,alimiter=limit={10 ** (ceiling / 20):.6f}:attack=5:release=60:level=disabled'
+        audio.ffmpeg(cfg, ['-i', source_file, '-af', limiter, '-ar', str(RATE), '-c:a', 'pcm_s24le', output / 'master.wav'], logs, f'deliver_{k}')
         m = audio.measure(cfg, output / 'master.wav', logs, f'measure_delivery_{k}')
         passes.append({'gain_db': round(delivery, 3), 'limit_dbfs': round(ceiling, 3), 'lufs': m['integrated_lufs'],
                        'true_peak_dbtp': m['true_peak_dbtp']})
-        loud, peak = abs(m['integrated_lufs'] - target) <= .3, m['true_peak_dbtp'] <= -1
-        if loud and peak:
+        close, peak = abs(m['integrated_lufs'] - target) <= .3, m['true_peak_dbtp'] <= -1
+        if close and peak:
             break
         if not peak:
             # The limiter holds sample peaks; bright transients (cymbals, mallets) can still overshoot between samples.
             # Lower its ceiling by the overshoot and a margin, and let the gain restore the loudness.
             ceiling -= m['true_peak_dbtp'] + 1 + .2
         delivery += target - m['integrated_lufs']
+    applied = passes[-1]['gain_db']
+    if loud:
+        clipped.unlink()
+        limiter = f'volume={applied:.6f}dB, soft clip to {10 ** (ceiling / 20):.4f} above {.75 * 10 ** (ceiling / 20):.4f} at 4x (NumPy), ' + limiter
     return before, {'chain': 'bus', 'mix_gain_db': round(gain, 6), 'master_chain': chain,
                     'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')},
-                    'target_lufs': target, 'limiter_dbfs': round(ceiling, 3), 'delivery_chain': limiter, 'passes': passes}
+                    'target_lufs': target, 'limiter_dbfs': round(ceiling, 3), 'delivery_chain': limiter, 'passes': passes,
+                    'limiting_db': section_limiting(p, mixed, output / 'master.wav', applied)}
+
+
+def section_limiting(p, mixed, master, gain_db):
+    """How much level the delivery clipper and limiter took from each section: its RMS after the delivery gain minus
+    its RMS in the master, in dB.  A dense section loses more than a sparse one, which turns a drop or a chorus quieter
+    than the intro around it once the loss passes a few dB."""
+    from .model import Clock
+    clock = Clock(p)
+    x, _ = audio.read_wav(mixed)
+    y, _ = audio.read_wav(master)
+    out = {}
+    for s in p['sections']:
+        a, b = (int(round(clock.seconds(bar * clock.beats_per_bar) * RATE)) for bar in (s['start_bar'], s['start_bar'] + s['bars']))
+        rx = float(np.sqrt(np.mean(np.asarray(x[a:b], dtype=np.float64) ** 2)))
+        ry = float(np.sqrt(np.mean(np.asarray(y[a:b], dtype=np.float64) ** 2)))
+        if rx > 1e-6 and ry > 1e-6:
+            out[s['id']] = round(20 * np.log10(rx) + gain_db - 20 * np.log10(ry), 2)
+    return out
 
 
 def wide_delivery(cfg, output, mixed, source, target, gain, chain):

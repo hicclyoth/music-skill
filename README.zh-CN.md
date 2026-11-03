@@ -26,32 +26,56 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 整个过程没有用到任何音频生成模型。除了 MP3 和 WAV，你还会得到 MIDI、每个声部各自的音轨，以及一份项目文件：其中任何一个音都能修改，改完再重新渲染。
 
 <p align="center">
-  <img src="docs/images/daybreak-signal.png" alt="《Daybreak Signal》的每一个音按声部排列：红色是主旋律，下方依次是管弦、吉他、贝斯和鼓，上方标出段落">
+  <img src="docs/images/above-the-clouds.png" alt="《Above the Clouds》的每一个音按乐团声部排列：红色是主旋律，下方依次是弦乐、木管、铜管、竖琴与管风琴、打击乐，上方标出段落">
 </p>
 
 ## 试听
 
-《Daybreak Signal》是一首动漫片头风格的器乐曲，TV 尺寸：87 秒、176 BPM，进副歌时上移小三度转调。由 Claude（Opus 5.5）用这个 skill 作曲、编曲和混音，之后又做了修改：减少停顿、让主旋律连贯，并另外做了一版钢琴主旋律。
+**[《Above the Clouds》](examples/above-the-clouds)**：为管弦乐团与管风琴写的音乐会序曲。从远方的圆号开始，经过快板、暴风雨和一段宁静的小提琴独奏，最后管风琴加入，以最强音奏出主题大旋律。可以听[整首序曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28），或[最后 1:41](examples/above-the-clouds/above_the_clouds_highlight.mp3)。
 
-- [钢琴主旋律](examples/daybreak-signal/piano.mp3)
-- [电吉他主旋律](examples/daybreak-signal/guitar.mp3)
+**[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**：节庆浩室（festival house）。钢琴主题、渐强段和 supersaw 的爆发段（drop），都用这个 skill 内置的合成器和鼓机做成。
 
-两个版本只在主旋律的乐器上不同。[examples/daybreak-signal](examples/daybreak-signal) 里有写出这首曲子的脚本，以及两份项目文件。在 Windows 上用锁定版本的工具重新渲染，会得到相同的母带，差异仅在 24 位的舍入误差。
+其他风格都在 [examples/genre-demos](examples/genre-demos)：
+
+- [《Late Set at the Corner》](examples/genre-demos/late_set.mp3)：次中音萨克斯加钢琴三重奏的爵士布鲁斯
+- [《Midnight Coastline》](examples/genre-demos/midnight_coastline.mp3)：synthwave，滑音主旋律配上弦乐合成器铺底
+- [《Rain on the Tram Line》](examples/genre-demos/tram_line_rain.mp3)：lo-fi hip-hop，旧磁带味的钢琴和弧顶爵士吉他
+- [《Paper Satellites》](examples/genre-demos/paper_satellites.mp3)：future bass，随底鼓起伏的 supersaw 和弦与 808
+- [《Pixel Lantern》](examples/genre-demos/pixel_lantern.mp3)：按红白机（NES）的限制写成的游戏地图循环配乐
+
+每一首都由 Claude（Opus 5.5）用这个 skill 作曲、编曲和混音。每个示例文件夹都有写出曲子的脚本和项目文件；在 Windows 上用锁定版本的工具重新渲染，会得到相同的母带，差异仅在 24 位的舍入误差。[《Daybreak Signal》](examples/daybreak-signal) 是一首由钢琴主奏的动漫片头风格曲子，示范一首曲子如何一步步修改。
+
+## 快速开始
+
+1. 安装这个 skill。在 Claude Code 里：
+
+   ```
+   /plugin marketplace add owoevan-dev/music-skill
+   /plugin install music-skill@music-skill
+   ```
+
+   Codex 和其他 agent：`npx skills add owoevan-dev/music-skill`。
+2. 让 agent 安装渲染工具和音色库。它会执行[安装](#安装)一节的命令：下载约 3.6 GB，在我们的测试电脑上接着约五分钟就完成其余步骤。
+3. 用平常的话点一首曲子：
+
+   > 给我的 RPG 写一首一分钟、可以循环的城镇主题：竖笛、竖琴和轻柔的弦乐。
+
+你会得到 MP3 和 WAV、MIDI、每个声部的分轨，以及项目文件。在一台 24 线程的台式机上，上面的示例从半分钟（爵士三重奏、chiptune 循环曲）到五分钟（用内置合成器做的浩室）就渲染完成；四分半的序曲用了三分钟。
 
 ## 为什么不直接生成？
 
 文字生成音乐的模型交给你的是一段做好的音频。只要有一小节不对，就得重新生成，换来的是另一首歌。你没法打开它挪动一个音，也说不清里面的声音从哪里来。
 
-这里由 agent 写出乐谱，所以音乐是由一个个你看得懂、改得动的决定组成的：第 33 小节的旋律、一个和弦的配置、鼓手敲镲片的力度。只改一个音，就只会重新渲染那个声部。声音来自真实乐器的多重采样录音，许可都查得到，也没有用到任何以他人录音训练的模型。
+这里由 agent 写出乐谱，所以音乐是由一个个你看得懂、改得动的决定组成的：第 33 小节的旋律、一个和弦的配置、鼓手敲镲片的力度。只改一个音，就只会重新渲染那个声部。声音来自真实乐器的多重采样录音（许可都查得到）或 skill 内置的合成器，也没有用到任何以他人录音训练的模型。
 
 ## 工作原理
 
 1. **写谱**：agent 先规划曲式和主题，再写出项目文件。每个音的音高和时值记在乐谱里；怎么演奏（力度、时间点、松开的时机）另外记录。较长的曲子通常由 agent 写一个简短的 Python 脚本来生成，让和声配置、贝斯线和鼓的乐句都清晰、好改。
 2. **检查乐谱**：`review` 会列出声部之间持续的小二度和小九度，以及落在和弦外的旋律音，让每一处都是有意的选择，而不是意外。
 3. **演奏**：演奏模型加入真人演奏会有的偏差：每位乐手在时间和音量上缓慢的起伏、略微靠后的贝斯、乐句的起伏弧线，以及和弦中各音不会同时按下、也不会同时松开。采样的主旋律可以连奏，也可以推弦。
-4. **渲染**：FluidSynth 用有许可的 SoundFont 音色库，让每个声部用各自的乐器演奏。
-5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 −14 LUFS，真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比。
-6. **测量**：`analyze` 会测出每个段落的响度、频谱和立体声，以及主旋律比伴奏响多少。这些数字能指出问题所在，但不能代替实际聆听。
+4. **渲染**：FluidSynth 用有许可的 SoundFont 音色库，让每个采样声部用各自的乐器演奏；电子声部则由内置的合成器和鼓机，或 Surge XT 合成器的音色演奏。
+5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 −14 LUFS，真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
+6. **测量**：`analyze` 会测出每个段落的响度、频谱和立体声、主旋律比伴奏响多少，并把母带的音色平衡与已发表的商业录音测量，或同曲风的参考进行比较。这些数字能指出问题所在，但不能代替实际聆听。
 
 只改一个音，就只会重新渲染那一个声部；只改混音，则完全不需要重新渲染。
 
@@ -76,26 +100,26 @@ npx skills add owoevan-dev/music-skill
 
 **渲染工具**：每台电脑设置一次，可以交给 agent 代劳。
 
-Windows x64 会下载锁定版本的 FluidSynth 和 FFmpeg 便携版：
+Windows x64 会下载锁定版本的 FluidSynth 和 FFmpeg 便携版，以及 Surge XT 合成器和运行它的插件宿主（约 55 MB；加上 `--no-surge` 就不安装）：
 
 ```
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux（Ubuntu 24.04、Debian 13 或更新版本）和 macOS 使用系统软件包：
+Linux（Ubuntu 24.04、Debian 13 或更新版本）和 macOS 使用系统软件包，以及你自行安装的 Surge XT（如果有）：
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS：brew install fluid-synth ffmpeg
 python3 skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-然后下载示范曲用到的乐器，约 1 GB：
+然后下载音色库（本项目构建好的版本）：全部二十九个下载约 3.4 GB、安装后约 8 GB。`--only orchestra`、`band`、`world` 或 `examples`（示例曲用到的音色库）可以只装一组，也可以直接写音色库名称（`--only vcsl,rusty`）；项目用到尚未安装的音色库时，会停下来并给出安装命令。加上 `--from-source` 则改从各发布者的原始采样自行构建。
 
 ```
 python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/local-config.json --runtime <folder>/.runtime --output <folder>/local-config.studio.json
 ```
 
-需要 Python 3.10 及以上版本和 NumPy。不需要 GPU、账号或音频模型。所有文件都从发布者自己的页面下载，并用锁定的 SHA-256 校验。
+需要 Python 3.10 及以上版本和 NumPy。不需要 GPU、账号或音频模型。所有文件都从发布者或本项目自己的 release 下载，并用锁定的 SHA-256 校验。
 
 ## 使用方法
 
@@ -109,6 +133,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 > 写两分钟的管弦乐：日出，从安静的圆号独奏到整个乐团。
 
+> 给我的赛车游戏写一段夜间驾驶的 synthwave 配乐：100 BPM，门限混响军鼓，滑音主旋律。
+
 > 第 33 小节的副歌旋律太满了，简化一下再重新渲染。
 
 > 也把 MIDI 和分轨发给我。
@@ -117,27 +143,37 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 | 乐器 | 音色库 | 许可 |
 |---|---|---|
-| 三角钢琴 | VCSL 的 Steinway B（Versilian Studios）；Osiris Piano（Karoryfer Samples），分别录了踩与不踩延音踏板的版本；两者都在这里构建 | CC0 |
-| 电吉他 | FreePats FSBS：两种失真、一种干净音色 | CC0 |
-| 电贝斯 | Bass YR，拨片与指弹，采样由 Andrea Biasior 录制；Black And Blue Basses（Karoryfer Samples）的五弦贝斯，含幽灵音，在这里构建 | CC0 |
-| 架子鼓 | Big Rusty Drums（Karoryfer Samples），在这里构建为 GM 键位 | CC0 |
-| 弦乐（含震音和拨奏）、独奏小提琴、低音提琴、铜管、小号、圆号、长号、大号、木管、短笛、钟琴 | 由 VSCO 2 Community Edition（Versilian Studios）构建 | CC0 |
-| 竖琴、马林巴、颤音琴、木琴、管钟、定音鼓、管弦打击乐（镲与镲的渐强、锣、三角铁、雪橇铃、风铃）、管风琴 | 由 VCSL（Versilian Studios）构建 | CC0 |
-| 独奏大提琴 | Karoryfer x bigcat cello（Karoryfer Lecolds 与 bigcat instruments），连同原有的持续音循环点在这里构建 | CC0 |
+| 钢琴与键盘 | VCSL（Versilian Studios）的 Steinway B、Kawai 三角钢琴、立式钢琴、羽管键琴、Yamaha TX81Z FM 音色和管风琴；Karoryfer Samples 的 Osiris Piano，分别录了踩与不踩延音踏板的版本 | CC0 |
+| 管弦乐 | VSCO 2 Community Edition（Versilian Studios）的弦乐（含分部、震音和拨奏）、铜管、长号、大号、低音提琴、木管、短笛和钟琴；VCSL 的竖琴、木槌类打击乐、管钟、定音鼓和管弦打击乐；爱荷华大学电子音乐工作室的圆号、低音长号、单簧管、长笛、独奏弦乐和打击乐 | CC0；爱荷华：可自由用于任何用途，没有限制 |
+| 乐队 | FreePats FSBS 电吉他（两种失真、一种干净音色）；Bass YR 拨片与指弹贝斯，采样由 Andrea Biasior 录制；Karoryfer Samples 的 Big Rusty Drums、五弦贝斯、拨奏低音提琴、弧顶爵士吉他、上低音萨克斯和大号；Karoryfer Lecolds 与 bigcat instruments 的独奏大提琴 | CC0 |
+| 独奏与世界乐器 | VCSL 的次中音萨克斯、saxello、竖笛、陶笛、口琴、民谣竖琴、越南筝（đàn tranh）、psaltery（拨弦齐特琴）、卡林巴、巴拉风和世界打击乐；二胡；次中音钢鼓；人声“啊” | CC0；钢鼓：Unlicense |
+| 合成器 | 内置的合成器与鼓机；Surge XT 和五十个精选出厂音色，可选，默认安装 | 内置：MIT；Surge XT：GPL-3.0，作为独立程序运行 |
 | 其他乐器 | MuseScore MS Basic | MIT |
 
-录音音色库全部是 CC0，用它们制作的音乐不需要署名。MS Basic 的 MIT 声明只随音色库本身的副本，不涉及用它渲染出来的音乐。来源列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+录音音色库都是 CC0、可自由用于任何用途而没有限制（爱荷华大学的录音），或已贡献给公有领域（钢鼓），用它们制作的音乐不需要署名。Surge XT 采用 GPL-3.0，作为独立程序运行；GPL 约束的是程序本身，不是它演奏出来的音乐。MS Basic 的 MIT 声明只随音色库本身的副本，不涉及用它渲染出来的音乐。来源列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 效果如何
 
-`selfcheck.py` 共有 46 项检查，从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新渲染一个声部；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 72 项检查（没有渲染配置时为 56 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新渲染一个声部；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
-音乐好不好听是另一回事，只有实际聆听才知道。上面的示范曲是这个仓库最好的证据。
+音乐好不好听是另一回事，只有实际聆听才知道。上面这些曲子是这个仓库最好的证据。
+
+## 常见问题
+
+**做出来的音乐可以用在视频、游戏或商业作品里吗？** 工具本身没有任何限制。音色库都是 CC0 或可自由使用，不需要署名；GPL 许可的程序（FFmpeg、Surge XT）约束的是程序本身，不是经过它们处理的音乐。至于你对 agent 帮你写的音乐是否享有著作权，取决于你所在地的法律，以及你参与塑造了多少。
+
+**哪些 agent 可以用？** 任何能加载 Agent Skills 并运行 Python 的 agent：Claude Code（以插件安装）、Codex，以及通过 `npx skills` 安装的其他 agent。
+
+**需要网络或 GPU 吗？** 只有安装时需要网络；渲染在 CPU 上离线进行。你的项目文件不会发给任何人，只有你的 agent 会把它读到的内容发给它自己的模型。
+
+**可以用自己的乐器吗？** 任何 SF2 音色库都可以：用 `studio.py add-soundfont` 加进配置文件，再在声部里指定它（见 [soundbanks.md](skills/music-production/references/soundbanks.md)）。自己加的音色库保留它原本的许可，发布作品前请先确认。
 
 ## 局限
 
-- 不会唱歌、不写歌词，也不支持 VST 插件。
+- 不会唱歌、不写歌词。插件只支持 Surge XT，还不能加载你自己的 VST 插件。
 - 音色的上限取决于免费音色库：YR 贝斯只有一层力度，弦乐起音偏慢，马林巴、木琴和短笛的采样稀疏，采样吉他的推弦是把整段采样变调，不会有真实琴弦的音色变化。
+- 目前还没有木吉他、合唱，以及二胡和越南筝以外的东亚乐器音色库；这些声部只能用 MS Basic 采样稀疏的 General MIDI 音色。
+- Surge XT 的振荡器每次都从随机相位开始，所以同一个 Surge 声部每次合成都会有细微差异；渲染缓存会保留一次的结果，直到这个声部改动为止。其他部分每次渲染都完全相同。
 - agent 听不到声音。`review` 和 `analyze` 只能找出问题，结果必须由人来听；skill 也会要求 agent 不得声称自己听过。
 - Linux 和 macOS 使用系统的 FluidSynth 和 FFmpeg，渲染出的采样可能与 Windows 的锁定版本略有差异。
 
@@ -150,6 +186,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | [arrangement.md](skills/music-production/references/arrangement.md) | 曲式、旋律、和声配置与各声部的职责 |
 | [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏、总线混音，以及如何解读 `analyze` |
 | [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色库的特性与局限，以及如何加入自己的音色库 |
+| [曲风指南](skills/music-production/references) | 电子音乐、节拍、爵士与放克、动漫片头、游戏与场景配乐、管弦乐、管风琴、钢琴与室内乐 |
 | [setup.md](skills/music-production/references/setup.md) | 在 Windows、Linux 和 macOS 上安装渲染工具 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 使用外部乐谱、MIDI 与采样的注意事项 |
 
@@ -161,4 +198,4 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 许可
 
-代码与文档采用 [MIT](LICENSE) 许可。示范录音与乐曲本身以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，由用户从发布者处下载，不包含在这个仓库中。曲子的那张图是程序直接从钢琴版的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。
+代码与文档采用 [MIT](LICENSE) 许可。示例的录音与乐曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，由用户从发布者处下载，不包含在这个仓库中。序曲的那张图是程序直接从它的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。

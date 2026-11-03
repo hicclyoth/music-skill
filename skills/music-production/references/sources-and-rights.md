@@ -26,7 +26,7 @@ The study parser rejects XML DTD/entities and parses only bounded score data; th
 
 ## Sound banks
 
-Optional recordings are listed with their evidence in [soundbanks.md](soundbanks.md). All are CC0 (FreePats FSBS guitars and Bass YR, and banks built here from VSCO 2 CE, VCSL and Big Rusty Drums samples), so music made with them needs no credit. CC BY banks such as Salamander Grand Piano or MuldjordKit are not offered: they would need a credit wherever the music is published. A bank built here from CC0 samples keeps the samples' CC0 status; the build spec and receipt record every source file hash and change. Banks are runtime data, never bundled in the skill package, and never executed.
+Optional recordings are listed with their evidence in [soundbanks.md](soundbanks.md). All are CC0 (FreePats FSBS guitars and Bass YR, and banks built here from VSCO 2 CE, VCSL, Karoryfer, Big Rusty Drums and sfzinstruments samples) except the University of Iowa Musical Instrument Samples, whose publisher states that they "may be downloaded and used for any projects, without restrictions", and John Learman's steel drum, dedicated to the public domain under the Unlicense; music made with any of them needs no credit. CC BY banks such as Salamander Grand Piano or MuldjordKit are not offered: they would need a credit wherever the music is published. A bank built here from CC0 samples keeps the samples' CC0 status; the build spec and receipt record every source file hash and change. Banks are runtime data, never bundled in the skill package, and never executed. The banks built here are also offered prebuilt, as assets of the repository's release, byte for byte what a build from the sources gives: CC0, the Unlicense and the Iowa grant ("for any projects, without restrictions") all allow that, and the release notes keep the VSCO readme's requests (not sold as such, improvements kept open, a credit with a link) and the credits the publishers ask for.
 
 ## Runtime licenses
 
@@ -34,5 +34,6 @@ Optional recordings are listed with their evidence in [soundbanks.md](soundbanks
 - FFmpeg: the pinned Windows build from Gyan is a GPL-3.0 build; system packages carry their own build licence. Invoked as a separate executable on local WAV files with numeric filter settings.
 - MS Basic SoundFont: MIT with named sample-author notices; preserve the complete upstream notice.
 - NumPy: BSD-3-Clause.
+- Surge XT and its factory patches: GPL-3.0-or-later, the plugin-only Windows release pinned by hash (or the user's own install elsewhere) and the curated patches from the pinned repository commit, each checked by hash. pedalboard: GPL-3.0, the pinned wheel checked against the hashes PyPI publishes. Both run in their own process, never linked into the MIT skill; audio rendered with them is not covered by their licence.
 
 The installable package does not bundle these binaries or samples. Installing dependencies separately keeps their original licensing clear; redistributing them later would require satisfying their own notices/source obligations. The original room impulse and synthetic instruments in the skill have no external sample assets.

@@ -20,7 +20,7 @@ FluidSynth runs in MMA bank-select mode, so a project `bank` below 128 selects t
 - Strummed guitar chords: pass `{"strum": 6}` (ms between strings) for the guitar track in `musiclib.expression.apply`'s overrides. Chords on each eighth (`strum_grid` 0.5 beats) are struck low to high, chords between them high to low, a little faster and lighter, as the hand moves down and up. Use 4–8 ms for driving rhythm parts and about 15 for slow, open strums; no measurement of string-to-string timing was found, so these are choices, not data.
 - A melody on a sustaining sample (lead guitar, winds, solo strings) re-attacks every note, because each note-on restarts the recording's attack: set `performance.legato` so connected steps are slurred (hammer-ons and pull-offs on a guitar, tongue-less slurs on winds) and only phrase starts, repeated notes and wide leaps are re-attacked. A piano melody is struck by nature; there the line comes from overlap (connected notes held about min(45 ms, 15% of the interval) into the next, repeated notes about 60% of their interval; Bresin & Battel 2000, Repp 1995), the melody voiced above its octave and inner notes and a little early, and the pedal changing with the harmony.
 - Sustained orchestral parts on a bank with dynamic layers (`vsco`, `vsco_extra`, `cello_bigcat`) have two better tools ([orchestration.md](orchestration.md), [schema.md](schema.md)):
-  - `performance.dynamics` crossfades the recorded dynamics along a curve, so a crescendo brightens as it grows. In a selfcheck instrument with a soft sine take and a bright take, a crescendo from 40 to 127 took the spectral centroid from about 490 to 1550 Hz.
+  - `performance.dynamics` moves a part through its recorded dynamics along a curve (one take per note by default, or crossfaded renders), so a crescendo brightens as it grows. In a selfcheck instrument with a soft sine take and a bright take, a crescendo from 40 to 127 took the spectral centroid from about 490 to 1550 Hz.
   - crossfade legato enters each slurred note past its recording's attack. On takes that swell in over 300 ms, the level at a slurred note change dipped at most 3–4 dB, against 11–16 dB when every note was attacked.
 - Strummed or block chords sound more like a player with a few milliseconds between strings (low to high on a downstroke) than with every note on one sample.
 - The built-in additive voice is intentionally synthetic. Its spectrum, glide, delayed vibrato and envelopes are editable in `instrument`. It is not an acoustic emulator, and its MIDI export carries the notes, not the timbre.
@@ -80,12 +80,18 @@ Fields, per section unless noted:
 - `band_share_pct`: share of power in 20–60, 60–250, 250–800, 800–2500, 2500–6000 and 6000–16000 Hz.
 - `lr_correlation` and `mono_sum_change_db`: how much of the stereo image survives in mono.
 - `stem_levels_lufs_ungated`: each processed stem per section, to see which part makes a section loud.
+- `melody_groups`: per section and per `--span NAME:FIRST-LAST` (bars, 1-based, repeatable), the melody parts and the parts that double them in any octave (at least 60% of their onsets on a melody onset of the same pitch class), the group's stems against all other stems (`melody_group_minus_rest_db`), and `balance`: parts within 6 dB of the group's loudest stem (3 dB for bass and countermelody parts) with the cut that would put them there. An orchestral tune sits in many parts, most on the ensemble bus, which the bus measure below counts as accompaniment. Near full velocity a softer velocity changes the level little (the level follows (v/127)², so 110 to 104 is about 1 dB): make a cut with `level_dbfs`, or rest the part.
+- `tonal_balance` (whole master): power per hertz in third-octave bands from 40 Hz to 16 kHz, relative to a line fitted from 100 Hz to 4 kHz and read at 1 kHz; the line's slope (`slope_db_per_octave_100hz_4khz`: pink noise reads −3, white noise 0); and how far the bands below 80 Hz (`low_end_vs_line_db`) and from 6.3 to 12.5 kHz (`top_end_vs_line_db`) sit from the line extended.
+- `side_minus_mid_db` (whole master): side power minus mid power below 120 Hz, from 120 Hz to 2 kHz and from 2 to 16 kHz. −60 (the floor) is mono, 0 is two unrelated channels.
+- `master`: integrated loudness, true peak and loudness range from the render's meter, and the peak-to-loudness ratio (`plr_db`, true peak minus integrated loudness).
+- `reference_comparison`, with `--reference`: the master minus a reference ([below](#tonal-balance-and-references)).
+- `warnings`: a section from which the delivery limiter took more than 3 dB; a master far outside the tonal balance of commercial recordings and, with a reference, wide differences from it; parts whose dynamics sat between two recorded takes that disagree in phase for more than 2% of their playing (`correction_out_of_range_pct` in the stem receipt); Surge XT parts that played their fallback preset.
 - `lead_presence`: the melody against everything else as the mix hears it: in a bus-chain render the lead bus's output against the other buses, so a lead compressor's gain reduction counts; in a room-chain render the melody stems against the other stems (`lead_source` says which). Reverb and delay returns count on neither side. `lead_minus_accompaniment_level_db` is the full-band K-weighted level difference over the section. The `..._db_median` and `..._db_p10` values compare the two frame by frame in 24 bands from 200 Hz to 8 kHz, which leaves out the bass and cymbals and so reads several dB higher. `masked_share_pct` is the share of lead energy in bands where the accompaniment is at least 3 dB louder.
 
 Values from finished pieces, as data points rather than targets:
 
-- In the published *Daybreak Signal* mixes the lead bus measured +0.4 dB (piano) and +0.8 dB (guitar) against the other buses over the chorus, and +3.5 and +4.1 dB over the sparser verse. The band median read +5.2 and +3.4 dB in the chorus, with 1.5% and 1.0% of the lead masked.
-- Before the piano version's level fix its verse measured −0.4 dB, with a 10th percentile of −4.4 dB. Raising the piano's velocities and level brought these to +3.5 and +1.7 dB.
+- In *Daybreak Signal* the lead bus measured +0.3 dB with the piano lead (the published version) and +0.8 dB with a guitar lead against the other buses over the chorus, and +3.7 and +3.8 dB over the sparser verse. The band median read +5.0 and +3.3 dB in the chorus, with 1.5% and 1.0% of the lead masked.
+- Before the piano version's level fix its verse measured −0.4 dB, with a 10th percentile of −4.4 dB. Raising the piano's velocities and level brought these to +3.7 and +1.7 dB.
 - The stems alone put the same piano chorus at +5.2 dB. The lead compressor takes about 3 dB back and the drum bus adds about 2, which is why a bus-chain render is measured after its buses.
 - A spaced-pair piano lead measured a correlation of 0.03 before `width` 0.35 brought its part back to 0.83.
 - An orchestral piece with wide dynamics measured −30.5 LUFS in its pp opening and −14.0 in its ff tutti (ungated, per section), and the master kept the mix's loudness range of 20.5 LU. Its melody's band median read +3.7 to +5.0 dB over the accompaniment in the soft sections and −4.0 dB in the tutti, where the woodwinds doubling the melody count as accompaniment.
@@ -94,8 +100,44 @@ Values from finished pieces, as data points rather than targets:
 
 These numbers locate causes. They do not say whether the piece works.
 
+### Tonal balance and references
+
+Popular commercial recordings fall about 5 dB per octave from 100 Hz to 4 kHz in power per hertz (Pestana et al. 2013, about 800 recordings from 1950 to 2010; Elowsson and Friberg 2017 measured 4.5). Hip-hop and electronic recordings reach further into the low end, and jazz and folk fall away at the top (Pestana et al.). Tracks with more percussion carry more bass and top, which accounts for much of the difference between genres (Elowsson and Friberg). The peak-to-loudness ratio of mainstream releases fell as masters got louder from the 1980s to the late 2000s (Deruty and Pachet 2015). Without a reference, `analyze` warns only when the slope leaves −8 to −1.5 dB per octave, far from all of these.
+
+For a genre, compare with a reference: `studio.py analyze <render> --reference house`. The names in [tonal-references.json](tonal-references.json) are the skill's demos that passed listening review, measured the same way on renders of the projects in the repository's examples folder:
+
+| Reference | Music | Slope | Low end | Top end | Side − mid below 120 Hz | LUFS | PLR | LRA |
+|---|---|---|---|---|---|---|---|---|
+| `jazz` | jazz blues, tenor sax and piano trio | −2.8 | −0.4 | −3.9 | −16 | −15.0 | 13.9 | 1.5 |
+| `synthwave` | gated snare, octave bass, string-machine pads | −3.4 | +3.2 | −7.6 | −57 | −10.5 | 9.0 | 6.1 |
+| `house` | festival house, loud master | −4.1 | −0.3 | −1.2 | −40 | −9.1 | 7.9 | 5.3 |
+| `lofi` | worn-tape piano, upright bass, bit-reduced kit | −4.8 | −1.1 | −7.5 | −37 | −14.1 | 13.0 | 5.2 |
+| `future_bass` | pumped supersaws, an 808, a half-time beat | −2.9 | +6.2 | −2.3 | −57 | −9.5 | 8.3 | 5.9 |
+| `chiptune` | two pulses, triangle bass, noise drums | −4.0 | −13.9 | −2.8 | −60 | −14.0 | 12.0 | 0.8 |
+| `orchestral` | overture with wide dynamics, in a hall | −2.9 | −14.9 | −16.4 | −7 | −17.0 | 15.2 | 12.0 |
+
+Slopes are in dB per octave, the ends and widths in dB. The electronic references keep the bass mono; the jazz trio and the orchestra, played in rooms, carry side energy down to the bass. Where the published trends overlap, the ends follow them: the 808 and the synthwave bass extend the low end, the jazz top falls away, and the orchestra has little below 80 Hz or above 6 kHz. Several demos are flatter than the commercial average (−2.8 to −2.9 against about −5): the measure places a mix; it does not say which slope is right.
+
+A render folder or a WAV file works as a reference too: another mix, or a commercial track the user owns, converted to WAV first. A WAV needs `--config`, for FFmpeg to convert and meter it in a temporary folder, and nothing of it is kept. `reference_comparison` gives the master minus the reference: the slope, both ends, each octave (both spectra levelled at their own line at 1 kHz), the width per band, loudness, PLR and loudness range. It warns past 1.5 dB per octave of tilt (8 dB across 100 Hz–4 kHz), 6 dB at either end, 4 dB of PLR, or a bass more than 10 dB wider than the reference's. A reference is one piece: it shows where a mix differs, not what the piece needs. Look first at what plays in each register and how loud the cymbals, bass and pads are, then at EQ.
+
+Sources for this section:
+
+- Pestana, P. D., Ma, Z., Reiss, J. D., Barbosa, A. and Black, D. A. A. (2013). [Spectral Characteristics of Popular Commercial Recordings 1950–2010](https://www.aes.org/e-lib/browse.cfm?elib=17010). AES 135th Convention, New York.
+- Elowsson, A. and Friberg, A. (2017). [Long-term Average Spectrum in Popular Music and its Relation to the Level of the Percussion](https://www.aes.org/e-lib/browse.cfm?elib=18638). AES 142nd Convention, Berlin, paper 9762.
+- Deruty, E. and Pachet, F. (2015). The MIR Perspective on the Evolution of Dynamics in Mainstream Music. *Proceedings of the 16th ISMIR Conference*, Málaga.
+
 ## Compare and judge
 
 For a revision, compare the same passage at similar loudness and keep an unchanged full version. Review the full form after local edits: a better eight-bar phrase can still damage an arrival later. If no reliable audio audition happened, say exactly that and do not invent a listening impression.
 
 Official references: [FluidSynth features](https://www.fluidsynth.org/wiki/FluidFeatures/), [FFmpeg audio filters](https://ffmpeg.org/ffmpeg-filters.html), [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770), [Yamaha keyboard pedals](https://hub.yamaha.com/keyboards/k-how-to/how-to-use-keyboard-pedals/). Runtime claims are tied to the tested versions and receipts, not inferred from those pages.
+
+## Sources
+
+- Bresin, R. and Battel, G. U. (2000). Articulation strategies in expressive piano performance: analysis of legato, staccato, and repeated notes in performances of the Andante movement of Mozart's Sonata in G major (K 545). *Journal of New Music Research* 29(3), 211–224.
+- Fabiani, M. and Friberg, A. (2011). Influence of pitch, loudness, and timbre on the perception of instrument dynamics. *Journal of the Acoustical Society of America* 130(4), EL193–EL199.
+- Friberg, A., Bresin, R. and Sundberg, J. (2006). Overview of the KTH rule system for musical performance. *Advances in Cognitive Psychology* 2(2–3), 145–161.
+- Frühauf, J., Kopiez, R. and Platz, F. (2013). Music on the timing grid: the influence of microtiming on the perceived groove quality of a simple drum pattern performance. *Musicae Scientiae* 17(2), 246–260.
+- Hennig, H., Fleischmann, R., Fredebohm, A., Hagmayer, Y., Nagler, J., Witt, A., Theis, F. J. and Geisel, T. (2011). [The nature and perception of fluctuations in human musical rhythms](https://doi.org/10.1371/journal.pone.0026457). *PLoS ONE* 6(10), e26457.
+- Räsänen, E., Pulkkinen, O., Virtanen, T., Zollner, M. and Hennig, H. (2015). [Fluctuations of hi-hat timing and dynamics in a virtuoso drum track of a popular music recording](https://doi.org/10.1371/journal.pone.0127902). *PLoS ONE* 10(6), e0127902.
+- Repp, B. H. (1995). Acoustics, perception, and production of legato articulation on a digital piano. *Journal of the Acoustical Society of America* 97(6), 3862–3874.

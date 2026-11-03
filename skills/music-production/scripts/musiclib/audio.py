@@ -33,7 +33,12 @@ def load_config(path):
 def soundfont_for(config,track):
     name=track.get('soundfont','default')
     if name=='default':return name,config['soundfont']
-    if name not in config.get('soundfonts',{}):raise ValueError(f'{track["id"]}: SoundFont "{name}" is not configured')
+    if name not in config.get('soundfonts',{}):
+        lock=Path(__file__).resolve().parents[2]/'references'/'soundbank-lock.json'
+        known={i['name'] for k in ('archives','builds') for i in json.loads(lock.read_text(encoding='utf-8'))[k]} if lock.is_file() else set()
+        hint=(f' It is one of the optional banks: install it with fetch_soundbanks.py --only {name} (references/setup.md), then pass the configuration it writes.'
+              if name in known else ' Configure it with studio.py add-soundfont, or choose a configured bank (studio.py doctor lists them).')
+        raise ValueError(f'{track["id"]}: SoundFont "{name}" is not configured.'+hint)
     return name,config['soundfonts'][name]
 
 def run(argv,folder,label,timeout=600):
@@ -124,6 +129,28 @@ def read_wav(path):
         data=np.memmap(path,dtype='<i2',mode='r',offset=offset,shape=(size//2//channels,channels)).astype(np.float32)/32768
     else:raise ValueError(f'Unsupported WAV encoding {tag}/{bits}')
     return data,{'frames':len(data),'sample_rate':rate,'channels':channels,'bits':bits,'format':tag,'seconds':len(data)/rate}
+
+def audio_hash(path):
+    """SHA-256 of a WAV's format and data chunks only: the same audio gives the same hash whatever else the writer
+    stored (FluidSynth's PEAK chunk records the time it wrote the file)."""
+    h=hashlib.sha256();found=set()
+    with Path(path).open('rb') as f:
+        head=f.read(12)
+        if head[:4]!=b'RIFF' or head[8:12]!=b'WAVE':raise ValueError('Only RIFF WAV supported')
+        while True:
+            header=f.read(8)
+            if len(header)<8:break
+            name,size=struct.unpack('<4sI',header)
+            if name in (b'fmt ',b'data'):
+                h.update(name+header[4:]);left=size;found.add(name)
+                while left:
+                    block=f.read(min(left,1<<20))
+                    if not block:raise ValueError('Truncated WAV chunk')
+                    h.update(block);left-=len(block)
+            else:f.seek(size,1)
+            if size%2:f.seek(1,1)
+    if found!={b'fmt ',b'data'}:raise ValueError('Missing WAV format/data')
+    return h.hexdigest()
 
 def rms(data):return float(np.sqrt(np.mean(np.asarray(data,dtype=np.float64)**2)))
 
@@ -230,6 +257,10 @@ def noise_fx(project,track,path):
         if kind=='impact':
             freq=45+70*np.exp(-t*16);sig=np.sin(2*math.pi*np.cumsum(freq)/RATE)*np.exp(-t*6)*np.minimum(t/.008,1)
             wave=np.column_stack([sig,sig])*.2
+        elif kind=='vinyl':
+            from .production import vinyl
+            wave=vinyl(count,rng)*.13;fade=min(count//2,round(.05*RATE))
+            wave[:fade]*=np.linspace(0,1,fade)[:,None];wave[count-fade:]*=np.linspace(1,0,fade)[:,None]
         else:
             white=rng.standard_normal((count,2));freq=np.fft.rfftfreq(count,1/RATE)
             band=(freq/1200)**2/(1+(freq/1200)**2)/(1+(freq/7500)**4)

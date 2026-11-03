@@ -2,6 +2,7 @@
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 import struct
+from . import variation
 from .model import Clock, TPQ, performed, cc_events, bend_events, legato_notes, wheel_events
 
 def vlq(n):
@@ -34,14 +35,17 @@ def remap(notes,key_map):
             kept.append(n);prev=n
     return sorted(kept,key=lambda n:(n['tick'],n['pitch']))
 
-def write(project,path,tracks=None,expressive=True,single_stem=False,render=False):
+def write(project,path,tracks=None,expressive=True,single_stem=False,render=False,keys=None,cycles=None):
     """Standard MIDI file. With render=True (synthesis input only) a track's `patch` replaces its
     program/bank and `key_map` remaps pitches; a drum part whose patch is not bank 128 plays on a
-    melodic channel.  Exports for people keep the authored identity."""
+    melodic channel; with `keys` (a preset's recordings per key, musiclib/variation.py) a part with
+    `performance.round_robin` plays repeated notes on neighbouring keys, on channels 1-4 with the wheel
+    holding them at pitch; with `cycles` (variation.velocity_cycles) repeated hits step through the
+    bank's recorded round robins.  Exports for people keep the authored identity."""
     clock=Clock(project)
     tracks=project['tracks'] if tracks is None else tracks
     conductor=[]
-    for beat,bpm in project['clock']['tempo']:
+    for beat,bpm in clock.tempo:
         conductor.append((round(beat*TPQ),0,meta(81,round(60_000_000/bpm).to_bytes(3,'big'))))
     num,den=project['clock']['meter']
     conductor.append((0,1,meta(88,bytes([num,den.bit_length()-1,36 if den==8 and num%3==0 else 24,8]))))
@@ -67,6 +71,9 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
             e.append((0,3,bytes([176+channel,cc,value])))
         notes=performed(t,clock,expressive)
         if render and t.get('key_map'):notes=remap(notes,t['key_map'])
+        if render and cycles:
+            notes=sorted(notes,key=lambda n:(n['tick'],n['pitch']))
+            notes=[{**n,'velocity':v} for n,v in zip(notes,variation.cycle_velocities(notes,cycles))]
         if render and expressive and t['performance'].get('legato'):
             # Synthesis only: slurred notes sound as one sample with the pitch carried by the wheel.
             notes,slurs=legato_notes(t,notes,clock)
@@ -87,9 +94,21 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
                 e.append((0,3,bytes([176+channel,cc,value])))
             for beat,value in bends:
                 e.append((round(beat*TPQ),4,bytes([224+channel,value&127,value>>7])))
-        for n in notes:
-            e.append((n['tick'],6,bytes([144+channel,n['pitch'],n['velocity']])))
-            e.append((n['end_tick'],5,bytes([128+channel,n['pitch'],0])))
+        shifts=[0]*len(notes)
+        if render and keys and t['performance'].get('round_robin') and not bends and not drum_channel and single_stem:
+            shifts=variation.round_robin_shifts(notes,keys)
+            for s in sorted(set(shifts)-{0}):
+                ch=variation.channel_for(s,channel)
+                e.extend([(0,1,bytes([176+ch,0,bank//128])),(0,1,bytes([176+ch,32,bank%128])),(0,2,bytes([192+ch,program]))])
+                e.extend((0,3,bytes([176+ch,cc,value])) for cc,value in [(7,100),(10,64),(11,100),(64,0),(101,0),(100,0),(6,2),(38,0),(101,127),(100,127)])
+                if expressive:
+                    e.extend((round(beat*TPQ),4,bytes([176+ch,cc,value])) for beat,cc,value in cc_events(t))
+                wheel=variation.wheel_value(s);end=round(clock.total_beats*TPQ)
+                e.extend([(0,4,bytes([224+ch,wheel&127,wheel>>7])),(end,7,bytes([176+ch,64,0])),(end,8,bytes([176+ch,123,0]))])
+        for n,s in zip(notes,shifts):
+            ch=variation.channel_for(s,channel) if s else channel
+            e.append((n['tick'],6,bytes([144+ch,n['pitch']+s,n['velocity']])))
+            e.append((n['end_tick'],5,bytes([128+ch,n['pitch']+s,0])))
         end=round(clock.total_beats*TPQ)
         e.extend([(end,7,bytes([176+channel,64,0])),(end,8,bytes([176+channel,123,0]))])
         if bends:e.append((end,7,bytes([224+channel,0,64])))

@@ -259,6 +259,32 @@ def checks(work,config=None):
         assert lf in fs.git_blob_sha1s(work/'crlf.txt') and len(fs.git_blob_sha1s(work/'bin.dat'))==1
         return {'archives':len(lock['archives']),'builds':len(lock['builds'])}
     check('soundbank_lock_hosts_hashes_and_member_paths',soundbank_lock)
+    def prebuilt_bank():
+        import fetch_soundbanks as fs
+        import lzma
+        import urllib.parse
+        # A bank as this project built it is unpacked only when the asset and the bank inside match their locked
+        # hashes and size, and is never left half-written; every built bank has an asset and the groups name real banks.
+        bank=bytes(range(256))*4096;packed=lzma.compress(bank);assets=work/'prebuilt_assets';assets.mkdir(exist_ok=True)
+        (assets/'demo_bank-b3.sf2.xz').write_bytes(packed)
+        item={'name':'demo_bank','version':'build b3','output_sha256':__import__('hashlib').sha256(bank).hexdigest()}
+        asset={'file':'demo_bank-b3.sf2.xz','bytes':len(packed),'sha256':file_hash(assets/'demo_bank-b3.sf2.xz'),'sf2_bytes':len(bank)}
+        runtime=work/'prebuilt_runtime'
+        out=fs.install_prebuilt(item,asset,runtime,work,'',True,assets)
+        assert out.read_bytes()==bank and fs.built(item,runtime)==out
+        out.unlink()
+        for wrong_asset,wrong_item in (({**asset,'sha256':'0'*64},item),({**asset,'sf2_bytes':len(bank)-1},item),(asset,{**item,'output_sha256':'0'*64})):
+            rejects(lambda:fs.install_prebuilt(wrong_item,wrong_asset,runtime,work,'',True,assets))
+        assert not list((runtime/'build').iterdir()),list((runtime/'build').iterdir())
+        lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'soundbank-lock.json').read_text(encoding='utf-8'))
+        names={i['name'] for i in lock['archives']+lock['builds']};pre=lock['prebuilt']['assets']
+        assert set(pre)=={i['name'] for i in lock['builds']} and all(a['file'].endswith('.sf2.xz') and len(a['sha256'])==64 for a in pre.values())
+        assert all(set(g)<=names for g in lock['groups'].values()) and set().union(*(lock['groups'][g] for g in ('orchestra','band','world')))==names
+        assert fs.requested(lock,'orchestra,rusty')>={'vsco','rusty'} and fs.requested(lock,None) is None
+        rejects(lambda:fs.requested(lock,'nonesuch'))
+        assert urllib.parse.urlsplit(lock['prebuilt']['release']).hostname in fs.HOSTS
+        return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre)}
+    check('prebuilt_banks_unpack_only_when_they_match_the_lock',prebuilt_bank)
     def bus_settings():
         from musiclib import mixbus
         from musiclib.model import BUSES,SPACES
@@ -392,6 +418,93 @@ def checks(work,config=None):
         assert all(.2<o<.32 for o in offsets) and all(i['zones'][0]['gens'][34]==sf2.timecents(.01) for i in legato),offsets
         return {'presets':len(bank['presets']),'legato_offset_s':[round(min(offsets),3),round(max(offsets),3)]}
     check('soundbank_builds_dynamic_layers_and_legato_presets',expressive_bank)
+    def ring_cut():
+        import wave
+        from soundbank import build
+        from musiclib import sf2
+        # Two struck tones that fall 60 dB in 2 s and in 5 s, recorded 8 s long: each is kept to its own ring.
+        root=work/'ring_source';root.mkdir(parents=True,exist_ok=True);rate=48000;t=np.arange(8*rate)/rate
+        for name,f0,fall in (('C4',261.63,2.0),('G4',392.0,5.0)):
+            x=.5*np.sin(2*np.pi*f0*t)*10**(-3*t/fall)
+            q=np.clip(np.round(np.repeat(x[:,None],2,1)*32767),-32768,32767).astype('<i2')
+            with wave.open(str(root/f'r_{name}_f.wav'),'wb') as w:w.setnchannels(2);w.setsampwidth(2);w.setframerate(rate);w.writeframes(q.tobytes())
+        layer={'dir':'.','pattern':r'r_(?P<note>[A-G]#?\d)_(?P<dyn>f)\.wav','dynamics':['f'],'velocity':{'f':[1,127]},'keys':[55,72],
+               'level':'peak','ring_db':-60,'max_seconds':7}
+        lengths=lambda bank:sorted(round((x['end']-x['start'])/rate,2) for x in bank['samples'][::2])
+        build({'name':'ring','presets':[{'name':'struck','program':0,'layers':[layer]}]},root,work/'ring.sf2')
+        free=lengths(sf2.read(work/'ring.sf2'))
+        build({'name':'ring','presets':[{'name':'struck','program':0,'layers':[{**layer,'max_seconds':3}]}]},root,work/'ring_capped.sf2')
+        capped=lengths(sf2.read(work/'ring_capped.sf2'))
+        assert abs(free[0]-2.05)<.15 and abs(free[1]-5.05)<.15 and abs(capped[1]-3)<.05,(free,capped)
+        return {'kept_seconds':free,'capped_at_3s':capped}
+    check('soundbank_ring_db_keeps_each_take_to_its_own_decay',ring_cut)
+    def aiff(path,x,rate,bits=16):
+        """A big-endian PCM AIFF, as the University of Iowa recordings are published."""
+        x=np.asarray(x,dtype=np.float64);x=x[:,None] if x.ndim==1 else x;e=int(np.floor(np.log2(rate)))
+        q=np.clip(np.round(x*(2**(bits-1)-1)),-2**(bits-1),2**(bits-1)-1).astype(np.int64).ravel()
+        data=b''.join(int(v).to_bytes(bits//8,'big',signed=True) for v in q) if bits==24 else q.astype('>i2').tobytes()
+        comm=struct.pack('>hIh',x.shape[1],len(x),bits)+struct.pack('>HQ',16383+e,int(rate)<<(63-e))
+        body=b'AIFF'+b'COMM'+struct.pack('>I',18)+comm+b'SSND'+struct.pack('>I',8+len(data))+b'\0'*8+data
+        Path(path).write_bytes(b'FORM'+struct.pack('>I',len(body))+body)
+    def chromatic_run():
+        """Six notes C4-F4 played one at a time as a sample library records them: D4 twice (first 45 cents flat), a
+        breath between C#4 and D4, E4 slurred into F4 with no gap."""
+        rate=44100;rng=np.random.default_rng(7);parts=[];truth=[]
+        def tone(midi,cents,sec):
+            t=np.arange(int(sec*rate))/rate;f=440*2**((midi+cents/100-69)/12)
+            y=sum(np.sin(2*np.pi*k*f*t)/k for k in range(1,9))*.15
+            env=np.minimum(1,t/.02)*np.minimum(1,(t[-1]-t)/.05);return y*env
+        gap=lambda sec:np.zeros(int(sec*rate))
+        for midi,cents,lead in ((60,8,.3),(61,-12,.15),(62,-45,.6),(62,4,.15),(63,0,.15)):
+            parts.append(gap(lead))
+            if midi==62 and cents==-45:  # the breath sits in the middle of the gap before the flat take
+                parts[-1][int(.2*rate):int(.4*rate)]=rng.normal(0,.01,int(.2*rate))
+            truth.append((midi,cents,sum(map(len,parts))/rate));parts.append(tone(midi,cents,1.2))
+        parts.append(gap(.15));truth.append((64,-5,sum(map(len,parts))/rate))
+        t=np.arange(int(2.4*rate))/rate;f=np.where(t<1.2,440*2**((64-.05-69)/12),440*2**((65+.1-69)/12))
+        ph=2*np.pi*np.cumsum(f)/rate;y=sum(np.sin(k*ph)/k for k in range(1,9))*.15*np.minimum(1,t/.02)*np.minimum(1,(t[-1]-t)/.05)
+        parts.append(y);truth.append((65,10,truth[-1][2]+1.2));parts.append(gap(.3))
+        return np.concatenate(parts),rate,[x for x in truth if not (x[0]==62 and x[1]==-45)]
+    def split_run():
+        from soundbank import split_sources,read_audio
+        root=work/'split_source';root.mkdir(parents=True,exist_ok=True);x,rate,truth=chromatic_run()
+        aiff(root/'T.mf.C4F4.aiff',x,rate);aiff(root/'T24.aiff',np.stack([x,-x],1),rate,24)
+        a,ia=read_audio(root/'T.mf.C4F4.aiff');b,ib=read_audio(root/'T24.aiff')
+        assert ia['rate']==ib['rate']==rate and ib['channels']==2 and np.abs(a[:,0]-b[:,0]).max()<1e-4 and np.abs(b[:,0]+b[:,1]).max()<1e-6
+        group={'name':'T','files':[{'file':'T.mf.C4F4.aiff','dyn':'mf','notes':['C4','F4']}]}
+        m=split_sources({'groups':[group]},root,work/'split_notes');save_json(work/'split_notes'/'split.json',m)
+        got=[(n['file'],n['cents'],n['start']/rate) for n in m['notes']]
+        names=[f'T/T_mf_{k}.wav' for k in ('C4','C#4','D4','D#4','E4','F4')]
+        assert [g[0] for g in got]==names,got
+        by={g[0]:g for g in got}
+        for midi,cents,start in truth:
+            g=by[f'T/T_mf_{["C","C#","D","D#","E","F"][midi-60]}4.wav']
+            assert abs(g[1]-cents)<4 and -.03<start-g[2]<.03,(midi,g,cents,start)
+        # The retake replaced the flat D4, and no cut reaches into the breath (0.2-0.4 s into the gap before it).
+        breath=(truth[1][2]+1.2+.2,truth[1][2]+1.2+.4)
+        assert all(n['end']/rate<=breath[0] or n['start']/rate>=breath[1] for n in m['notes'])
+        lacking={'name':'T','files':[{'file':'T.mf.C4F4.aiff','dyn':'mf','notes':['C4','F#4']}]}
+        rejects(lambda:split_sources({'groups':[lacking]},root,work/'split_lacking'))
+        partial=split_sources({'groups':[{**lacking,'partial':True}]},root,work/'split_partial')
+        assert partial['sources'][0]['missing']==['F#4'] and len(partial['notes'])==6
+        return {'notes':len(m['notes']),'cents':{g[0][7:-4]:g[1] for g in got}}
+    check('split_finds_each_note_of_a_chromatic_run',split_run)
+    def split_bank():
+        from soundbank import build
+        from musiclib import sf2
+        root=work/'split_notes';manifest=json.loads((root/'split.json').read_text(encoding='utf-8'))
+        layer={'dir':'T','pattern':r'T_(?P<dyn>pp|mf)_(?P<note>[A-G]#?-?\d)\.wav','dynamics':['pp','mf'],'velocity':{'pp':[1,63],'mf':[64,127]},
+               'keys':[60,65],'pitch_source':'split','max_correction_cents':100,'layer_levels_db':{'pp':-10,'mf':0},'borrowed_level':'served'}
+        build({'name':'split','presets':[{'name':'t','program':0,'layers':[layer]}]},root,work/'split.sf2');bank=sf2.read(work/'split.sf2')
+        zones=[z for z in bank['instruments'][0]['zones'] if z['target'] is not None]
+        cents={n['file'].split('_')[-1][:-4]:n['cents'] for n in manifest['notes']}
+        names=['C4','C#4','D4','D#4','E4','F4']
+        for z in zones:
+            note=names[z['gens'][58]-60]
+            assert z['gens'].get(52,0)==-round(cents[note]),(note,z['gens'])
+            assert z['gens'].get(48,0)==(100 if z['gens'][44][1]<=63 else 0),z['gens']
+        return {'zones':len(zones),'borrowed_attenuation_cb':100}
+    check('soundbank_tunes_split_notes_and_quiets_borrowed_dynamics',split_bank)
     def crossfade_gains():
         from musiclib import layered
         rng=np.random.default_rng(7);n=48000*2;frames=n//layered.FRAME+1
@@ -411,6 +524,362 @@ def checks(work,config=None):
         assert np.allclose(g[0][i]**2+g[1][i]**2,1,atol=1e-3) and g[0][int(.7*48000)]==0 and g[1][int(1.2*48000)]==0 and g[0][int(1.5*48000)]==1
         return {'level_spread_db':{'same_take':round(float(np.ptp(same)),2),'unrelated':round(float(np.ptp(free)),2),'half_antiphase':round(float(np.ptp(anti)),2)}}
     check('dynamics_crossfade_keeps_power_and_legato_fades_cross',crossfade_gains)
+    def take_mode():
+        from musiclib import layered
+        from musiclib.model import Clock
+        # The bank's soft layer is a sine, its loud one eight harmonics, 9 dB apart: stepping up must brighten above the
+        # fundamental and the layers' level offset must come out at -9 dB.
+        prof=layered.layer_profile(xf_bank(),48,[16,17]);shape=prof['shape'][0]
+        hi=shape[layered.BANDS>1000];low=shape[np.argmin(np.abs(layered.BANDS-250))]
+        assert prof['pairs']==[2] and abs(prof['level_db'][0]+9)<1 and hi.max()>=6 and low<0,(prof['level_db'],shape.round(1))
+        # The filter follows the band gains it is built from, and filtering keeps time: an impulse stays where it was.
+        h=layered.brightness_fir(np.clip(shape,-6,6));H=np.abs(np.fft.rfft(h,1<<15));f=np.fft.rfftfreq(1<<15,1/48000)
+        err=[abs(20*np.log10(H[np.argmin(np.abs(f-b))])-g) for b,g in zip(layered.BANDS,np.clip(shape,-6,6)) if 100<b<12000]
+        imp=np.zeros((48000,2),dtype=np.float32);imp[1000]=1;y=layered.fir_filter(imp,h)
+        assert max(err)<1 and int(np.argmax(np.abs(y[:,0])))==1000,(max(err),int(np.argmax(np.abs(y[:,0]))))
+        # Each note takes the dynamic nearest the curve's mean over it.
+        clock=Clock({'clock':{'bars':4,'meter':[4,4],'tempo':[[0,60]]}})
+        notes=[{'start_seconds':0.,'end_seconds':2.},{'start_seconds':6.,'end_seconds':8.},{'start_seconds':2.,'end_seconds':6.}]
+        layered.take_of(notes,[[0,10],[8,120]],clock,2)
+        assert [n['take'] for n in notes]==[0,1,1],[n['take'] for n in notes]
+        return {'level_db':[round(v,2) for v in prof['level_db']],'brightening_db':round(float(hi.max()),1),'filter_error_db':round(max(err),2)}
+    check('take_mode_learns_brightness_from_the_layers',take_mode)
+    def noise_reduction():
+        import soundbank as sbk
+        rate=44100;rng=np.random.default_rng(7);t=np.arange(rate*4)/rate
+        note=sum(.3/k*np.sin(2*np.pi*220*k*t) for k in range(1,15))*((t>1)&(t<3))*np.clip((t-1)/.02,0,1)
+        x=(note+rng.standard_normal(len(t))*10**(-50/20))[:,None].astype(np.float32)
+        y=sbk.denoise(x,sbk.quiet_power(x).mean(axis=0),12)[:,0].astype(float);x=x[:,0].astype(float)
+        db=lambda v:20*np.log10(np.sqrt(np.mean(v**2))+1e-30);sil=slice(int(.2*rate),int(.9*rate));mid=slice(int(1.5*rate),int(2.5*rate))
+        flick=lambda v:float((10*np.log10((np.lib.stride_tricks.sliding_window_view(v,1024)[::512]**2).mean(axis=1))).std())
+        # The hiss between notes falls by the 12 dB asked for, the note keeps its level, and what is left of the
+        # noise stays steady instead of flickering into 'musical noise'.
+        assert 10.5<db(x[sil])-db(y[sil])<13.5 and abs(db(y[mid])-db(x[mid]))<.1 and flick(y[sil])<flick(x[sil])+.3,(db(x[sil])-db(y[sil]),db(y[mid])-db(x[mid]))
+        same=sbk.denoise(x[:,None].astype(np.float32),np.full(sbk.DENOISE_FRAME//2+1,1e-20),12)[:,0]
+        assert np.abs(same-x).max()<1e-6
+        return {'hiss_reduction_db':round(db(x[sil])-db(y[sil]),1),'note_change_db':round(db(y[mid])-db(x[mid]),3)}
+    check('noise_reduction_lowers_hiss_and_keeps_the_note',noise_reduction)
+    def denoise_keeps_low_partials():
+        import soundbank as sbk
+        rate=44100;rng=np.random.default_rng(5);n=rate*4;t=np.arange(n)/rate;f=np.fft.rfftfreq(n,1/rate)
+        # Rumble falling 6 dB an octave from 20 Hz, as loud at 82 Hz as the fundamental of a soft E2 played over it
+        # from the second second: the gain alone takes the fundamental for rumble; told the note's pitch, it keeps the
+        # partials under 300 Hz as recorded while the rumble under the note still falls.
+        rumble=np.fft.irfft(np.fft.rfft(rng.standard_normal(n))*20/np.maximum(f,20),n)*.02
+        noise=sbk.bands_to_bins(sbk.noise_bands(rumble[:rate,None].astype(np.float32),rate,[]),rate)
+        f0=440*2**((40-69)/12);fb=np.fft.rfftfreq(sbk.DENOISE_FRAME,1/rate)
+        a=np.sqrt(noise[np.argmin(np.abs(fb-f0))])/(np.sqrt(np.hanning(sbk.DENOISE_FRAME+1)[:-1]).sum()/2)
+        x=(rumble+(t>=1)*sum(a/k*np.sin(2*np.pi*f0*k*t) for k in range(1,13)))[:,None].astype(np.float32)
+        kept=sbk.denoise(x,noise,12,keep=sbk.partial_bins(40,300,rate))[:,0];plain=sbk.denoise(x,noise,12)[:,0]
+        seg=slice(int(1.5*rate),int(3.5*rate));fs=np.fft.rfftfreq(seg.stop-seg.start,1/rate)
+        band=lambda v,lo,hi:10*np.log10((np.abs(np.fft.rfft(v[seg]*np.hanning(seg.stop-seg.start)))**2)[(fs>=lo)&(fs<hi)].sum())
+        raw=x[:,0].astype(float);fund=lambda v:band(v,f0-3,f0+3)
+        keep_db,plain_db,low_db=fund(kept)-fund(raw),fund(plain)-fund(raw),band(raw,25,55)-band(kept,25,55)
+        assert abs(keep_db)<.5 and plain_db<-2 and low_db>6,(keep_db,plain_db,low_db)
+        return {'fundamental_change_db':round(keep_db,2),'without_its_pitch_db':round(plain_db,1),'rumble_under_note_reduction_db':round(low_db,1)}
+    check('denoise_keeps_a_soft_low_note_out_of_the_rumble',denoise_keeps_low_partials)
+    def drum_round_robins():
+        from musiclib import variation
+        # A hit recorded at two dynamics with four takes each, interleaved on neighbouring velocities as the builder
+        # lays them out (velocities 1-20 and 21-40), and a key with one take per velocity (velocity layers only).
+        row=[set()]+[{('soft',(v-1)%4)} if v<=20 else {('loud',(v-21)%4)} if v<=40 else set() for v in range(1,128)]
+        cells=variation.cycle_layers(row);flat=variation.cycle_layers([set()]+[{v} for v in range(1,128)])
+        assert cells[5][:3]==(1,20,4) and cells[30][:3]==(21,40,4) and cells[50] is None and flat[64][2]==1,(cells[5],cells[30],flat[64])
+        cycles={38:cells,40:flat}
+        # A groove at one velocity per role: each later hit on a key takes the layer's next take, a step or two away,
+        # inside its layer; the two dynamics rotate apart; a velocity-layered key keeps its velocities.
+        notes=[{'pitch':38,'velocity':10 if i%2==0 else 35} for i in range(12)]+[{'pitch':40,'velocity':64} for _ in range(4)]
+        out=variation.cycle_velocities(notes,cycles)
+        takes=[row[v] for v in out[:12]]
+        soft=[next(iter(t))[1] for t,n in zip(takes,notes) if n['velocity']==10];loud=[next(iter(t))[1] for t,n in zip(takes,notes) if n['velocity']==35]
+        assert soft==[1,2,3,0,1,2] and loud==[2,3,0,1,2,3],(soft,loud)
+        assert all(abs(v-n['velocity'])<=2 and cells[v][0]==cells[n['velocity']][0] for v,n in zip(out[:12],notes)) and out[12:]==[64]*4,out
+        return {'soft_takes':soft,'loud_takes':loud,'largest_step':max(abs(v-n['velocity']) for v,n in zip(out,notes))}
+    check('drum_hits_cycle_their_recorded_round_robins',drum_round_robins)
+    def surge_state():
+        import re
+        from musiclib import surge
+        # A Surge XT state as JUCE writes it (VC2!, a size, XML holding the plugin's state in JUCE's text encoding: the
+        # patch, then JUCE's own data) and a .fxp file: the file's patch replaces the state's, JUCE's data stays.
+        def patch(xml):
+            body=xml.encode();return b'sub3'+struct.pack('<I',len(body))+struct.pack('<6I',3,0,0,0,0,0)+body+b'\x01\x02\x03'
+        old,new,tail=patch('<patch name="init"/>'),patch('<patch name="lead" category="Leads"/>'),b'\x00'*16+b'JUCEPrivateData\x07'
+        inner=surge._encode(old+tail)
+        xml=f'<?xml version="1.0"?> <VST3PluginState><IComponent>{inner}</IComponent></VST3PluginState>'.encode()
+        state=b'VC2!'+struct.pack('<I',len(xml))+xml+b'\x00'
+        fxp=b'CcnK'+struct.pack('>I',56+len(new))+b'FPCh'+bytes(44)+struct.pack('>I',len(new))+new
+        out=surge.with_patch(state,fxp);size=struct.unpack('<I',out[4:8])[0]
+        got=surge._decode(re.search(r'<IComponent>(.*?)</IComponent>',out[8:8+size].decode()).group(1))
+        assert surge._decode(inner)==old+tail and got==new+tail and out[8+size:]==b'\x00',got[:48]
+        rejects(lambda:surge.with_patch(state,b'RIFF'+fxp[4:]))
+        return {'state_bytes':len(out),'patch_bytes':len(new)}
+    check('surge_patch_goes_into_the_plugin_state',surge_state)
+    def tonal_reference():
+        from musiclib import analysis
+        # Pink noise falls 3 dB per octave in power per hertz and white noise not at all; a master matches itself; a
+        # darker one is told so against the pink reference; a mono low end and unrelated channels read narrow and wide.
+        rng=np.random.default_rng(5);n=audio.RATE*12;f=np.fft.rfftfreq(n,1/audio.RATE)
+        def coloured(alpha,mono=False):
+            x=np.fft.irfft(np.fft.rfft(rng.standard_normal((n,2)),axis=0)/np.maximum(f,20)[:,None]**(alpha/2),n,axis=0)
+            if mono:x[:,1]=x[:,0]
+            return (x/np.abs(x).max()*.3).astype(np.float32)
+        meter={'integrated_lufs':-16.0,'true_peak_dbtp':-1.0,'lra_lu':5.0}
+        pink,dark,white=(analysis.long_term(coloured(a,m),meter) for a,m in ((1,False),(1.6,True),(0,False)))
+        slopes=[x['tonal_balance']['slope_db_per_octave_100hz_4khz'] for x in (pink,dark,white)]
+        assert abs(slopes[0]+3)<.3 and abs(slopes[1]+4.8)<.3 and abs(slopes[2])<.3,slopes
+        same,quiet=analysis.compare(pink,pink,'pink')
+        assert not quiet and same['slope_difference_db_per_octave']==0 and not any(same['octaves_minus_reference_db'].values()),same
+        darker,told=analysis.compare(dark,pink,'pink')
+        assert len(told)==1 and 'darker' in told[0] and dark['side_minus_mid_db']['20-120']==-60 and abs(pink['side_minus_mid_db']['2000-16000'])<.5,(told,dark['side_minus_mid_db'],pink['side_minus_mid_db'])
+        table=json.loads(analysis.REFERENCES.read_text(encoding='utf-8'))['references']
+        assert all(-8<=r['tonal_balance']['slope_db_per_octave_100hz_4khz']<=-1.5 and r['loudness']['plr_db']>0 for r in table.values()),sorted(table)
+        return {'slopes':slopes,'darker_by':darker['slope_difference_db_per_octave'],'references':sorted(table)}
+    check('tonal_balance_reads_noise_and_compares_with_a_reference',tonal_reference)
+    def noise_profile():
+        import soundbank as sbk
+        rate=44100;rng=np.random.default_rng(11)
+        starts=[.2+k*2.5 for k in range(10)];n=int((starts[-1]+1.8)*rate);t=np.arange(n)/rate
+        hiss=rng.standard_normal((n,2))*10**(-60/20);x=hiss.copy();notes=[]
+        for k,a in enumerate(starts):
+            b=a+1.5;notes.append({'start':int(a*rate),'end':int(b*rate)})
+            x+=((t>=a)&(t<b))[:,None]*.2*np.sin(2*np.pi*220*2**(k/12)*t)[:,None]
+            if k<9:
+                # A publisher's gate leaves digital silence in the middle of each pause, and three notes have a breath
+                # before them: only short open stretches next to the notes hold the noise.
+                g=int(b*rate);x[g+int(.25*rate):g+int(.75*rate)]=0
+                if k%3==0:x[g+int(.8*rate):g+int(.95*rate)]+=rng.standard_normal((int(.95*rate)-int(.8*rate),2))*10**(-35/20)
+        truth=sbk.noise_bands(hiss.astype(np.float32),rate,[]);got=sbk.noise_bands(x.astype(np.float32),rate,notes)
+        level=lambda b:10*np.log10(sbk.bands_to_bins(b,rate).sum())
+        assert got is not None,'no profile'
+        err=abs(level(got)-level(truth));band=float(np.median(np.abs(np.subtract(got,truth))))
+        assert err<.5 and band<.75,(err,band)
+        return {'level_error_db':round(err,2),'median_band_error_db':round(band,2)}
+    check('noise_profile_reads_gated_and_breathy_recordings',noise_profile)
+    def split_ignores_faint_rings():
+        import soundbank as sbk
+        rate=44100;t=np.arange(int(13*rate))/rate;rng=np.random.default_rng(3)
+        def tone(midi,a,b,db):
+            env=((t>=a)&(t<b))*np.clip((t-a)/.03,0,1)*np.clip((b-t)/.05,0,1)
+            return 10**(db/20)*env*sum(np.sin(2*np.pi*440*2**((midi-69)/12)*k*t)/k for k in range(1,6))
+        # A bowed A#3 played 35 cents sharp, then, seconds later, its faint ring 40 dB down and in tune: the run keeps
+        # the bowed note, where the better-tuned ring used to win.
+        x=tone(57,.5,1.6,-12)+tone(58.35,3.5,4.7,-12)+tone(58,6.5,9.5,-52)+tone(59,11,12.2,-12)+rng.standard_normal(len(t))*10**(-70/20)
+        found,_=sbk.align_run(x[:,None],rate,[57,58,59])
+        starts=[round(n['start']/rate,1) for n in found]
+        assert starts==[.5,3.5,11.0],starts
+        return {'starts_s':starts}
+    check('split_keeps_the_note_not_its_faint_ring',split_ignores_faint_rings)
+    def rubato():
+        from musiclib.model import effective_tempo
+        p=example();p['clock']['tempo']=[[0,100]];bpb=Clock(p).beats_per_bar;total=Clock(p).total_beats
+        plain=Clock(p);p['clock']['rubato']={'final_ratio':.5,'final_beats':4,'phrase_ratio':.9,'phrase_beats':2};validate(p);played=Clock(p)
+        # The close slows to half speed by the last eighth (Friberg and Sundberg's curve, q = 2: tempo falls fastest at
+        # the end), each section's last two beats ease by up to 10%, and the next downbeat is back in time.
+        tempo=effective_tempo(p);last=tempo[-1][1];bounds=[s['start_bar']*bpb for s in p['sections'][1:]]
+        mid=[v for b,v in tempo if total-4<=b<total-2];late=[v for b,v in tempo if b>=total-1]
+        assert 50<=last<=55 and min(mid)>75 and max(late)<70,(last,min(mid),max(late))
+        for b in bounds:
+            before=[v for x,v in tempo if b-2<=x<b];assert 90<=min(before)<100 and dict((x,v) for x,v in tempo)[b]==100,(b,before)
+        stretch=played.end-plain.end;expected=sum((plain.seconds(x+1/8)-plain.seconds(x))*(100/v-1) for x,v in tempo if v!=100)
+        assert abs(stretch-expected)<1e-3 and stretch>.5,(stretch,expected)
+        bad=copy.deepcopy(p);bad['clock']['rubato']={'final_ratio':.1};rejects(lambda:validate(bad))
+        return {'final_tempo':last,'seconds_added':round(stretch,3),'tempo_points':len(tempo)}
+    check('rubato_slows_phrase_ends_and_the_close',rubato)
+    def swing():
+        from musiclib.model import performed
+        p=example();p['clock']['tempo']=[[0,120]];clock=Clock(p);part=p['tracks'][0]
+        part['notes']=[{'id':f's{k}','pitch':60+k,'on':k*.5,'duration':.5} for k in range(4)]+[{'id':'s4','pitch':64,'on':2.25,'duration':.25}]
+        part['performance']={'notes':{n['id']:{'velocity':80} for n in part['notes']},'swing':{'ratio':.6,'unit':.5}}
+        # Swung eighths at 0.6: each off-beat lands a tenth of a beat late, notes on the beat stay put, the first of a
+        # pair lengthens to 0.6 beat and a sixteenth inside the pair moves in proportion; unswung, nothing moves.
+        on=[round(clock.beat(e['start_seconds']),4) for e in performed(part,clock)];length=[round(clock.beat(e['end_seconds'])-clock.beat(e['start_seconds']),4) for e in performed(part,clock)]
+        assert on==[0,.6,1,1.6,2.3] and length[:2]==[.6,.4],(on,length)
+        assert [round(clock.beat(e['start_seconds']),4) for e in performed(part,clock,expressive=False)]==[0,.5,1,1.5,2.25]
+        part['performance']['swing']={'ratio':.6,'unit':.25}
+        assert [round(clock.beat(e['start_seconds']),4) for e in performed(part,clock)]==[0,.5,1,1.5,2.3]
+        for bad in ({'ratio':.9},{'unit':.5},{'ratio':.6,'unit':.3},{'ratio':.6,'feel':1}):
+            q=copy.deepcopy(p);q['tracks'][0]['performance']['swing']=bad;rejects(lambda:validate(q))
+        return {'eighths_at_0.6':on}
+    check('swing_delays_off_beats_and_keeps_the_beat',swing)
+    def variation_tools():
+        from musiclib import variation,layered,midi as mid
+        dense={k:frozenset([k]) for k in range(48,80)};zoned={k:frozenset([k//5]) for k in range(48,80)};single={k:frozenset([0]) for k in range(48,80)}
+        notes=[{'pitch':60,'start_seconds':x} for x in (0,.2,.4,.6,3.0)]
+        # Keys 60-64 share a recording in `zoned`: the repeat goes down to 59, the first key with another one.
+        assert variation.round_robin_shifts(notes,dense)==[0,1,0,1,0] and variation.round_robin_shifts(notes,zoned)==[0,-1,0,-1,0]
+        assert variation.round_robin_shifts(notes,single)==[0]*5
+        # A repeated note leaves for a key whose zone holds another recording and the wheel brings it back.
+        p=example();t=p['tracks'][0];t['engine']='soundfont';t['drums']=False;t['performance']['round_robin']=True
+        t['performance'].pop('bend',None);t['performance'].pop('legato',None)
+        t['notes']=[{'id':f'r{k}','on':k*.5,'duration':.4,'pitch':62} for k in range(4)];t['performance']['notes']={f'r{k}':{'velocity':90} for k in range(4)}
+        validate(p);mid.write(p,work/'rr.mid',[t],single_stem=True,render=True,keys=dense);parsed=mid.read(work/'rr.mid')
+        on=[(e['channel'],e['pitch']) for tr in parsed['tracks'] for e in tr['notes']]
+        assert sorted(on)==[(0,62),(0,62),(1,63),(1,63)],on
+        # Bow changes cut a long held note into even stretches entering from the legato preset; a leap of a fifth in a
+        # slur gets a slide into its pitch.
+        clock=Clock(p);t['performance'].update(legato={'mode':'crossfade','crossfade_ms':100,'portamento_ms':120},bow_change_s=3)
+        t['notes']=[{'id':'a','on':0,'duration':12,'pitch':60},{'id':'b','on':12,'duration':2,'pitch':67}]
+        t['performance']['notes']={'a':{'velocity':80},'b':{'velocity':80}};t['performance'].pop('offset_ms',None);validate(p)
+        planned=layered.plan(t,clock);bows=[n for n in planned if n.get('bow_change')]
+        assert len(planned)==len(bows)+2 and all(n['legato'] and n['fade_in'] for n in bows) and planned[-1]['glide'] and planned[-1]['glide'][0]<0,[(n['pitch'],n.get('bow_change'),n['legato'],n.get('glide')) for n in planned]
+        layered.write_midi(work/'glide.mid',p,t,planned,48,16,32,round(clock.total_beats*TPQ),None,clock)
+        raw=(work/'glide.mid').read_bytes();assert raw.count(bytes([0xE1]))>=9  # the slide's wheel moves on channel 1
+        return {'shifts':variation.round_robin_shifts(notes,dense),'bow_changes':len(bows),'glide_semitones':round(planned[-1]['glide'][0],2)}
+    check('round_robins_bow_changes_and_portamento',variation_tools)
+    def facing():
+        from musiclib import stage
+        x=np.random.default_rng(3).standard_normal((48000*2,2)).astype(np.float32)*.1;f=np.fft.rfftfreq(48000*2,1/48000)
+        def shape(y):
+            spec=np.abs(np.fft.rfft(y.astype(np.float64).mean(axis=1)))**2
+            return 10*np.log10(spec[(f>3000)&(f<8000)].sum()/spec[(f>200)&(f<1000)].sum()),float(np.sum(y.astype(np.float64)**2))
+        (front,ef),(back,eb)=shape(stage.place(x,-.3,7)[0]),shape(stage.place(x,-.3,7,'back')[0])
+        # A bell facing away: darker, more of it from the walls, the same energy.
+        assert front-back>1.5 and abs(eb/ef-1)<.02 and stage.place(x,-.3,7,'back')[1]['reflection_share_db']>stage.place(x,-.3,7)[1]['reflection_share_db']+3
+        return {'darker_db':round(front-back,2)}
+    check('a_bell_facing_back_sounds_darker_and_further',facing)
+    def phrasing_helpers():
+        from musiclib import phrasing
+        line=[(k,1) for k in range(8)]
+        v=phrasing.sing(line,70,peak=10,apex=.6)
+        # The arch tops out on the note nearest 60% of the phrase; the first note stays at the base, the last falls back.
+        assert v[0]==70 and max(v)==v[5]>=79 and v[-1]<v[5],v
+        hair=phrasing.ramp([[0,40],[8,100]]);assert hair(-1)==40 and hair(4)==70 and hair(9)==100
+        t={'notes':[{'id':'a','on':0,'duration':4,'pitch':60},{'id':'b','on':4,'duration':1,'pitch':62}],
+           'performance':{'notes':{'a':{'velocity':60},'b':{'velocity':80}}}}
+        d=phrasing.dynamics(t,swell=8)
+        assert d==[[0,60],[1.8,68],[3.6,56],[4,80]],d
+        assert phrasing.near([[0,20],[4,110]],64,12)==[[0,52],[4,76]]
+        return {'arch':v,'curve':d}
+    check('phrasing_helpers_arch_swell_and_hold',phrasing_helpers)
+    def synth_engine():
+        from musiclib import synth
+        rate=synth.RATE*synth.OVER;n=rate//2
+        patch=dict(synth.DEFAULT);patch['amp']={'attack':.001,'decay':.1,'sustain':1.0,'release':.1}
+        def alias_db(midi,wave):
+            patch['oscillators']=[{'wave':wave}]
+            y=synth.resample_down(synth.voice(patch,np.full(n,float(midi)),n,n,1.0,'t',rate,.5),synth.OVER)[:,0]
+            seg=y[2400:2400+16384]*np.hanning(16384);spec=20*np.log10(np.abs(np.fft.rfft(seg))+1e-12);f=np.fft.rfftfreq(16384,1/48000)
+            f0=440*2**((midi-69)/12);harm=np.zeros_like(f,dtype=bool)
+            for k in range(1,30):harm|=np.abs(f-k*f0)<40
+            return float(spec[np.abs(f-f0)<40].max()-spec[(~harm)&(f>20)&(f<20000)].max())
+        # A sawtooth and a square at C7 keep their aliases 60 dB under the fundamental.
+        saw,sq=alias_db(96,'saw'),alias_db(96,'square');assert saw>60 and sq>60,(saw,sq)
+        # The filter at full resonance, its cutoff swept over five octaves twice a second, stays finite and bounded.
+        x=np.random.default_rng(1).standard_normal(48000);cut=200*2**(5*(.5+.5*np.sin(2*np.pi*2*np.arange(48000)/48000)))
+        y=synth.biquad(x,'lowpass',cut,np.full(48000,.707+24),48000);assert np.isfinite(y).all() and np.abs(y).max()<200,np.abs(y).max()
+        # Glide reaches its note; every preset validates and sounds; a render repeats exactly.
+        g={**synth.DEFAULT,'mono':True,'glide_ms':50,'oscillators':[{'wave':'sine'}]}
+        pc=np.full(rate,60.0);pc[rate//2:]=67;tau=.05/3
+        seg=np.arange(rate-rate//2)/rate;pc[rate//2:]=67+(60-67)*np.exp(-seg/tau)
+        assert abs(pc[-1]-67)<.01
+        for name,item in synth.presets().items():
+            t={'id':'s','synth':{'preset':name},'notes':[]};synth.validate(t);pat=synth.patch_of(t)
+            v=synth.voice(pat,np.full(rate//4,57.0),rate//8,rate//4,.8,'n',rate,.5);assert np.isfinite(v).all() and np.abs(v).max()>1e-4,name
+        a=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,.5)
+        b=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,.5)
+        assert np.array_equal(a,b)
+        rejects(lambda:synth.validate({'id':'s','synth':{'oscillators':[{'wave':'kazoo'}]}}))
+        return {'alias_db_c7':{'saw':round(saw,1),'square':round(sq,1)},'presets':len(synth.presets())}
+    check('synth_is_band_limited_stable_and_repeatable',synth_engine)
+    def drum_machine():
+        from musiclib import drums
+        k=drums.hit('kick',36,1,'k','808');f=np.abs(np.fft.rfft(k[:2400]*np.hanning(2400)));ff=np.fft.rfftfreq(2400,1/48000)
+        early=ff[np.argmax(f)];late_seg=k[24000:26400];fl=np.fft.rfftfreq(2400,1/48000)[np.argmax(np.abs(np.fft.rfft(late_seg*np.hanning(2400))))]
+        assert early>late_seg.shape[0]*0 and early>fl>30,(early,fl)
+        for kind,key in (('snare',38),('clap',39),('hat_closed',42),('hat_open',46),('tom',45),('rim',37),('cowbell',56),('crash',49),('ride',51),('shaker',70)):
+            h=drums.hit(kind,key,.9,kind,'909');assert np.isfinite(h).all() and np.abs(h).max()>.01,kind
+        rejects(lambda:drums.validate({'id':'d','kit':{'style':'707'},'notes':[]}))
+        # A gated room holds behind the snare, wide, and is cut once the gate closes.
+        tail=drums.gated_tail(.9,'s',300,-4);lvl=lambda a,b:20*np.log10(np.sqrt(np.mean(tail[int(a*48000):int(b*48000)]**2))+1e-12)
+        corr=float(np.corrcoef(tail[2400:12000,0],tail[2400:12000,1])[0,1])
+        assert lvl(.2,.28)-lvl(.05,.13)>-6 and np.abs(tail[int(.316*48000):]).max()==0 and abs(corr)<.3,(lvl(.05,.13),lvl(.2,.28),corr)
+        rejects(lambda:drums.validate({'id':'d','kit':{'gated_ms':50},'notes':[]}))
+        return {'kick_pitch_hz':[round(float(early)),round(float(fl))],'gated_tail_corr':round(corr,2)}
+    check('drum_machine_voices_kick_pitch_drop_and_gated_snare',drum_machine)
+    def production_tools():
+        from musiclib import production
+        p=example();p['clock']['tempo']=[[0,120],[8,90]];clock=Clock(p)
+        n=int(clock.seconds(16)*48000)+48000;stem=np.zeros((n,2));i=int(clock.seconds(7.5)*48000);stem[i]=1.0
+        t={'id':'pad','mix':{'delay':{'beats':1,'feedback':.5,'send_db':0,'highpass':20,'lowpass':20000}}}
+        y,_=production.delay(stem,t,clock)
+        # The first echo of a click at beat 7.5 lands at beat 8.5, across the tempo change, within a sample.
+        want=clock.seconds(8.5)*48000;got=i+1+int(np.argmax(np.abs(y[i+1:,0])))
+        assert abs(got-want)<=1.5,(got,want)
+        kick={'id':'kick','notes':[{'id':f'k{b}','on':b,'duration':.25,'pitch':36} for b in range(4)],'performance':{'notes':{f'k{b}':{'velocity':100} for b in range(4)}}}
+        q={'tracks':[kick],'clock':p['clock']};pad={'id':'pad','mix':{'duck':{'by':'kick','depth_db':9,'attack_ms':4,'hold_ms':20,'release_ms':200}}}
+        g,_=production.duck(np.ones((n,2)),q,pad,clock);hit=int(clock.seconds(1)*48000)
+        assert abs(20*np.log10(g[hit+int(.01*48000),0])+9)<.1 and g[hit+int(.45*48000),0]>.97,(g[hit+480,0],g[hit+21600,0])
+        side=np.zeros((48000,2));tone=np.sin(2*np.pi*60*np.arange(48000)/48000);side[:,0]=tone;side[:,1]=-tone
+        m=production.mono_below(side,120);assert np.abs(m[4800:-4800,0]-m[4800:-4800,1]).max()<.05
+        gated,_=production.gate(np.ones((48000*2,2)),{'id':'x','mix':{'gate':{'pattern':'x.','step_beats':.5}}},Clock({'clock':{'bars':4,'meter':[4,4],'tempo':[[0,120]]}}))
+        assert gated[int(.1*48000),0]>.99 and gated[int(.35*48000),0]<.01
+        # A sweep that jumps back (a high-pass reset on a drop) stays as loud as its input: the filter's state is the
+        # signal itself, so the jump leaves no burst.
+        x=np.random.default_rng(4).standard_normal((48000*8,2))*.1;c4=Clock({'clock':{'bars':4,'meter':[4,4],'tempo':[[0,120]]}})
+        y,_=production.filter_sweep(x,{'id':'p','mix':{'filter_sweep':{'type':'highpass','points':[[0,20],[7.99,1600],[8,20]],'resonance':.35}}},c4)
+        jump=float(np.abs(y[4*48000-2400:4*48000+4800]).max()/np.abs(x).max())
+        assert jump<1.5,jump
+        return {'echo_sample_error':round(float(got-want),2),'sweep_jump_peak_ratio':round(jump,2)}
+    check('production_delay_duck_gate_and_mono_low_end',production_tools)
+    def chip_sounds():
+        from musiclib import synth
+        rate=synth.RATE*synth.OVER
+        # A chord of three notes, the top one shorter, arpeggiated at 50 Hz: the voice steps up through the held notes
+        # once per step and drops the top note when it ends; "updown" turns back without repeating the ends.
+        chord=[{'pitch':60,'start_seconds':0.,'end_seconds':1.},{'pitch':64,'start_seconds':0.,'end_seconds':1.},{'pitch':67,'start_seconds':0.,'end_seconds':.5}]
+        up=synth.arpeggio_curve(chord,{'rate_hz':50},0.,48000,48000,.5)[::960]
+        assert up[:6].tolist()==[60,64,67,60,64,67] and set(up[26:50].tolist())=={60,64},up[:30]
+        ud=synth.arpeggio_curve(chord,{'rate_hz':50,'order':'updown'},0.,48000,48000,.5)[::960]
+        assert ud[:8].tolist()==[60,64,67,64,60,64,67,64],ud[:8]
+        # The NES-style triangle holds 16 levels, and at C7 its aliases stay far below its harmonics.
+        f=440*2**((96-69)/12);n=rate;dt=np.full(n,f/rate);y=synth.resample_down(synth.stepped_triangle(np.cumsum(dt),dt,16),synth.OVER)
+        Y=np.abs(np.fft.rfft(y*np.hanning(len(y))));fr=np.fft.rfftfreq(len(y),1/synth.RATE)
+        harm=np.zeros(len(Y),bool)
+        for k in range(1,12):harm|=np.abs(fr-k*f)<15
+        alias=20*np.log10(Y[harm].max()/Y[~harm&(fr>50)].max())
+        low=np.full(rate//10,55./rate);z=synth.stepped_triangle(np.cumsum(low),low,16);flat=np.unique(np.round(z[1:][np.diff(z)==0],6))
+        assert alias>80 and len(flat)==16,(alias,len(flat))
+        # Clocked noise gets brighter with the note.
+        cents=[]
+        for pitch in (48,72,96):
+            fq=440*2**((pitch-69)/12);ph=np.cumsum(np.full(rate//4,fq/rate))
+            x=synth.resample_down(synth.clocked_noise(ph*16,np.random.default_rng(1)),synth.OVER)
+            S=np.abs(np.fft.rfft(x))**2;fr=np.fft.rfftfreq(len(x),1/synth.RATE);cents.append(float((S*fr).sum()/S.sum()))
+        assert cents[0]<cents[1]<cents[2],cents
+        return {'triangle_alias_db':round(float(alias),1),'noise_centroid_hz':[round(c) for c in cents]}
+    check('chip_arpeggio_stepped_triangle_and_clocked_noise',chip_sounds)
+    def pitch_envelope():
+        from musiclib import synth
+        q={'clock':{'bars':1,'meter':[4,4],'tempo':[[0,120]]}}
+        t={'id':'b808','synth':{'preset':'bass_808'},'notes':[{'id':'a','pitch':36,'on':0,'duration':2}],'performance':{'notes':{'a':{'velocity':110}}}}
+        synth.validate(t);synth.render(q,t,work/'b808.wav',Clock(q));x=audio.read_wav(work/'b808.wav')[0][:,0].astype(float)
+        def hz(a,b):
+            seg=x[int(a*48000):int(b*48000)];z=np.flatnonzero((seg[:-1]<0)&(seg[1:]>=0));return 48000/np.median(np.diff(z))
+        # The 808 bass starts an octave up and falls to C2 within a tenth of a second.
+        early,late=hz(0,.03),hz(.15,.5)
+        assert early>late*1.15 and abs(1200*np.log2(late/65.41))<10,(early,late)
+        bad=copy.deepcopy(t);bad['synth']['pitch_env']={'semitones':60};rejects(lambda:synth.validate(bad))
+        return {'start_hz':round(float(early),1),'settled_hz':round(float(late),2)}
+    check('synth_pitch_envelope_punches_and_settles',pitch_envelope)
+    def worn_media():
+        from musiclib import production
+        rate=48000;n=rate*6;t=np.arange(n)/rate;x=np.stack([np.sin(2*np.pi*1000*t)]*2,axis=1)
+        y,info=production.wow_flutter(x,{'wow_cents':10,'wow_hz':.5,'flutter_cents':0},'keys')
+        # The pitch of a 1 kHz tone swings by the cents asked for, and no click lands more than 2 ms from its place.
+        S=np.fft.fft(y[:,0]);h=np.zeros(n);h[0]=1;h[1:n//2]=2;ph=np.unwrap(np.angle(np.fft.ifft(S*h)))
+        f=np.convolve(np.diff(ph)*rate/(2*np.pi),np.ones(480)/480,mode='valid')[rate:-rate];c=1200*np.log2(f/1000)
+        assert 8.5<c.max()<10.5 and -10.5<c.min()<-7.5,(c.max(),c.min())
+        clicks=np.zeros((n,2));clicks[::rate//2]=1;z,_=production.wow_flutter(clicks,{'wow_cents':10,'wow_hz':.5},'keys')
+        offs=[int(np.argmax(np.abs(z[k-2000:k+2000,0])))-2000 for k in range(rate//2,n-rate,rate//2)]
+        assert max(map(abs,offs))<96 and abs(np.mean(offs))<20,offs
+        again,_=production.wow_flutter(x,{'wow_cents':10,'wow_hz':.5,'flutter_cents':0},'keys');assert np.array_equal(y,again)
+        v=production.vinyl(rate*10,np.random.default_rng(2))
+        # Surface noise: a crackle far above the hiss, partly different in the two channels, and repeatable.
+        crest=20*np.log10(np.abs(v).max()/np.sqrt(np.mean(v**2)));corr=float(np.corrcoef(v[:,0],v[:,1])[0,1])
+        assert crest>20 and .1<corr<.9 and np.array_equal(v,production.vinyl(rate*10,np.random.default_rng(2))),(crest,corr)
+        bad=example();bad['tracks'][0]['mix']['wow_flutter']={'wow_cents':80};rejects(lambda:validate(bad))
+        return {'wow_cents':[round(float(c.min()),2),round(float(c.max()),2)],'peak_shift_ms':info['peak_shift_ms'],'vinyl_crest_db':round(float(crest),1)}
+    check('tape_wow_flutter_and_vinyl_noise',worn_media)
     def stage_depth():
         from musiclib import stage
         x=np.random.default_rng(3).standard_normal((48000*3,2)).astype(np.float32)*.1;rows=[]
@@ -444,15 +913,51 @@ def checks(work,config=None):
         assert info['lra_before_lu']>12 and info['lra_after_lu']<=8.3 and abs(loud)<.2 and soft>mid>1 and lev(y,2,18)<lev(y,42,58)<lev(y,22,38),(info,loud,soft,mid)
         return {**info,'lift_db':{'softest':round(soft,2),'middle':round(mid,2),'loudest':round(loud,2)}}
     check('range_control_lifts_soft_passages_only',range_master)
+    def transposed_samples():
+        from musiclib import review as rv
+        from musiclib.model import Clock
+        # One preset over keys 60-90: a zone recorded at 60 serves 60-72, a zone recorded at 67 with coarse tune +12
+        # serves 73-84; nothing serves 85 and up.
+        bank={'presets':[{'bank':0,'program':1,'zones':[{'gens':{43:(60,90)},'mods':[],'target':0}]}],
+              'instruments':[{'zones':[{'gens':{43:(60,72),58:60},'mods':[],'target':0},{'gens':{43:(73,84),51:12},'mods':[],'target':1}]}],
+              'samples':[{'root':60},{'root':67}]}
+        m=rv.transposition(bank,0,1)
+        assert m[60]==0 and m[64]==4 and m[72]==12 and m[73]==18 and 85 not in m and rv.transposition(bank,0,2) is None
+        q=example();t=q['tracks'][0]
+        t['notes']=[{'id':f'x{k}','on':k,'duration':1,'pitch':x} for k,x in enumerate((60,64,65,73,86))]
+        st=rv.stretched(q,Clock(q),{t['id']:m})
+        assert st['count']==2 and st['outside_count']==1 and st['by_track'][t['id']]['worst']['semitones']==18,st
+        return {'flagged':st['count'],'outside':st['outside_count']}
+    check('review_flags_far_transposed_samples_and_missing_keys',transposed_samples)
+    def melody_group_and_balance():
+        from musiclib import analysis
+        q=example();q['tracks']=q['tracks'][:3]
+        a,b,c=q['tracks'];a['role']='melody';b['role']='harmony';c['role']='harmony'
+        a['notes']=[{'id':f'a{k}','on':k,'duration':1,'pitch':60+k} for k in range(6)]
+        b['notes']=[{'id':f'b{k}','on':k,'duration':1,'pitch':72+k} for k in range(6)]  # the tune an octave up
+        c['notes']=[{'id':f'c{k}','on':k,'duration':1,'pitch':48} for k in range(6)]
+        group=analysis.doublings(q,0,8)
+        assert group==sorted([a['id'],b['id']]),group
+        levels={a['id']:-20.0,b['id']:-22.0,c['id']:-23.0}
+        cut=analysis.balance(q,levels,group)
+        assert len(cut)==1 and cut[0]['track']==c['id'] and cut[0]['suggested_cut_db']==3.0,cut
+        c['role']='bass';assert analysis.balance(q,levels,group)==[]  # a bass may sit 3 dB under the tune
+        return {'group':group,'suggestion':cut[0]}
+    check('analysis_groups_octave_doublings_and_suggests_cuts',melody_group_and_balance)
     if config:
         from musiclib.render import render
         p=example();save_json(work/'example.json',p);cache=work/'cache'
         def integration():
-            first=render(work/'example.json',work/'render_first',config,cache)
+            # Part by part, again from the cache, and afresh with the parts in parallel: one master.
+            first=render(work/'example.json',work/'render_first',config,cache,jobs=1)
             repeat=render(work/'example.json',work/'render_repeat',config,cache)
-            assert first['master']['sha256']==repeat['master']['sha256']
-            assert repeat['cache_hits']==len(p['tracks'])
-            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'checks':repeat['checks']}
+            parallel=render(work/'example.json',work/'render_parallel',config,work/'cache_parallel',jobs=4)
+            assert first['master']['sha256']==repeat['master']['sha256']==parallel['master']['sha256']
+            assert repeat['cache_hits']==len(p['tracks']) and parallel['cache_hits']==0 and parallel['jobs']>1
+            # Fresh syntheses of the same parts hash alike: the raw hash covers the audio, not the writer's timestamp.
+            raws=lambda name:[x['raw_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text())]
+            assert raws('render_first')==raws('render_parallel')
+            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'parallel_jobs':parallel['jobs'],'checks':repeat['checks']}
         check('actual_render_repeat_is_sample_identical',integration)
         def local_edit():
             q=copy.deepcopy(p);q['tracks'][0]['notes'][0]['pitch']+=2;save_json(work/'edited.json',q)
@@ -635,7 +1140,7 @@ def checks(work,config=None):
             q=copy.deepcopy(p);q['clock']={'bars':4,'meter':[4,4],'tempo':[[0,90]],'tail_seconds':2}
             q['sections']=[{'id':'line','start_bar':0,'bars':4,'intent':'A slurred line'}]
             line=[60,64,67,64,60,62,64,67,69,67,64,62,60,64,67,72];q['tracks']=[]
-            for ident,extra in (('leg',{'legato':{'mode':'crossfade','crossfade_ms':100},'dynamics':[[0,40],[16,127]]}),('plain',{})):
+            for ident,extra in (('leg',{'legato':{'mode':'crossfade','crossfade_ms':100},'dynamics':[[0,40],[16,127]],'dynamics_mode':'crossfade'}),('plain',{})):
                 t=copy.deepcopy(p['tracks'][0]);t.update(id=ident,soundfont='xf',patch={'bank':0,'program':48},program=48,bank=0,role='harmony',range=[55,75])
                 t['notes']=[{'id':f'{ident}_{i}','on':i,'duration':1,'pitch':x} for i,x in enumerate(line)]
                 t['performance']={'notes':{f'{ident}_{i}':{'velocity':80} for i in range(len(line))},'offset_ms':-90,**extra}
@@ -675,6 +1180,36 @@ def checks(work,config=None):
             assert m['range']['lra_before_lu']>6.5 and m['range']['lra_after_lu']<=6.3 and r['master']['true_peak_dbtp']<=-1,m
             return {'stage':rec['stage'],'range':m['range'],'master_lra_lu':r['master']['lra_lu']}
         check('stage_depth_and_range_control_render',stage_and_range)
+        def surge_part():
+            from musiclib import surge
+            # A Surge part: on a configuration without Surge XT it plays its preset's fallback on the built-in synth and
+            # the receipt says why; with Surge XT installed it plays the patch, and a second render keeps that take.
+            q=copy.deepcopy(p);q['clock']={'bars':2,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':4}
+            q['sections']=[{'id':'pad','start_bar':0,'bars':2,'intent':'chords'}]
+            t=copy.deepcopy(p['tracks'][0]);[t.pop(k,None) for k in ('soundfont','patch','key_map')]
+            t.update(id='pad',engine='surge',role='harmony',range=[48,72],surge={'preset':'juno_60_strings'})
+            t['notes']=[{'id':f'pad_{k}','on':4*k,'duration':4,'pitch':x} for k,chord in enumerate(((57,60,64),(53,57,60))) for x in chord]
+            t['notes']=[{**n,'id':f'{n["id"]}_{i}'} for i,n in enumerate(t['notes'])]
+            t['performance']={'notes':{n['id']:{'velocity':80,'gate':1.0} for n in t['notes']}}
+            q['tracks']=[t];save_json(work/'surge.json',q)
+            cfg=json.loads(Path(config).read_text());has=bool(cfg.get('surge') and cfg.get('pedalboard'))
+            for key in ('fluidsynth','ffmpeg','soundfont'):
+                value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
+            cfg.pop('surge',None);cfg.pop('pedalboard',None);save_json(work/'no_surge_config.json',cfg)
+            render(work/'surge.json',work/'render_surge_fallback',work/'no_surge_config.json',work/'cache_surge')
+            fell=json.loads((work/'render_surge_fallback'/'stem_receipts.json').read_text())[0]['surge']
+            assert fell['rendered_with']=='built-in synth' and fell['fallback']==surge.presets()['presets']['juno_60_strings']['fallback'] and 'not installed' in fell['reason'],fell
+            out={'without_surge':fell['fallback']}
+            if has:
+                first=render(work/'surge.json',work/'render_surge',config,work/'cache_surge')
+                again=render(work/'surge.json',work/'render_surge_again',config,work/'cache_surge')
+                a,b=(json.loads((work/n/'stem_receipts.json').read_text())[0] for n in ('render_surge','render_surge_again'))
+                x,_=audio.read_wav(work/'render_surge'/'stems'/'pad.wav')
+                assert a['surge']['rendered_with']=='Surge XT' and b['cache_hit'] and a['raw_sha256']==b['raw_sha256'],(a.get('surge'),b['cache_hit'])
+                assert first['master']['sha256']==again['master']['sha256'] and float(np.sqrt(np.mean(np.asarray(x,dtype=float)**2)))>1e-4
+                out['with_surge']='Surge XT, take kept by the cache'
+            return out
+        check('surge_part_plays_the_patch_or_its_fallback',surge_part)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
     save_json(work/'selfcheck_report.json',report);return report
 

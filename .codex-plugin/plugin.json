@@ -1,7 +1,7 @@
 {
   "name": "music-skill",
   "version": "0.1.0",
-  "description": "Write original instrumental music as editable notes: the agent composes and arranges every note, and the skill checks the score, plays it on licensed sampled instruments (piano, guitars, bass, drums, strings, brass) with player-like timing and dynamics, mixes it through buses and generated reverbs, and masters it to -14 LUFS with MIDI, stems and an MP3. No audio-generation model is involved.",
+  "description": "Write original instrumental music as editable notes: the agent composes and arranges every note, and the skill checks the score, plays it on licensed sampled instruments (pianos, guitars, basses, drums, a full orchestra, saxophones, organ and world instruments), built-in synthesizers or Surge XT presets with player-like timing and dynamics, mixes it through buses and generated reverbs, and masters it with MIDI, stems and an MP3. No audio-generation model is involved.",
   "author": {
     "name": "owoevan-dev",
     "url": "https://github.com/owoevan-dev"
@@ -16,6 +16,8 @@
     "midi",
     "soundfont",
     "mixing",
+    "synthesizer",
+    "orchestra",
     "mastering",
     "game-music",
     "anime"
@@ -24,7 +26,7 @@
   "interface": {
     "displayName": "Music Skill",
     "shortDescription": "Write and mix original music",
-    "longDescription": "music-skill writes original instrumental music the way a composer and a small studio would. Your agent writes every note into a project file; the skill checks the score for clashing voices, plays it on sampled instruments from licensed SoundFont banks (grand piano, electric guitars, bass, drum kit, strings, brass, bells) with player-like timing and dynamics, legato and bends, mixes it through drum, bass, rhythm, ensemble and lead buses with generated reverbs, and masters it to -14 LUFS with a true peak at or below -1 dBTP.\n\nYou get an MP3 and a WAV, the MIDI, a stem per part and the project file. Change one note and only that part renders again.\n\nNo audio-generation model is involved. It runs locally in Python with NumPy, FluidSynth and FFmpeg; setup downloads the tools and sound banks from their publishers and checks every file by SHA-256.\n\nLimitations: it does not sing, host VST plugins or judge whether music is good. Its measurements point at problems; a person still has to listen.",
+    "longDescription": "music-skill writes original instrumental music the way a composer and a small studio would. Your agent writes every note into a project file; the skill checks the score for clashing voices, plays it on sampled instruments from licensed banks (pianos, guitars, basses, drum kits, a full orchestra, saxophones, organ and world instruments) or on built-in synthesizers, drum machines and Surge XT presets, with player-like timing and dynamics, legato and bends, mixes it through drum, bass, rhythm, ensemble and lead buses with generated reverbs, and masters it to a set loudness with a true peak at or below -1 dBTP.\n\nYou get an MP3 and a WAV, the MIDI, a stem per part and the project file. Change one note and only that part renders again.\n\nNo audio-generation model is involved. It runs locally in Python with NumPy, FluidSynth and FFmpeg, and Surge XT if installed; setup downloads the tools and sound banks from their publishers and checks every file by SHA-256.\n\nLimitations: it does not sing, host plugins other than Surge XT, or judge whether music is good. Its measurements point at problems; a person still has to listen.",
     "developerName": "owoevan-dev",
     "category": "Creativity",
     "capabilities": [

@@ -2,8 +2,13 @@
 
 An original anime-opening-style instrumental in TV size. Claude (Opus 5.5) composed, arranged and mixed it with the music-production skill. Nothing was played by hand and no audio model generated anything: `daybreak_signal.py` writes every note, and the skill renders it.
 
-- [piano.mp3](piano.mp3): the melody on the grand piano, doubled an octave below on long notes.
-- [guitar.mp3](guitar.mp3): the melody on a sampled lead guitar with bends and slurs.
+- [piano.mp3](piano.mp3): the melody on the grand piano, doubled an octave below on long notes, over a guitar band and strings.
+
+This is the worked example: how the piece was revised, and how to render it yourself.
+
+<p align="center">
+  <img src="../../docs/images/daybreak-signal.png" alt="Every note of Daybreak Signal, part by part: the melody in red above the orchestra, guitars, bass and drums, with the sections marked">
+</p>
 
 ## Form
 
@@ -22,12 +27,12 @@ The TV-size form, the half cadence ending the pre-chorus and the minor-third mod
 
 ## Revisions
 
-The first versions stopped often. After each anticipation the band held for a beat and a half, and hits and breaks added more stops. The guitar melody also re-attacked every note. The published versions:
+The first versions stopped often. After each anticipation the band held for a beat and a half, and hits and breaks added more stops; their guitar melody also re-attacked every note. The published version:
 
-- keep the bass and left guitar driving after an anticipation, hold strums for 96% of the note, and drive the riff in eighths;
-- slur the guitar melody with render-time legato: 262 written notes, 86 attacks;
-- offer a piano melody instead, with octave doubling on long or chord-tone notes, an inner voice on strong long notes, and keys held min(45 ms, 15% of the note) into the next;
-- play the same notes on CC0 banks only (the VCSL Steinway B and Big Rusty Drums), with the drums' level, compression and presence set again so the kit sits where the earlier one did.
+- keeps the bass and left guitar driving after an anticipation, holds strums for 96% of the note, and drives the riff in eighths;
+- gives the melody to the piano, with octave doubling on long or chord-tone notes, an inner voice on strong long notes, and keys held min(45 ms, 15% of the note) into the next;
+- plays the same notes on CC0 banks only (the VCSL Steinway B and Big Rusty Drums), with the drums' level, compression and presence set again so the kit sits where the earlier one did;
+- lets the drums step through the kit's recorded round robins, so a repeated hit no longer plays the same recording as the one before (6% of repeated hits did).
 
 ## Render it yourself
 
@@ -39,17 +44,17 @@ python skills/music-production/scripts/studio.py render piano.json --config <fol
 python skills/music-production/scripts/studio.py analyze render_piano
 ```
 
-For the guitar version use `guitar.json 1.1.r3g --arr r3 --lead guitar --mix bus`. The script writes the same project files as the ones published here.
+The script writes the same project file as the one published here.
 
-Measured on the published renders (not a listening verdict):
+Measured on the published render (not a listening verdict):
 
-| | Piano | Guitar |
-|---|---|---|
-| Integrated loudness | −14.0 LUFS | −14.0 LUFS |
-| True peak | −1.2 dBTP | −1.4 dBTP |
-| Loudness range | 3.3 LU | 3.3 LU |
-| Melody energy masked by a louder accompaniment, chorus | 1.4% | 1.0% |
+| | |
+|---|---|
+| Integrated loudness | −14.0 LUFS |
+| True peak | −1.3 dBTP |
+| Loudness range | 3.3 LU |
+| Melody energy masked by a louder accompaniment, chorus | 1.5% |
 
 ## Credits and licence
 
-The recordings and the composition are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/): use them anywhere, no credit needed. Every sound in them is CC0 as well: the VCSL Steinway B and VSCO 2 Community Edition (Versilian Studios), the FreePats guitars and basses, and Big Rusty Drums (Karoryfer Samples). The script and the project files are code, under the repository's MIT licence.
+The recording and the composition are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/): use them anywhere, no credit needed. Every sound in them is CC0 as well: the VCSL Steinway B and VSCO 2 Community Edition (Versilian Studios), the FreePats guitars and basses, and Big Rusty Drums (Karoryfer Samples). The script and the project file are code, under the repository's MIT licence.
