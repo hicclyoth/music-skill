@@ -60,7 +60,7 @@ Claude (Opus 5.5) composed, arranged and mixed each piece with this skill. Each 
 
    > Write a one-minute looping town theme for my RPG: recorder, harp and light strings.
 
-You get an MP3 and a WAV, the MIDI, a stem per part and the project file. On a 24-thread desktop the examples above rendered in half a minute (a jazz trio, a chiptune loop) to five minutes (house on the built-in synthesizers); the four-and-a-half-minute overture took three.
+You get an MP3 and a WAV, the MIDI, a stem per part and the project file. On a 24-thread laptop the examples above rendered in half a minute (a jazz trio, a chiptune loop) to five minutes (house on the built-in synthesizers); the four-and-a-half-minute overture took three.
 
 ## Why not just generate it?
 

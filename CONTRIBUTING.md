@@ -8,7 +8,7 @@ Thanks for wanting to help. music-skill is maintained by one person and has a fa
 - **Music that sounds wrong.** Say where (bar numbers or seconds) and what you hear: a clash, a part too loud, a stiff phrase. Listening notes like these are the most useful feedback the project gets.
 - **A sound bank you would like.** Link the publisher's page and its licence. Only banks with a clear licence that allows redistribution of music made with them can be added.
 
-Write in English, Chinese, Japanese or Korean, whichever is easiest for you.
+Write in any language you like.
 
 ## Pull requests
 
