@@ -163,7 +163,7 @@ Every recorded bank is CC0, free for any use without restrictions (the Iowa reco
 
 ## How well it works
 
-`selfcheck.py` runs 84 checks (68 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision re-renders one part. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
+`selfcheck.py` runs 86 checks (70 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision re-renders one part. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
 
 Whether the music is good is another matter, and only listening can tell. The pieces above are the best evidence this repository has.
 
@@ -182,7 +182,7 @@ Whether the music is good is another matter, and only listening can tell. The pi
 - It doesn't sing or write lyrics. Of plugins it runs only Surge XT; your own VST plugins are not supported yet.
 - The sound is only as good as the free banks. The YR basses have one velocity layer, the section strings speak slowly, marimba, xylophone and piccolo are sampled sparsely, and a sampled guitar bend shifts the whole sample instead of changing the string's tone.
 - No bank yet covers acoustic guitars, a choir or East Asian instruments beyond an erhu and a dan tranh; such parts fall back to MS Basic's sparse General MIDI samples.
-- Surge XT starts its oscillators at random phases, so a Surge part is a slightly different take each time it is synthesized; the render cache keeps a take until the part changes. Its tempo-synced delays and LFOs follow the tempo where the part starts, not later tempo changes. Everything else renders the same every time.
+- Surge XT starts its oscillators at random phases, so a Surge part is a slightly different take each time it is synthesized; the render cache keeps a take until the part changes. Its tempo-synced delays and LFOs follow one tempo per part, the written tempo most of its notes start under, so a pickup or a ritardando does not set it and a later tempo change does not move it. Everything else renders the same every time.
 - The agent cannot listen. `review` and `analyze` locate problems; a person has to hear the result, and the skill tells the agent never to claim it listened.
 - A long piece with many synthesizer or effect parts needs memory, up to about 2 GB for each part rendered at once; the renderer runs fewer parts at a time when free memory is short, and `--jobs` sets the number.
 - Linux and macOS use the system FluidSynth and FFmpeg, so their samples can differ slightly from the pinned Windows builds.

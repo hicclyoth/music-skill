@@ -15,14 +15,15 @@ file, the part plays its fallback preset on the built-in synth and its stem rece
 
 pedalboard gives a plugin no tempo, so Surge plays tempo-synced parameters at 120 BPM.  Before a patch loads, each
 synced parameter it uses (the left and right times of a Delay effect, an LFO's rate) becomes the free-running value it
-has at the tempo where the part's first note falls: Surge stores both as log2 of seconds or of Hz at 120 BPM, so a
-time moves by log2(120/bpm) and a rate by log2(bpm/120).  A tempo change inside the part does not move them."""
+has at the part's tempo (part_tempo): Surge stores both as log2 of seconds or of Hz at 120 BPM, so a time moves by
+log2(120/bpm) and a rate by log2(bpm/120).  A tempo change inside the part does not move them."""
 import json
 import math
 import re
 import struct
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 PRESETS_FILE = Path(__file__).resolve().parents[2] / 'references' / 'surge-presets.json'
@@ -181,15 +182,23 @@ def locate(cfg, track):
     return plugin, pylib, patch
 
 
+def part_tempo(project, track):
+    """The one tempo a part's synced parameters follow: the written tempo (`clock.tempo`, before rubato) that most of
+    its notes start under, the earliest of equals.  A pickup into a section, a phrase's ritardando or the final one
+    does not set it."""
+    written = sorted((float(b), float(v)) for b, v in project['clock']['tempo'])
+    at = lambda beat: next((v for b, v in reversed(written) if b <= beat + 1e-9), written[0][1])
+    tempos = [at(n['on']) for n in sorted(track['notes'], key=lambda n: n['on'])] or [written[0][1]]
+    counts = Counter(tempos)
+    return max(tempos, key=counts.__getitem__)
+
+
 def render(project, track, raw, folder, cfg):
     """Play a Surge part into `raw`: its MIDI is written by the renderer's writer, then a separate process loads the
     plugin, sets the patch and macros and renders.  Raises Unavailable when Surge cannot play here."""
     from . import midi
-    from .model import Clock
     plugin, pylib, patch = locate(cfg, track)
-    clock = Clock(project)
-    first = min((n['on'] for n in track['notes']), default=0)
-    bpm = next(v for b, v in reversed(clock.tempo) if b <= first + 1e-9)
+    bpm = part_tempo(project, track)
     fxp, synced = at_tempo(patch.read_bytes(), bpm)
     if synced:
         patch = Path(folder) / 'patch_at_tempo.fxp'

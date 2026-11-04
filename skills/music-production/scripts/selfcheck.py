@@ -228,6 +228,30 @@ def checks(work,config=None):
         assert le-ls>=.8 and (ls-.1>1.905 or le<1.9) and all(z['gens'].get(54)==1 for z in fb['instruments'][0]['zones'][1:]),(ls,le)
         return {'loop_seconds':recorded,'hot_take_after_db':round(hot,2),'found_loop_seconds':[round(ls,3),round(le,3)]}
     check('soundbank_keeps_recorded_loops_and_evens_takes',loop_build)
+    def across_levels():
+        from musiclib import sf2
+        from musiclib.loop import write_wav
+        from soundbank import build
+        root=work/'across_source';root.mkdir(parents=True,exist_ok=True);rate=48000;t=np.arange(int(1.5*rate))/rate
+        # Two recorded dynamics on six notes: the loud one even, the soft one 2 dB quieter each note up (a soft layer
+        # recorded quieter in the treble).  Local levels keep each layer's own slope, so the velocity split jumps more
+        # and more up the keyboard; "across" puts both dynamics of every note at one level.
+        notes=('C3','E3','G3','C4','E4','G4')
+        for k,(name,f0) in enumerate(zip(notes,(130.81,164.81,196.0,261.63,329.63,392.0))):
+            tone=np.exp(-t/.8)*(np.sin(2*np.pi*f0*t)+.3*np.sin(4*np.pi*f0*t))
+            for dyn,amp in (('p',.08*10**(-2*k/20)),('f',.3)):write_wav(root/f'a_{name}_{dyn}.wav',(amp*tone)[:,None],rate,len(t))
+        steps={}
+        for mode in ('local','across'):
+            layer={'dir':'.','pattern':r'a_(?P<note>[A-G]#?\d)_(?P<dyn>[pf])\.wav','dynamics':['p','f'],'velocity':{'p':[1,64],'f':[65,127]},
+                   'keys':[48,67],'match_notes':mode,'layer_levels_db':{'p':0,'f':0},'match_limit_db':12,'pitch_check':False}
+            build({'name':'across','presets':[{'name':'keys','program':0,'layers':[layer]}]},root,work/f'across_{mode}.sf2')
+            bank=sf2.read(work/f'across_{mode}.sf2')
+            rms={s['name']:20*np.log10(np.sqrt(np.mean(sf2.load_sample(bank,i)[:rate].astype(float)**2))) for i,s in enumerate(bank['samples'])}
+            lvl=lambda n,d:next(v for k,v in rms.items() if k.startswith(f'a_{n}_{d}'))
+            steps[mode]=[round(lvl(n,'f')-lvl(n,'p'),2) for n in notes]
+        assert max(map(abs,steps['across']))<.2 and steps['local'][-1]-steps['local'][0]>4,steps
+        return {'split_step_db_local':steps['local'],'split_step_db_across':steps['across']}
+    check('soundbank_levels_every_dynamic_of_a_note_together',across_levels)
     def score_profile():
         from musiclib.profile import profile
         p=example();lead=next(t for t in p['tracks'] if t['id']=='lead');line=[60,62,64,65,67,65,64,62]
@@ -305,9 +329,20 @@ def checks(work,config=None):
                 tar.addfile(extra,io.BytesIO(b''))
             rejects(lambda:fs._install_archive({**arch,'format':'tar.xz','bytes':bx.stat().st_size,'sha256':file_hash(bx)},work/'archive_runtime3',work/'archive_cache',True,bx))
         assert not (work/'archive_runtime3'/'demo_archive').exists() and not (work/'evil.txt').exists()
+        # A link already in the destination, a folder or the bank itself pointing elsewhere, is refused, not written through.
+        tx_item={**arch,'format':'tar.xz','bytes':tx.stat().st_size,'sha256':file_hash(tx)};links=0
+        for mode in ('folder','file'):
+            runtime=work/f'link_runtime_{mode}';target=runtime/'demo_archive';outside=work/f'outside_{mode}'
+            target.mkdir(parents=True);outside.mkdir();(outside/'demo.sf2').write_bytes(b'KEEP')
+            try:
+                if mode=='folder':(target/'Demo SF2').symlink_to(outside,target_is_directory=True)
+                else:(target/'Demo SF2').mkdir();(target/'Demo SF2'/'demo.sf2').symlink_to(outside/'demo.sf2')
+            except OSError:continue   # no right to make links here (Windows without developer mode)
+            rejects(lambda:fs._install_archive(tx_item,runtime,work/'archive_cache',True,tx))
+            assert (outside/'demo.sf2').read_bytes()==b'KEEP';links+=1
         mirrors=lock['prebuilt']['archives']
         assert set(mirrors)=={i['name'] for i in lock['archives']} and all(a['file'].endswith('.tar.xz') and len(a['sha256'])==64 for a in mirrors.values())
-        return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre),'repacked_archives':len(mirrors)}
+        return {'groups':{k:len(v) for k,v in lock['groups'].items()},'prebuilt_assets':len(pre),'repacked_archives':len(mirrors),'destination_links_refused':links}
     check('prebuilt_banks_unpack_only_when_they_match_the_lock',prebuilt_bank)
     def bus_settings():
         from musiclib import mixbus
@@ -601,6 +636,28 @@ def checks(work,config=None):
         assert np.abs(same-x).max()<1e-6
         return {'hiss_reduction_db':round(db(x[sil])-db(y[sil]),1),'note_change_db':round(db(y[mid])-db(x[mid]),3)}
     check('noise_reduction_lowers_hiss_and_keeps_the_note',noise_reduction)
+    def click_repair():
+        import soundbank as sbk
+        rate=48000;rng=np.random.default_rng(11);n=int(rate*2.5);t=np.arange(n)/rate
+        # A ringing G3 with a little hiss and a 4 ms knock 0.9 s in: the knock is found and taken out, the partials
+        # keep their level through it, and nothing outside the repaired frames moves.  A low string whose sound
+        # pulses once a period (A0, every 36 ms) is left alone.
+        tone=sum(.2/k*np.sin(2*np.pi*196*k*t)*np.exp(-t*(.6+.15*k)) for k in range(1,13))+rng.standard_normal(n)*1e-4
+        clean=np.stack([tone,.9*tone],axis=1).astype(np.float32);x=clean.copy();at=int(.9*rate)
+        x[at:at+192]+=(rng.standard_normal((192,2))*.02).astype(np.float32)
+        spans=sbk.find_clicks(x,rate);y=sbk.declick(x,rate,spans)
+        fs=np.fft.rfftfreq(2048,1/rate)
+        band=lambda v,lo,hi:10*np.log10((np.abs(np.fft.rfft(v[at-480:at+1568].astype(float).mean(axis=1)*np.hanning(2048)))**2)[(fs>=lo)&(fs<hi)].sum())
+        knock,left,partials=band(x,3000,12000)-band(clean,3000,12000),band(y,3000,12000)-band(clean,3000,12000),band(y,150,2500)-band(clean,150,2500)
+        a,b=spans[0][0]-sbk.CLICK_FRAME,spans[0][1]+sbk.CLICK_FRAME
+        assert len(spans)==1 and spans[0][0]<=at<=spans[0][1] and knock>20 and left<2 and abs(partials)<.2,(spans,knock,left,partials)
+        assert np.array_equal(y[:a],x[:a]) and np.array_equal(y[b:],x[b:])
+        pulses=np.zeros(n);burst=rng.standard_normal(48)*np.hanning(48)
+        for k in range(0,n-48,int(rate/27.5)):pulses[k:k+48]+=burst*np.exp(-k/rate*1.5)
+        low=sum(.1/k*np.sin(2*np.pi*27.5*k*t) for k in range(1,30))*np.exp(-t*.5)+.05*pulses
+        assert sbk.find_clicks(np.stack([low,low],axis=1).astype(np.float32),rate)==[]
+        return {'knock_db':round(knock,1),'after_repair_db':round(left,1),'partials_change_db':round(partials,3)}
+    check('click_repair_takes_out_a_knock_and_keeps_the_ring',click_repair)
     def denoise_keeps_low_partials():
         import soundbank as sbk
         rate=44100;rng=np.random.default_rng(5);n=rate*4;t=np.arange(n)/rate;f=np.fft.rfftfreq(n,1/rate)
@@ -665,6 +722,10 @@ def checks(work,config=None):
         assert names==['fx5_p0','a_lfo6_rate'] and 'temposync="1"' not in body and value('a_lfo2_rate')==2
         assert abs(value('fx5_p0')-(-1+math.log2(120/90)))<1e-5 and abs(value('a_lfo6_rate')-math.log2(90/120))<1e-5
         assert struct.unpack('>I',moved[56:60])[0]==len(moved)-60 and surge._patch_size(moved[60:])==len(moved)-60
+        # The tempo a part syncs to is the written one most of its notes start under: a pickup into the faster section
+        # or the final ritardando (rubato) does not set it; of equals, the earlier.
+        proj={'clock':{'tempo':[[0,100],[8,140]],'rubato':{'final_ratio':.6,'final_beats':4}}};part=lambda ons:{'notes':[{'on':o} for o in ons]}
+        assert [surge.part_tempo(proj,part(o)) for o in ([7.5,8,9,10],[0,1,9],[7,8],[])]==[140,100,100,100]
         return {'state_bytes':len(out),'patch_bytes':len(new),'synced_at_90_bpm':names}
     check('surge_patch_goes_into_the_plugin_state',surge_state)
     def tonal_reference():
@@ -987,6 +1048,10 @@ def checks(work,config=None):
         cuts=[rv.highpass_cut(part(45,low))[0] for low in (30,26,38)]
         assert abs(cuts[0]-2.78)<.02 and abs(cuts[1]-5.13)<.02 and cuts[2]<1 and abs(rv.highpass_cut(part(440*2**((30-69)/12)/2,30))[0]-.26)<.01,cuts
         assert rv.highpass_cut(part(45,30,drums=True)) is None and rv.highpass_cut(part(45,30,engine='surge')) is None
+        # The cutoff review suggests is one validate accepts: an octave under D1, but 15 Hz under A0 (0.4 dB).
+        (d1,d1_db),(a0,a0_db)=rv.highpass_floor(440*2**((26-69)/12)),rv.highpass_floor(27.5)
+        assert abs(d1-18.35)<.01 and abs(d1_db-.26)<.01 and a0==15 and abs(a0_db-.37)<.01,(d1,d1_db,a0,a0_db)
+        fresh=example();fresh['tracks'][0]['mix']['highpass']=a0;validate(fresh)
         return {'flagged':st['count'],'outside':st['outside_count'],'highpass_cut_db':[round(c,2) for c in cuts]}
     check('review_flags_far_transposed_samples_and_missing_keys',transposed_samples)
     def melody_group_and_balance():

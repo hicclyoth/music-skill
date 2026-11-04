@@ -161,20 +161,34 @@ def list_members(archive, fmt):
     out = _run([tool, '-tf', str(archive)])
     return [line for line in out.splitlines() if line.strip()], []
 
+def inside(target, name):
+    """Where member `name` goes in `target`, refused when the way there runs through a link already in the folder (a
+    subfolder or the file itself linked elsewhere would carry the write out of it, as tarfile's data filter refuses)."""
+    root = Path(os.path.realpath(target))
+    dest = root.joinpath(*PurePosixPath(name).parts)
+    if os.path.normcase(os.path.realpath(dest)) != os.path.normcase(str(dest)):
+        raise ValueError('A link in the destination folder: ' + name)
+    return dest
+
 def extract(archive, fmt, members, target):
     target.mkdir(parents=True, exist_ok=True)
+    for name in members:
+        inside(target, name)
     if fmt == 'tar.xz':
         # Each wanted member must be a plain file with a safe name; it is copied through extractfile, which every Python
-        # 3.10 has (extract's `filter` came only in 3.10.12 and 3.11.4).
+        # 3.10 has (extract's `filter` came only in 3.10.12 and 3.11.4), into a new file that then takes its place.
         with tarfile.open(archive, 'r:xz') as t:
             for name in members:
                 m = t.getmember(name)
                 if not m.isfile() or not safe_member(name):
                     raise ValueError('Unsafe archive member: ' + name)
-                dest = target / name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with t.extractfile(m) as src, dest.open('wb') as out:
+                inside(target, name).parent.mkdir(parents=True, exist_ok=True)
+                dest = inside(target, name)
+                partial = dest.with_name(dest.name + '.partial')
+                partial.unlink(missing_ok=True)
+                with t.extractfile(m) as src, partial.open('xb') as out:
                     shutil.copyfileobj(src, out, 1 << 20)
+                os.replace(partial, dest)
         return
     kind, tool = archive_tool()
     if kind == '7z':

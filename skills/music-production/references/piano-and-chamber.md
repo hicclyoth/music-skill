@@ -4,7 +4,7 @@ Read this when the request is solo piano (a ballad, a nocturne-like piece, an em
 
 ## Brief
 
-- **Instruments.** Piano: `piano_osiris` (a grand recorded with and without the pedal, [soundbanks.md](soundbanks.md)), the `vcsl_keys` Kawai grand (four dynamics), the `vcsl` Steinway (three, no pedal recording), an upright (`vcsl_keys` 0:3) for an intimate, older sound. Strings: the Iowa solo violin, viola, cello and double bass (`iowa_strings`, three dynamics, looped), `cello_bigcat` (looped, four dynamics), the `vsco` solo violin. A flute, clarinet or oboe from `vsco` or `iowa_winds`.
+- **Instruments.** Piano: `piano_osiris` (a grand recorded with and without the pedal, [soundbanks.md](soundbanks.md)), the `vcsl_keys` Kawai grand (four dynamics), the `vcsl` Steinway (three, no pedal recording), an upright (`vcsl_keys` 0:3) for an intimate, older sound. For quiet, exposed solo piano use `piano_osiris`, or that upright: their soft takes carry the least noise under a ringing note, where the Steinway's and the Kawai's soft layers carry rumble and hiss that a pedal adds up, covered in a fuller mix ([noise.md](noise.md)). Strings: the Iowa solo violin, viola, cello and double bass (`iowa_strings`, three dynamics, looped), `cello_bigcat` (looped, four dynamics), the `vsco` solo violin. A flute, clarinet or oboe from `vsco` or `iowa_winds`.
 - **Character and tempo.** Decide the character first (lyrical, restless, dance-like), then a tempo that leaves room for rubato: a lyrical piece usually wants a slow pulse with flexibility, not a fast one held strictly.
 - **Room.** A small hall or room, a wide master: `mix.chain: "bus"`, `dynamics: "wide"`, `space` `hall` or `room`, `depth_m` to seat the players ([orchestration.md](orchestration.md)).
 

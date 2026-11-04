@@ -237,9 +237,9 @@
         "UC-Sus/B/",
         "UC-Sus/C/"
       ],
-      "output_sha256": "6b66dc355f05cd468173829538c02a09f4fa3f9d442a1e8d98c99532a6f0558d",
+      "output_sha256": "3eb6a641872d7e75f98794744c577b37d034a65d6ab5074d89ba506643cb808b",
       "license": "CC0-1.0 source samples: Osiris Piano by Karoryfer Samples; built by music-production soundbank.py",
-      "version": "build b2"
+      "version": "build b3"
     },
     {
       "name": "cello_bigcat",
@@ -3374,9 +3374,9 @@
         "Woodwinds/Flute/susvib/",
         "Woodwinds/Oboe/Vib/"
       ],
-      "output_sha256": "dfb5f0ff2d8b9251a293706d200667bc40d0abfaccede9bae2224c0ca172c1ad",
+      "output_sha256": "6e49973421231132638b4c2e059470ad728a6c2e57ee88dea606ab629c4aa111",
       "license": "CC0-1.0 source samples: VSCO 2 Community Edition by Versilian Studios (the library also asks that the samples are not sold as such and encourages credit and a link to its homepage); built by music-production soundbank.py",
-      "version": "build b2"
+      "version": "build b3"
     },
     {
       "name": "vcsl_keys",
@@ -3397,9 +3397,9 @@
         "Electrophones/TX81Z/FM Piano/",
         "Electrophones/TX81Z/Piano 1/"
       ],
-      "output_sha256": "6f2239ff23b81ecd03ea48a6caa8ceaf5995a5938e463e23eba26bfd7756e0a9",
+      "output_sha256": "bb69f1a6edac9e597038da8e3e7da7ee486ee3c194ba027c8b406edf57b91b80",
       "license": "CC0-1.0 source samples: VCSL by Versilian Studios; built by music-production soundbank.py",
-      "version": "build b1"
+      "version": "build b2"
     },
     {
       "name": "vcsl_winds",
@@ -3756,10 +3756,10 @@
         "sf2_bytes": 355209222
       },
       "piano_osiris": {
-        "file": "piano_osiris-b2.sf2.xz",
-        "bytes": 101298352,
-        "sha256": "1cb91bf7cf552a884828c68af1446fc9517b2fe00c713adf400d5bebdee6b634",
-        "sf2_bytes": 398073296
+        "file": "piano_osiris-b3.sf2.xz",
+        "bytes": 101266696,
+        "sha256": "19e131a961d417d49818f33d0b328917909503991fd4753efb39831663e173de",
+        "sf2_bytes": 398073434
       },
       "cello_bigcat": {
         "file": "cello_bigcat-b2.sf2.xz",
@@ -3810,16 +3810,16 @@
         "sf2_bytes": 465159782
       },
       "vsco_colors": {
-        "file": "vsco_colors-b2.sf2.xz",
-        "bytes": 167946352,
-        "sha256": "a954fb6bbf2244a0cbbe8e3722d2ae4f68384c736e4380c3725beaf57830f46e",
-        "sf2_bytes": 373648170
+        "file": "vsco_colors-b3.sf2.xz",
+        "bytes": 178477256,
+        "sha256": "14244329443bb4fe6c63680bab6b307e5df6fda7d32273cd37f22553db73adf5",
+        "sf2_bytes": 373648434
       },
       "vcsl_keys": {
-        "file": "vcsl_keys-b1.sf2.xz",
-        "bytes": 234913900,
-        "sha256": "00a78e4c1438f87b0840dc10825a8f443fb2c7e5c1166ecad462fa3a0aa584e1",
-        "sf2_bytes": 798603008
+        "file": "vcsl_keys-b2.sf2.xz",
+        "bytes": 263087440,
+        "sha256": "b9008b361653427fce9a2767a23247f8ba6b932f30091f9c250e8a4c3ba580cf",
+        "sf2_bytes": 798603280
       },
       "vcsl_winds": {
         "file": "vcsl_winds-b2.sf2.xz",

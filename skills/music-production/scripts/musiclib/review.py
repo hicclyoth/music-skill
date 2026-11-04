@@ -12,6 +12,12 @@ FOREGROUND = ('melody', 'countermelody')
 NAMES = ('C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B')
 
 
+def highpass_floor(f0):
+    """Where a high-pass keeps a note of fundamental `f0` whole: an octave under it, but not under 15 Hz, the lowest
+    `validate` accepts (A0 is 27.5 Hz); with the dB that cutoff still takes from the fundamental."""
+    low = max(15.0, f0 / 2)
+    return low, 10 * math.log10(1 + (low / f0) ** 4)
+
 def highpass_cut(t):
     """dB a part's high-pass takes from the fundamental of its lowest note, with that note and its frequency.  FFmpeg's
     two-pole Butterworth passes r^4/(1+r^4) of the power at r times its cutoff: 3 dB is lost at the cutoff, 1.5 dB a
@@ -133,7 +139,9 @@ def review(p,out,config=None):
         if t['engine']=='soundfont' and t.get('soundfont','default')=='default' and bank in (17,18) and not any(c==2 for _,c,_ in t['performance'].get('cc',[])):
             summary['prompts'].append(f'{t["id"]}: MuseScore "Expr." presets (bank 17/18) are near-silent until CC2 is written.')
         cut=highpass_cut(t)
-        if cut and cut[0]>1.5:summary['prompts'].append(f'{t["id"]}: its high-pass at {t["mix"].get("highpass",30):g} Hz takes {cut[0]:.1f} dB from the fundamental of its lowest note ({NAMES[cut[1]%12]}{cut[1]//12-1}, {cut[2]:.0f} Hz); at {cut[2]/2:.0f} Hz, an octave under that note, it takes 0.3 dB.')
+        if cut and cut[0]>1.5:
+            low,keeps=highpass_floor(cut[2]);where='an octave under that note' if low>15 else 'the lowest a part may have'
+            summary['prompts'].append(f'{t["id"]}: its high-pass at {t["mix"].get("highpass",30):g} Hz takes {cut[0]:.1f} dB from the fundamental of its lowest note ({NAMES[cut[1]%12]}{cut[1]//12-1}, {cut[2]:.0f} Hz); at {low:.0f} Hz, {where}, it takes {keeps:.1f} dB.')
         for n in notes:
             e=t['performance']['notes'][n['id']];a=a_by_id[n['id']]
             csv_rows.append({'track':t['id'],'role':t.get('role'),'note_id':n['id'],'bar_1_based':int(n['on']//clock.beats_per_bar)+1,'beat_in_bar':round(n['on']%clock.beats_per_bar,4),'pitch':n['pitch'],'duration_q':n['duration'],'phrase':n.get('phrase',''),'articulation':n.get('articulation',''),'velocity':e['velocity'],'timing_ms':e.get('timing_ms',0),'gate':e.get('gate',1),'start_seconds':round(a['start_seconds'],6),'end_seconds':round(a['end_seconds'],6)})

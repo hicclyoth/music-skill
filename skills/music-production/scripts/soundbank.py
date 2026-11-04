@@ -740,6 +740,115 @@ def denoise(x, noise, reduce_db=12.0, alpha=.98, keep=None):
     return (out[DENOISE_FRAME:DENOISE_FRAME + n] / 2).astype(dtype)
 
 
+CLICK_FRAME, CLICK_HOP = 1024, 128
+
+
+def _side_means(L, near, far):
+    """Per frame and bin, the mean of L over the frames `near` to `far` before it and `near` to `far` after it (an
+    edge borrows the other side)."""
+    n = len(L)
+    c = np.concatenate([np.zeros((1, L.shape[1])), np.cumsum(L, axis=0)])
+    t = np.arange(n)
+
+    def mean(lo, hi):
+        lo, hi = np.clip(lo, 0, n), np.clip(hi, 0, n)
+        return (c[hi] - c[lo]) / np.maximum(hi - lo, 1)[:, None], hi > lo
+    before, has_b = mean(t - far, t - near + 1)
+    after, has_a = mean(t + near, t + far + 1)
+    before[~has_b] = after[~has_b]
+    after[~has_a] = before[~has_a]
+    return before, after
+
+
+def find_clicks(x, rate, after=.15, share=.4, rise_db=6.0, strength_db=6.0, alone=.25, alone_db=4.0, longest=.15):
+    """Mechanical clicks in a ringing take (a key or the action knocking while the string rings on): spans of
+    samples [start, end, strength_db], `after` seconds past the onset at the earliest.
+
+    A click is broadband and stands alone.  Its frames (CLICK_FRAME samples every CLICK_HOP) lift at least `share`
+    of the bins from 2 to 12 kHz more than `rise_db` over their mean level 50-120 ms before and after (the higher
+    of the two); its 3-12 kHz band stands `strength_db` over the median of the frames 20-110 ms either side; and
+    nothing else within `alone` seconds rises within `alone_db` of it.  A low string's own sound pulses once a
+    period (every 36 ms on A0) and a soft take's hammer noise flickers, so those rise again and again and are left
+    as they are.  A burst longer than `longest` seconds is not taken for a click."""
+    X, _, _ = _stft(np.asarray(x, dtype=np.float64).mean(axis=1, keepdims=True), CLICK_FRAME, CLICK_HOP)
+    L = 10 * np.log10(np.abs(X[:, :, 0]) ** 2 + 1e-30)
+    f = np.fft.rfftfreq(CLICK_FRAME, 1 / rate)
+    wide = (f >= 2000) & (f < 12000)
+    before, behind = _side_means(L[:, wide], int(.05 * rate / CLICK_HOP), int(.12 * rate / CLICK_HOP))
+    lifted = (L[:, wide] - np.maximum(before, behind) > rise_db).mean(axis=1)
+    band = 10 * np.log10((10 ** (L[:, (f >= 3000) & (f < 12000)] / 10)).sum(axis=1) + 1e-30)
+    band = np.maximum(band, band.max() - 100)                     # the zeros padded past either end
+    near, far = int(.02 * rate / CLICK_HOP), int(.11 * rate / CLICK_HOP)
+    window = np.lib.stride_tricks.sliding_window_view(np.pad(band, far, mode='edge'), 2 * far + 1)
+    rise = band - np.median(np.concatenate([window[:, :far - near + 1], window[:, far + near:]], axis=1), axis=1)
+    starts = np.arange(len(L)) * CLICK_HOP - CLICK_FRAME          # frame t holds x[starts[t]:starts[t] + CLICK_FRAME]
+    events, t = [], int(np.searchsorted(starts, after * rate))
+    while t < len(L):
+        if lifted[t] <= share / 4 and rise[t] <= 2:
+            t += 1
+            continue
+        first = t
+        while t + 1 < len(L) and (lifted[t + 1] > share / 4 or rise[t + 1] > 2):
+            t += 1
+        events.append((first, t, float(lifted[first:t + 1].max()), float(rise[first:t + 1].max())))
+        t += 1
+    reach = int(alone * rate / CLICK_HOP)
+    spans = []
+    for first, last, wide_share, strength in events:
+        if wide_share <= share or strength < strength_db:
+            continue
+        rivals = [s for a, b, _, s in events if (a, b) != (first, last) and a < last + reach and b > first - reach]
+        s0, s1 = max(0, int(starts[first])), min(len(x), int(starts[last]) + CLICK_FRAME)
+        # The repair needs clean frames after the span: a take cut off while it still sounds ends in a step, not a click.
+        if s1 + 6 * CLICK_FRAME > len(x):
+            continue
+        if (not rivals or strength - max(rivals) >= alone_db) and s1 - s0 <= longest * rate + CLICK_FRAME:
+            if spans and s0 <= spans[-1][1] + CLICK_FRAME:
+                spans[-1] = [spans[-1][0], max(spans[-1][1], s1), max(spans[-1][2], round(strength, 1))]
+            else:
+                spans.append([s0, s1, round(strength, 1)])
+    return spans
+
+
+def declick(x, rate, spans, margin_db=1.5, reference=4):
+    """Repair `spans` ([start, end, ...] in samples) of `x` (n, channels).  In the frames that reach into a span, each
+    bin is held to its level interpolated, in log power, between the `reference` frames just before the span and
+    just after it, plus `margin_db`, with its phase kept (the gain is shared by the channels, so the stereo image
+    stays).  A ringing partial holds its level across the span and passes; the click's added noise does not.  The
+    reference level is a median over frames, divided by ln 2 for a noise-like bin's mean power.  Samples the changed
+    frames do not reach stay as they were, bit for bit."""
+    y = np.array(x, copy=True)
+    lift = math.log(10 ** (margin_db / 10) / math.log(2))
+    for s0, s1, *_ in spans:
+        a0 = max(0, s0 - (reference + 2) * CLICK_FRAME)
+        a1 = min(len(x), s1 + (reference + 2) * CLICK_FRAME)
+        seg = np.asarray(x[a0:a1], dtype=np.float64)
+        X, win, size = _stft(seg, CLICK_FRAME, CLICK_HOP)
+        st = np.arange(len(X)) * CLICK_HOP - CLICK_FRAME
+        en = st + CLICK_FRAME
+        inside = np.flatnonzero((en > s0 - a0) & (st < s1 - a0))
+        before = np.flatnonzero((en <= s0 - a0) & (st >= 0))[-reference:]
+        behind = np.flatnonzero((st >= s1 - a0) & (en <= len(seg)))[:reference]
+        if len(before) < 2 or len(behind) < 2:
+            continue
+        P = (np.abs(X) ** 2).mean(axis=2)
+        lb = np.median(np.log(P[before] + 1e-30), axis=0)
+        la = np.median(np.log(P[behind] + 1e-30), axis=0)
+        cb, ca = st[before].mean(), st[behind].mean()
+        for t in inside:
+            limit = np.exp(lb + (la - lb) * (st[t] - cb) / (ca - cb) + lift)
+            X[t] *= np.sqrt(np.minimum(1.0, limit / np.maximum(P[t], 1e-30)))[:, None]
+        frames = np.fft.irfft(X, n=CLICK_FRAME, axis=1) * win[None, :, None]
+        out = np.zeros((size, seg.shape[1]))
+        for t in range(len(frames)):
+            out[t * CLICK_HOP:t * CLICK_HOP + CLICK_FRAME] += frames[t]
+        # A periodic Hann window (the product of the two square roots) sums to frame / (2 hop) at that hop.
+        out = out[CLICK_FRAME:CLICK_FRAME + len(seg)] / (CLICK_FRAME / (2 * CLICK_HOP))
+        w0, w1 = max(0, st[inside[0]]), min(len(seg), en[inside[-1]])
+        y[a0 + w0:a0 + w1] = out[w0:w1]
+    return y
+
+
 def steady_loop(x, rate, loop, sag_db=2.0, crossfade=0.15, found=False, noise_db=4.0, period_search=False, f0=None,
                 min_loop=0.8, match_seconds=0.0):
     """A recorded loop whose end sags (the player easing off at the end of the take) pulses on every repeat.  This
@@ -954,6 +1063,7 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
     # Load, trim, measure pitch and level.
     looped = layer.get('loop') in ('recorded', 'found')
     dn = layer.get('denoise')
+    dc = layer.get('declick')
     noise, per_take, profile_from = {}, {}, {}
     if dn and (root / 'split.json').is_file():
         # Notes cut from longer recordings: each take uses its recording's own noise, measured between its notes when
@@ -993,9 +1103,10 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             if rows and sum(len(r) for r in rows) >= 20:
                 noise[dyn] = np.concatenate(rows).mean(axis=0)
     for e in entries:
-        key = (str(e['file']) if not mics and not looped and not dn else
+        key = (str(e['file']) if not mics and not looped and not dn and dc is None else
                json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), layer.get('ring_db'), looped,
-                           layer.get('loop_repair'), dn] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])))
+                           layer.get('loop_repair'), dn] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])
+                          + ([dc] if dc is not None else [])))
         if key not in loaded:
             x, info = mic_mix(e['files'], mics, ffmpeg) if mics else read_audio(e['file'], ffmpeg)
             noise_db = noise_from = None
@@ -1014,6 +1125,11 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             # Short articulations use a higher threshold so pre-attack bow/breath noise is cut.
             start = onset(x, info['rate'], layer.get('onset_db', -45.0))
             x = x[start:]
+            # `declick` (options of find_clicks, {} for its defaults): a take that rings on while the action knocks
+            # (a key let go under the sustain pedal) has the knock repaired before the ring cut is measured.
+            clicks = find_clicks(x, info['rate'], **dc) if dc is not None else []
+            if clicks:
+                x = declick(x, info['rate'], clicks)
             loop = None
             if layer.get('loop') == 'recorded':
                 if not info.get('loops'):
@@ -1066,6 +1182,7 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             hashes = [file_hash(f) for f in e['files']]
             loaded[key] = {'x': x, 'rate': info['rate'], 'loop': loop, 'loop_match': match, 'noise_db': noise_db, 'noise_from': noise_from,
                            'trim_ms': round(1000 * start / info['rate'], 1), 'f0': f0,
+                           'clicks_ms': [[round(1000 * a / info['rate'], 1), round(1000 * b / info['rate'], 1), s] for a, b, s in clicks],
                            'rms': level, 'sha256': hashes[0] if not mics else hashlib.sha256(''.join(hashes).encode()).hexdigest(),
                            'mic_files': ([{'file': str(f.relative_to(root)), 'sha256': h, 'gain': mic.get('gain', 1.0),
                                            'pan': mic.get('pan')} for f, h, mic in zip(e['files'], hashes, mics)]
@@ -1107,6 +1224,16 @@ def _local_levels(entries, width=2):
             out[(n, dyn)] = float(np.median([np.median(level[m]) for m in notes[max(0, i - width):i + width + 1]]))
     return out
 
+def _across_levels(local, layer_med):
+    """`match_notes: "across"`: every recorded dynamic of a note at one level.  Local levels keep each dynamic's own
+    register slope, and a soft layer recorded quieter in the treble than the loud one then jumps at a velocity split
+    there; here the slope is the median, over the dynamics recorded at a note, of each one's local level against its
+    own median, so a split changes the tone only and the velocity curve sets loudness."""
+    common = {}
+    for (n, dyn), v in local.items():
+        common.setdefault(n, []).append(v / layer_med[dyn])
+    return {(n, dyn): float(np.median(common[n])) * layer_med[dyn] for (n, dyn) in local}
+
 def build(spec, root, output, ffmpeg=None):
     root = Path(root)
     samples, instruments, presets, receipt = [], [], [], {'spec': spec.get('name'), 'files': [], 'layers': []}
@@ -1117,7 +1244,8 @@ def build(spec, root, output, ffmpeg=None):
         prepared = [_load_layer(layer, root, ffmpeg, loaded, receipt) for layer in pspec['layers']]
         # Level matching: each dynamic layer's median level is kept relative to the loudest layer; notes within a
         # layer are pulled toward the layer median (bounded so noise is not raised much), or with `match_notes:
-        # "local"` toward the median of their nearest neighbours.  A kit (`level_reference: "preset"`) keeps the
+        # "local"` toward the median of their nearest neighbours, or with "across" every dynamic of a note to one
+        # level on a register slope the dynamics share.  A kit (`level_reference: "preset"`) keeps the
         # recorded balance between its pieces instead: one reference for all.
         shared = pspec.get('level_reference') == 'preset'
         common = max(max(med.values()) for _, _, med in prepared) if shared else None
@@ -1127,7 +1255,9 @@ def build(spec, root, output, ffmpeg=None):
             # layer keeps its timbre but stops being 15-25 dB down, and sections in one patch match).
             shape = layer.get('layer_levels_db')
             layer_gain = {d: (ref * 10 ** (shape[d] / 20) / m if shape and d in shape else 1.0) for d, m in layer_med.items()}
-            local = _local_levels(entries) if layer.get('match_notes') == 'local' else None
+            local = _local_levels(entries) if layer.get('match_notes') in ('local', 'across') else None
+            if layer.get('match_notes') == 'across':
+                local = _across_levels(local, layer_med)
             for e in entries:
                 target = local[(e['named'], e['dyn'])] if local else layer_med[e['dyn']]
                 pull = target / e['rms'] if layer.get('match_notes', True) else 1.0
@@ -1260,6 +1390,8 @@ def build(spec, root, output, ffmpeg=None):
                         if e.get('noise_db') is not None:
                             row['denoised_noise_dbfs'] = e['noise_db']
                             row['noise_measured_from'] = e['noise_from']
+                        if e.get('clicks_ms'):
+                            row['declicked_ms'] = e['clicks_ms']    # [start, end, 3-12 kHz rise in dB] after the onset
                         receipt['files'].append(row)
             contexts.append({'layer': layer, 'entries': entries, 'notes': notes, 'keymap': keymap, 'gens': dict(gens)})
             instrument = {'name': f'{pspec["name"][:16]} {len(instruments) - first_instrument + 1}', 'global': gens,

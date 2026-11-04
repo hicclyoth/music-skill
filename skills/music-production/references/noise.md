@@ -68,8 +68,9 @@ their own noise run up the whole spectrum (Senior, Sound On Sound Q&A).
   cutoff it loses 1.5 dB, at the cutoff 3 dB. `review` names a part whose high-pass takes more than 1.5 dB from the
   fundamental of its lowest note.
 - So, an octave under the lowest note: a bass reaching E1 (41 Hz) takes 20 Hz, cellos down to C2 (65 Hz) 33 Hz, violas
-  to C3 (131 Hz) 65 Hz, violins to G3 (196 Hz) 98 Hz. A piano's left hand reaching D1 (37 Hz) loses 5 dB of that note's
-  fundamental to a 45 Hz high-pass.
+  to C3 (131 Hz) 65 Hz, violins to G3 (196 Hz) 98 Hz. Under B0 it stops at 15 Hz, the lowest a part's `highpass` may
+  be, which still keeps a piano's A0 (27.5 Hz) within 0.4 dB. A piano's left hand reaching D1 (37 Hz) loses 5 dB of that
+  note's fundamental to a 45 Hz high-pass.
 
 ### 3. EQ on an instrument's own noise
 
@@ -109,7 +110,22 @@ frequency stay as recorded.
   time and frequency against musical noise (Lukin and Todd 2007), or suppressing only the noise that would be heard
   (Tsoukalas, Mourjopoulos and Kokkinakis 1997). Reduce noise; do not try to remove it.
 
-### 6. Gates and expanders
+### 6. Clicks inside the samples
+
+A click is not steady noise but a short knock from the instrument recorded inside a take that rings on, such as a key
+let go while the sustain pedal holds the string. Every note played on that take knocks at the same moment after its
+strike, most clearly under soft pedalled playing. `soundbank.py`'s `declick` finds such clicks when a bank is built and
+repairs them ([soundbanks.md](soundbanks.md)): a click is broadband (2–12 kHz) and stands alone, where a low string's own
+pulse, once a period, and a soft take's hammer noise rise again and again; in the click's frames each bin is held to its
+level just before and just after, so a ringing partial passes and the knock does not. Detecting a click and
+interpolating over it is the classic restoration approach (Godsill and Rayner 1998). Check a repaired take as for
+denoising: the click's band back to its surroundings, the partials' level unchanged, the rest of the take bit for bit,
+then an A/B by ear.
+The Osiris pedal takes had such knocks 0.2–3.8 s after the strike, where soft pedalled playing reaches them; its build
+repairs them. The VCSL Steinway, Kawai and uprights and the VSCO upright have them too, mostly 3–20 s in, where only a
+long or pedalled note reaches them, and keep them as recorded ([soundbanks.md](soundbanks.md)).
+
+### 7. Gates and expanders
 
 Sampled parts are already silent between their notes. A gate or downward expander on one cuts its decays and room along
 with the noise; keep them for drums and for noise between notes that a part really carries.
@@ -131,8 +147,14 @@ silence, at least 35 dB under the loud level.
 - Under their notes the section strings carry bow noise and room, strongest at 1–5 kHz, and a pad of several sections
   adds it up (above).
 
-None of the banks calls for more noise reduction. Noise heard in a render is first a matter of an instrument's own sound,
-gain, voices adding up and the playback level.
+The measure above finds noise left bare after a note; it misses noise under a ringing note. A pedalled passage on the
+sampled pianos found it there: the VCSL Steinway's soft layer carries rumble about 32 dB and hiss about 60 dB under the
+note's early level, the Kawai's softest 30 and 47 dB (10 and 31 on its noisiest takes), where the Osiris pedal takes
+keep 58 and 73, and a pedal adds the takes up. Reducing it take by take, each take its own print, was tried and set
+aside: what was left of the noise rose and fell with the playing, and in a mix the other parts and the reverb cover the
+noise anyway. For quiet, exposed piano choose the Osiris, or the Yamaha upright ([soundbanks.md](soundbanks.md)).
+Otherwise, noise heard in a render is first a matter of an instrument's own sound, gain, voices adding up and the
+playback level.
 
 ## Listening tests
 
