@@ -115,12 +115,12 @@ frequency stay as recorded.
 A click is not steady noise but a short knock from the instrument recorded inside a take that rings on, such as a key
 let go while the sustain pedal holds the string. Every note played on that take knocks at the same moment after its
 strike, most clearly under soft pedalled playing. `soundbank.py`'s `declick` finds such clicks when a bank is built and
-repairs them ([soundbanks.md](soundbanks.md)): a click is broadband (2–12 kHz) and stands alone, where a low string's own
-pulse, once a period, and a soft take's hammer noise rise again and again; in the click's frames each bin is held to its
-level just before and just after, so a ringing partial passes and the knock does not. Detecting a click and
+repairs them ([soundbanks.md](soundbanks.md)): a click is broadband (2–12 kHz) and stands alone, where a low string's
+own pulse, once a period, and a soft take's hammer noise rise again and again; in the click's frames each bin is held
+to its level just before and just after, so a ringing partial passes and the knock does not. Detecting a click and
 interpolating over it is the classic restoration approach (Godsill and Rayner 1998). Check a repaired take as for
 denoising: the click's band back to its surroundings, the partials' level unchanged, the rest of the take bit for bit,
-then an A/B by ear.
+then an A/B by ear. It suits takes recorded one note per file: a second strike's hammer noise looks like a click too.
 The Osiris pedal takes had such knocks 0.2–3.8 s after the strike, where soft pedalled playing reaches them; its build
 repairs them. The VCSL Steinway, Kawai and uprights and the VSCO upright have them too, mostly 3–20 s in, where only a
 long or pedalled note reaches them, and keep them as recorded ([soundbanks.md](soundbanks.md)).
