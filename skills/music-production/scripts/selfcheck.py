@@ -1386,6 +1386,18 @@ def checks(work,config=None):
             assert set(change)==set(r['buses']['assignment'].values()) and all(abs(v)<6 for v in change.values()),change
             return {'buses':r['buses']['assignment'],'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
         check('bus_chain_render_and_delivery_checks',bus_render)
+        def chorus_pass_logs():
+            # A part with a chorus logs its later FFmpeg pass as ".pass1"; a part named like that pass ("<id>_1")
+            # keeps its own log and receipt (a "_1" suffix once shared them, and parallel writes could collide).
+            q=copy.deepcopy(p);first=q['tracks'][0];first['mix']['effects']=[{'type':'chorus','depth':.5}]
+            twin=copy.deepcopy(first);twin['id']=first['id']+'_1';twin['mix'].pop('effects');q['tracks'].append(twin)
+            save_json(work/'chorus_logs.json',q);r=render(work/'chorus_logs.json',work/'render_chorus_logs',config,cache)
+            names={f.name for f in (work/'render_chorus_logs'/'logs').glob('process_*.process.json')}
+            want={f'process_{first["id"]}.process.json',f'process_{first["id"]}.pass1.process.json',f'process_{twin["id"]}.process.json'}
+            assert want<=names and all(r['checks'].values()),(sorted(want-names),r['checks'])
+            assert not list((work/'render_chorus_logs'/'stems').glob('.*.wav')),'a pass file was left behind'
+            return sorted(want)
+        check('a_chorus_pass_never_shares_another_parts_log',chorus_pass_logs)
         def analysis():
             from musiclib.analysis import analyze
             a=analyze(work/'render_bus')

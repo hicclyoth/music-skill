@@ -132,7 +132,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 GPU もアカウントも音声モデルも要りません。ダウンロードはすべて配布元か、このプロジェクト自身のリリースから行い、固定した SHA-256 で照合します。
 
-**実行するもの・取得するもの・送信するもの**：スキルが実行するのは Python スクリプト、FluidSynth、FFmpeg、インストールされていれば Surge XT で、すべてお使いのコンピューター上で動き、レンダリングはオフラインです。セットアップがダウンロードするのは github.com と GitHub のダウンロード用ホスト（api.github.com、raw.githubusercontent.com、objects.githubusercontent.com、release-assets.githubusercontent.com）、PyPI（pedalboard と、requirements をインストールするときの NumPy）、そして音源を元の録音からビルドするときだけアイオワ大学の theremin.music.uiowa.edu からだけで、ほかのホストへのリダイレクトはスクリプトが拒否します。何も送信しません。テレメトリーもアカウントもアップロードもありません（[PRIVACY.md](PRIVACY.md)）。
+**実行するもの・取得するもの・送信するもの**：スキルが実行するのは Python スクリプト、FluidSynth、FFmpeg、インストールされていれば Surge XT で、すべてお使いのコンピューター上で動き、レンダリングはオフラインです。スキル自身のダウンローダーがツールと音源を取得するのは github.com と GitHub のダウンロード用ホスト（api.github.com、raw.githubusercontent.com、objects.githubusercontent.com、release-assets.githubusercontent.com）、そして音源を元の録音からビルドするときだけアイオワ大学の theremin.music.uiowa.edu からだけで、ほかのホストへのリダイレクトは拒否します。Python パッケージ（NumPy と、Surge XT 用の pedalboard）は pip を通して取得し、pip に別のパッケージインデックスを設定していなければ PyPI から入ります。その場合も pedalboard の wheel は固定した SHA-256 で照合します。何も送信しません。テレメトリーもアカウントもアップロードもありません（[PRIVACY.md](PRIVACY.md)）。
 
 ## 使い方
 
@@ -167,7 +167,7 @@ GPU もアカウントも音声モデルも要りません。ダウンロード�
 
 ## どこまでできるか
 
-`selfcheck.py` には 87 項目のチェック（レンダリング用の設定がなければ 71 項目）があり、MIDI の往復変換やアーカイブの安全性から、実際のレンダリングまで含みます。たとえば、音を一つ直したときに作り直されるのはそのパートだけであること、旧来の単一リバーブのミックスが以前のリリースをビット単位で再現すること、ラウドネス計測が BS.1770 の基準音を −3.01 LUFS と読むこと。CI では、Ubuntu（FluidSynth 2.3、FFmpeg 6.1）と macOS（FluidSynth 2.6、FFmpeg 9.0）で、レンダリングも含めた全チェックを実行しています。
+`selfcheck.py` には 88 項目のチェック（レンダリング用の設定がなければ 71 項目）があり、MIDI の往復変換やアーカイブの安全性から、実際のレンダリングまで含みます。たとえば、音を一つ直したときに作り直されるのはそのパートだけであること、旧来の単一リバーブのミックスが以前のリリースをビット単位で再現すること、ラウドネス計測が BS.1770 の基準音を −3.01 LUFS と読むこと。CI では、Ubuntu（FluidSynth 2.3、FFmpeg 6.1）と macOS（FluidSynth 2.6、FFmpeg 9.0）で、レンダリングも含めた全チェックを実行しています。
 
 音楽として良いかどうかは別の話で、聴いてみるしかありません。上の曲が、このリポジトリで示せるいちばんの証拠です。
 

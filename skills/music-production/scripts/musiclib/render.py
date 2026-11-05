@@ -139,13 +139,14 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         filters.extend(([] if depth is not None else [f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1'])+[audio.automation(fx.get('automation',[]),clock)])
         filters.append(f'apad,atrim=end_sample={frames}')  # a chorus or phaser delays the signal and would lengthen the stem
         stem=output/'stems'/(t['id']+'.wav')
-        # One FFmpeg pass, or, around each chorus, a pass up to it, the chorus in NumPy on that file, and on.
+        # One FFmpeg pass, or, around each chorus, a pass up to it, the chorus in NumPy on that file, and on. A later
+        # pass's log takes ".pass{k}": a part id cannot hold a dot, so the label never names another part's log.
         src,run,k=raw,[],0
         for f in filters+[None]:
             if isinstance(f,str):run.append(f);continue
             if run:
                 out=stem if f is None else output/'stems'/f'.{t["id"]}.pass{k}.wav'
-                audio.ffmpeg(cfg,['-i',src,'-af',','.join(run),'-ar',str(audio.RATE),'-c:a','pcm_f32le',out],output/'logs','process_'+t['id']+(f'_{k}' if k else ''))
+                audio.ffmpeg(cfg,['-i',src,'-af',','.join(run),'-ar',str(audio.RATE),'-c:a','pcm_f32le',out],output/'logs','process_'+t['id']+(f'.pass{k}' if k else ''))
                 if src!=raw:src.unlink()
                 src,run,k=out,[],k+1
             if f is None:break

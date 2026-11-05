@@ -182,15 +182,16 @@ RECORDINGS = 'https://github.com/owoevan-dev/music-skill/releases/download/examp
 
 
 def test_recordings_are_release_assets():
-    """The example recordings are assets of the release examples-1: the READMEs link all eight there, and no recording
-    is a repository file."""
-    readmes = [ROOT / f'README{s}.md' for s in ('', '.ja', '.ko', '.zh-CN', '.zh-TW')] + sorted(ROOT.glob('examples/*/README.md'))
-    names = set()
-    for readme in readmes:
-        links = re.findall(r'\]\(([^)\s]+\.mp3)\)', readme.read_text(encoding='utf-8'))
-        assert links and all(link.startswith(RECORDINGS) for link in links), readme.relative_to(ROOT)
-        names |= {link[len(RECORDINGS):] for link in links}
-    assert names == {'above_the_clouds.mp3', 'daybreak_signal_piano.mp3', *(f'{n}.mp3' for n in GENRE_DEMOS)}
+    """The example recordings are assets of the release examples-1: each README links its own recordings there (each
+    language's README the overture and the six genre demos, each example folder its pieces), and no recording is a
+    repository file."""
+    genres = {f'{n}.mp3' for n in GENRE_DEMOS}
+    expected = {**{f'README{s}.md': {'above_the_clouds.mp3', *genres} for s in ('', '.ja', '.ko', '.zh-CN', '.zh-TW')},
+                'examples/above-the-clouds/README.md': {'above_the_clouds.mp3'},
+                'examples/daybreak-signal/README.md': {'daybreak_signal_piano.mp3'}, 'examples/genre-demos/README.md': genres}
+    for name, recordings in expected.items():
+        links = re.findall(r'\]\(([^)\s]+\.mp3)\)', (ROOT / name).read_text(encoding='utf-8'))
+        assert all(link.startswith(RECORDINGS) for link in links) and {link[len(RECORDINGS):] for link in links} == recordings, name
     assert not [p for p in repository_files() if p.is_file() and p.suffix.lower() in ('.mp3', '.wav', '.flac', '.ogg')]
 
 
@@ -228,4 +229,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (87 if CONFIG else 71), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (88 if CONFIG else 71), [c['name'] for c in report['checks']]

@@ -18,7 +18,7 @@ Packaging for the Claude plugin directory, and a fix for the chorus effect. The 
 ### Changed
 
 - The example recordings moved out of the repository to the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1), and every link points there. They are byte for byte the same files, except *Midnight Coastline*, rendered again for the chorus fix. No file in the repository is 5 MiB or larger any more, as the directory requires of a plugin folder, and a repository test keeps it so.
-- The README says what the skill runs, every host its setup downloads from, and that it sends nothing.
+- The README says what the skill runs, every host its own downloaders use, that Python packages come through pip (from PyPI unless pip is set to another index), and that it sends nothing.
 - CI tests each pull request once; pushes are tested on main only.
 
 ## [0.1.0] - 2026-11-04
