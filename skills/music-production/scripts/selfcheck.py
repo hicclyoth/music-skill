@@ -994,6 +994,22 @@ def checks(work,config=None):
         bad=example();bad['tracks'][0]['mix']['wow_flutter']={'wow_cents':80};rejects(lambda:validate(bad))
         return {'wow_cents':[round(float(c.min()),2),round(float(c.max()),2)],'peak_shift_ms':info['peak_shift_ms'],'vinyl_crest_db':round(float(crest),1)}
     check('tape_wow_flutter_and_vinyl_noise',worn_media)
+    def chorus_effect():
+        from musiclib import production
+        rate=48000;n=rate*8;t=np.arange(n)/rate
+        # A 1 kHz tone gains nothing far above it: the moving delay is read between samples. FFmpeg's chorus stepped it
+        # (energy above 4 kHz 52 dB under the tone) and read a voice 61.5 ms late whenever its delay reached zero.
+        y,info=production.chorus(np.stack([.5*np.sin(2*np.pi*1000*t)]*2,axis=1),.6)
+        S=np.abs(np.fft.rfft(y[rate:7*rate,0]*np.hanning(6*rate)))**2;f=np.fft.rfftfreq(6*rate,1/rate)
+        above=10*np.log10(S[f>4000].sum()/S.sum())
+        assert above<-75,above
+        # Every impulse comes back within 80 samples (dry 0.63, the voices within 1.2 and 1.5 ms; the cubic reading
+        # starts a sample early; a moving delay changes a voice's sum by its Doppler factor, under 0.2%) and never later.
+        x=np.zeros((n,2));x[rate//4::rate//4]=1;z,_=production.chorus(x,.6)
+        for k in range(rate//4,n-rate,rate//4):
+            assert abs(z[k-2:k+80,0].sum()-.9*1.24)<2e-3 and np.abs(z[k+80:k+6000,0]).max()<1e-12,(k,z[k-2:k+80,0].sum())
+        return {'above_4khz_db':round(float(above),1),'sweeps_ms':info['sweeps_ms']}
+    check('chorus_reads_its_moving_delay_between_samples',chorus_effect)
     def stage_depth():
         from musiclib import stage
         x=np.random.default_rng(3).standard_normal((48000*3,2)).astype(np.float32)*.1;rows=[]

@@ -122,9 +122,9 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         filters=[f'apad,atrim=end_sample={frames}',f'volume={gain:.9f}dB',f'highpass=f={fx.get("highpass",30)}',f'lowpass=f={fx.get("lowpass",18000)}']
         filters += [f'equalizer=f={f}:t=q:w=1:g={g}' for f,g in fx.get('eq',[])]
         for e in fx.get('effects',[]):
-            # Modulation and lo-fi effects (FFmpeg's chorus, aphaser and acrusher), after the EQ.
-            if e['type']=='chorus':
-                d=e.get('depth',.5);filters.append(f'chorus=0.7:0.9:45|60:{.5*d:.3f}|{.4*d:.3f}:0.25|0.35:{2*d:.3f}|{2.5*d:.3f}')
+            # Modulation and lo-fi effects after the EQ: the chorus in NumPy (production.chorus; FFmpeg's chorus steps
+            # its moving delay in whole samples, a buzz on sustained parts), FFmpeg's aphaser and acrusher.
+            if e['type']=='chorus':filters.append(('chorus',e.get('depth',.5)))
             elif e['type']=='phaser':filters.append(f'aphaser=in_gain=0.8:out_gain=0.9:delay=3:decay={.2+.5*e.get("depth",.5):.3f}:speed={e.get("rate_hz",.5)}:type=t')
             elif e['type']=='bitcrush':filters.append(f'acrusher=bits={e.get("bits",8)}:samples={e.get("downsample",4)}:mix={e.get("mix",1)}:mode=lin')
         if co:filters.append(f'acompressor=threshold={10**(co["threshold_db"]/20):.9f}:ratio={co["ratio"]}:attack={co["attack_ms"]}:release={co["release_ms"]}:makeup=1')
@@ -139,7 +139,18 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         filters.extend(([] if depth is not None else [f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1'])+[audio.automation(fx.get('automation',[]),clock)])
         filters.append(f'apad,atrim=end_sample={frames}')  # a chorus or phaser delays the signal and would lengthen the stem
         stem=output/'stems'/(t['id']+'.wav')
-        audio.ffmpeg(cfg,['-i',raw,'-af',','.join(filters),'-ar',str(audio.RATE),'-c:a','pcm_f32le',stem],output/'logs','process_'+t['id'])
+        # One FFmpeg pass, or, around each chorus, a pass up to it, the chorus in NumPy on that file, and on.
+        src,run,k=raw,[],0
+        for f in filters+[None]:
+            if isinstance(f,str):run.append(f);continue
+            if run:
+                out=stem if f is None else output/'stems'/f'.{t["id"]}.pass{k}.wav'
+                audio.ffmpeg(cfg,['-i',src,'-af',','.join(run),'-ar',str(audio.RATE),'-c:a','pcm_f32le',out],output/'logs','process_'+t['id']+(f'_{k}' if k else ''))
+                if src!=raw:src.unlink()
+                src,run,k=out,[],k+1
+            if f is None:break
+            x,_=audio.read_wav(src);x,_=production.chorus(x,f[1]);audio.write_wav(src,x)
+        filters=[f if isinstance(f,str) else f'chorus(depth={f[1]}, production.chorus)' for f in filters]
         placed=None
         if depth is not None:
             x,_=audio.read_wav(stem);x,placed=stage.place(x,pan,depth,fx.get('facing','front'));audio.write_wav(stem,x)

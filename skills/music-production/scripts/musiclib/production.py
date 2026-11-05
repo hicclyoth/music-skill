@@ -166,6 +166,32 @@ def wow_flutter(x, spec, name):
                  'peak_shift_ms': round(float(np.abs(shift - shift.mean()).max()) / RATE * 1000, 2)}
 
 
+def chorus(x, depth):
+    """The `chorus` effect on stereo `x`: the voices FFmpeg's chorus gave the skill's earlier renders (in 0.7, out 0.9;
+    two voices mixed at 0.5 and 0.4 of `depth`, delayed by 0 to 2 and 0 to 2.5 times `depth` ms along sines of 0.25 and
+    0.35 Hz), each read between samples (cubic, as `wow_flutter`).  FFmpeg's chorus reads its moving delay at whole
+    samples, so the delay steps, about 77 times a second at depth 0.6: a buzz under a sustained part (a 1 kHz sine came
+    out with energy above 4 kHz 52 dB under it).  Whenever a voice's delay came down to zero it read that voice from its
+    buffer's far end, 61.5 ms late, for about 0.2 s: a catch every few seconds.  Its delays option only sized that
+    buffer, so it never moved the voices."""
+    x = np.asarray(x, dtype=np.float64)
+    n = len(x)
+    voices = ((.5 * depth, .25, 2 * depth), (.4 * depth, .35, 2.5 * depth))
+    pad = 3 + max(int(ms * RATE / 1000) for _, _, ms in voices)
+    xp = np.concatenate([np.zeros((pad, x.shape[1])), x, np.zeros((3, x.shape[1]))])
+    out = .7 * x
+    for gain, hz, ms in voices:
+        span, period = int(ms * RATE / 1000), int(RATE / hz)  # whole samples, as FFmpeg sized its table
+        for s in range(0, n, 1 << 20):
+            i = np.arange(s, min(n, s + (1 << 20)))
+            p = i + pad - (np.sin(2 * np.pi * (i % period) / period) + 1) / 2 * span
+            k = np.floor(p).astype(np.int64)
+            f = (p - k)[:, None]
+            xm, x0, x1, x2 = xp[k - 1], xp[k], xp[k + 1], xp[k + 2]
+            out[s:s + len(i)] += gain * (x0 + .5 * f * (x1 - xm + f * (2 * xm - 5 * x0 + 4 * x1 - x2 + f * (3 * (x0 - x1) + x2 - xm))))
+    return out * .9, {'depth': depth, 'sweeps_ms': [round(ms, 3) for _, _, ms in voices]}
+
+
 def vinyl(n, rng):
     """`n` samples of a worn record's surface noise, stereo, peaking near 1 on the largest clicks."""
     def convolve(x, kernel):

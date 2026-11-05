@@ -4,11 +4,20 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.1.1] - 2026-11-05
 
-Packaging for the Claude plugin directory. The skill, the sound banks and every sound are unchanged.
+Packaging for the Claude plugin directory, and a fix for the chorus effect. The sound banks are unchanged.
+
+### Fixed
+
+- **The `chorus` effect no longer crackles.**
+  - It ran on FFmpeg's chorus filter, which had two faults:
+    - It read its moving delay at whole samples: about 77 small steps a second at depth 0.6, heard as a buzz under a sustained part.
+    - Whenever a voice's delay came down to zero, it read that voice 61.5 ms late for about 0.2 s, every few seconds.
+  - It now runs in NumPy with the same voices, read between samples, and a selfcheck covers it.
+  - *Midnight Coastline*'s string pads use it. Its recording was rendered again and approved by ear; every other part is unchanged, sample for sample. The synthwave tonal reference was measured again and moved by 0.1 dB at most.
 
 ### Changed
 
-- The example recordings moved out of the repository to the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1), byte for byte the same files, and every link points there. No file in the repository is 5 MiB or larger any more, as the directory requires of a plugin folder; a repository test keeps it so.
+- The example recordings moved out of the repository to the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1), and every link points there. They are byte for byte the same files, except *Midnight Coastline*, rendered again for the chorus fix. No file in the repository is 5 MiB or larger any more, as the directory requires of a plugin folder, and a repository test keeps it so.
 - The README says what the skill runs, every host its setup downloads from, and that it sends nothing.
 - CI tests each pull request once; pushes are tested on main only.
 
