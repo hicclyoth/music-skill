@@ -154,14 +154,12 @@ def test_no_personal_data():
     assert not hits, '\n'.join(hits)
 
 
-def test_demo_projects_and_recordings():
+def test_demo_projects():
     sys.path.insert(0, str(SCRIPTS))
     from musiclib.model import validate
     for name in DEMOS:
         p = load(EXAMPLE / f'{name}.json')
         assert p['mix']['chain'] == 'bus' and 85 < validate(p)['seconds'] < 95
-        audio = (EXAMPLE / f'{name}.mp3').read_bytes()
-        assert len(audio) > 1_000_000 and (audio[:3] == b'ID3' or audio[0] == 0xFF)
 
 
 @pytest.mark.parametrize('name', DEMOS)
@@ -173,13 +171,38 @@ def test_demo_script_writes_the_published_project(tmp_path, name):
     assert load(out) == load(EXAMPLE / f'{name}.json')
 
 
-def test_example_projects_and_recordings():
+def test_example_projects():
     sys.path.insert(0, str(SCRIPTS))
     from musiclib.model import validate
     for folder, name in [(OVERTURE, 'above_the_clouds')] + [(GENRES, n) for n in GENRE_DEMOS]:
         assert validate(load(folder / f'{name}.json'))['seconds'] > 30, name
-        audio = (folder / f'{name}.mp3').read_bytes()
-        assert len(audio) > 500_000 and (audio[:3] == b'ID3' or audio[0] == 0xFF), name
+
+
+RECORDINGS = 'https://github.com/owoevan-dev/music-skill/releases/download/examples-1/'
+
+
+def test_recordings_are_release_assets():
+    """The example recordings are assets of the release examples-1: the READMEs link all eight there, and no recording
+    is a repository file."""
+    readmes = [ROOT / f'README{s}.md' for s in ('', '.ja', '.ko', '.zh-CN', '.zh-TW')] + sorted(ROOT.glob('examples/*/README.md'))
+    names = set()
+    for readme in readmes:
+        links = re.findall(r'\]\(([^)\s]+\.mp3)\)', readme.read_text(encoding='utf-8'))
+        assert links and all(link.startswith(RECORDINGS) for link in links), readme.relative_to(ROOT)
+        names |= {link[len(RECORDINGS):] for link in links}
+    assert names == {'above_the_clouds.mp3', 'daybreak_signal_piano.mp3', *(f'{n}.mp3' for n in GENRE_DEMOS)}
+    assert not [p for p in repository_files() if p.is_file() and p.suffix.lower() in ('.mp3', '.wav', '.flac', '.ogg')]
+
+
+def test_files_fit_the_plugin_directory():
+    """The repository root is the plugin folder the Claude plugin directory checks: every file under 5 MiB, and nothing
+    binary but images (its pre-submission checklist)."""
+    for p in repository_files():
+        if not p.is_file() or {'.git', '__pycache__', '.pytest_cache'} & set(p.parts):
+            continue
+        assert p.stat().st_size < 5 * 2**20, f'{p.relative_to(ROOT)} is 5 MiB or larger'
+        if p.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
+            assert b'\0' not in p.read_bytes(), f'{p.relative_to(ROOT)} is a binary file'
 
 
 def test_overture_script_writes_the_published_project(tmp_path):

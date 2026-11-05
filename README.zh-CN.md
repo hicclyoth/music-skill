@@ -31,19 +31,21 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 
 ## 试听
 
-**[《Above the Clouds》](examples/above-the-clouds)**：为管弦乐团与管风琴写的音乐会序曲。从远方的圆号开始，经过快板、暴风雨和一段宁静的小提琴独奏，最后管风琴加入，以最强音奏出主题大旋律。可以听[整首序曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28）。
+**[《Above the Clouds》](examples/above-the-clouds)**：为管弦乐团与管风琴写的音乐会序曲。从远方的圆号开始，经过快板、暴风雨和一段宁静的小提琴独奏，最后管风琴加入，以最强音奏出主题大旋律。可以听[整首序曲](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)（4:28）。
 
-**[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**：节庆浩室（festival house）。钢琴主题、渐强段和 supersaw 的爆发段（drop），都用这个 skill 内置的合成器和鼓机做成。
+**[《Signal Fire》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**：节庆浩室（festival house）。钢琴主题、渐强段和 supersaw 的爆发段（drop），都用这个 skill 内置的合成器和鼓机做成。
 
 其他风格都在 [examples/genre-demos](examples/genre-demos)：
 
-- [《Late Set at the Corner》](examples/genre-demos/late_set.mp3)：次中音萨克斯加钢琴三重奏的爵士布鲁斯
-- [《Midnight Coastline》](examples/genre-demos/midnight_coastline.mp3)：synthwave，滑音主旋律配上弦乐合成器铺底
-- [《Rain on the Tram Line》](examples/genre-demos/tram_line_rain.mp3)：lo-fi hip-hop，旧磁带味的钢琴和弧顶爵士吉他
-- [《Paper Satellites》](examples/genre-demos/paper_satellites.mp3)：future bass，随底鼓起伏的 supersaw 和弦与 808
-- [《Pixel Lantern》](examples/genre-demos/pixel_lantern.mp3)：按红白机（NES）的限制写成的游戏地图循环配乐
+- [《Late Set at the Corner》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3)：次中音萨克斯加钢琴三重奏的爵士布鲁斯
+- [《Midnight Coastline》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3)：synthwave，滑音主旋律配上弦乐合成器铺底
+- [《Rain on the Tram Line》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3)：lo-fi hip-hop，旧磁带味的钢琴和弧顶爵士吉他
+- [《Paper Satellites》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3)：future bass，随底鼓起伏的 supersaw 和弦与 808
+- [《Pixel Lantern》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3)：按红白机（NES）的限制写成的游戏地图循环配乐
 
 每一首都由 Claude（Opus 5.5）用这个 skill 作曲、编曲和混音。每个示例文件夹都有写出曲子的脚本和项目文件；在 Windows 上用锁定版本的工具重新渲染，会得到相同的母带，差异仅在 24 位的舍入误差。[《Daybreak Signal》](examples/daybreak-signal) 是一首由钢琴主奏的动漫片头风格曲子，示范一首曲子如何一步步修改。
+
+录音是 MP3 文件，可以从 release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1) 下载。
 
 ## 快速开始
 
@@ -129,6 +131,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 ```
 
 不需要 GPU、账号或音频模型。所有文件都从发布者或本项目自己的 release 下载，并用锁定的 SHA-256 校验。
+
+**它运行什么、下载什么、发送什么**：skill 运行的是它的 Python 脚本、FluidSynth、FFmpeg，以及已安装时的 Surge XT，全部在你的电脑上运行，渲染不需要联网。安装时只从 github.com 和 GitHub 的下载主机（api.github.com、raw.githubusercontent.com、objects.githubusercontent.com、release-assets.githubusercontent.com）、PyPI（pedalboard，以及安装 requirements 时的 NumPy）下载；只有从原始录音构建音色库时，才会连到爱荷华大学的 theremin.music.uiowa.edu。脚本会拒绝重定向到其他主机。它不发送任何东西：没有遥测、没有账号、不上传（[PRIVACY.md](PRIVACY.md)）。
 
 ## 使用方法
 

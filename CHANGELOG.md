@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-05
+
+Packaging for the Claude plugin directory. The skill, the sound banks and every sound are unchanged.
+
+### Changed
+
+- The example recordings moved out of the repository to the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1), byte for byte the same files, and every link points there. No file in the repository is 5 MiB or larger any more, as the directory requires of a plugin folder; a repository test keeps it so.
+- The README says what the skill runs, every host its setup downloads from, and that it sends nothing.
+- CI tests each pull request once; pushes are tested on main only.
+
 ## [0.1.0] - 2026-11-04
 
 First public release.
@@ -86,4 +96,5 @@ First public release.
 - `match_notes: "across"` measures each dynamic against its own median, so a dynamic recorded over less of the range than the others can step slightly at the edge of its range (on the Kawai, 0.5 dB at most).
 - Installing banks assumes a runtime folder that no other program changes during the install: archive members are checked against links in the destination before they are written, not while.
 
+[0.1.1]: https://github.com/owoevan-dev/music-skill/releases/tag/v0.1.1
 [0.1.0]: https://github.com/owoevan-dev/music-skill/releases/tag/v0.1.0

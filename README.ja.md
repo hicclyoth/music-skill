@@ -31,19 +31,21 @@ music-skill は、作曲家と小さなスタジオのやり方でオリジナ�
 
 ## 試聴
 
-**[『Above the Clouds』](examples/above-the-clouds)**：オーケストラとオルガンのための演奏会用序曲です。遠くから響くホルンに始まり、アレグロ、嵐、静かなヴァイオリン独奏を経て、オルガンとともに大きな旋律がフォルティッシッシモで鳴ります。[全曲](examples/above-the-clouds/above_the_clouds.mp3)（4:28）をどうぞ。
+**[『Above the Clouds』](examples/above-the-clouds)**：オーケストラとオルガンのための演奏会用序曲です。遠くから響くホルンに始まり、アレグロ、嵐、静かなヴァイオリン独奏を経て、オルガンとともに大きな旋律がフォルティッシッシモで鳴ります。[全曲](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)（4:28）をどうぞ。
 
-**[『Signal Fire』](examples/genre-demos/signal_fire.mp3)**：フェスティバル系のハウスです。ピアノのテーマ、ビルドアップ、スーパーソーのドロップを、スキル内蔵のシンセサイザーとドラムマシンで作っています。
+**[『Signal Fire』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**：フェスティバル系のハウスです。ピアノのテーマ、ビルドアップ、スーパーソーのドロップを、スキル内蔵のシンセサイザーとドラムマシンで作っています。
 
 ほかのスタイルは [examples/genre-demos](examples/genre-demos) にあります。
 
-- [『Late Set at the Corner』](examples/genre-demos/late_set.mp3)：テナーサックスとピアノトリオのジャズ・ブルース
-- [『Midnight Coastline』](examples/genre-demos/midnight_coastline.mp3)：シンセウェイヴ。ストリングマシンのパッドにグライドするリード
-- [『Rain on the Tram Line』](examples/genre-demos/tram_line_rain.mp3)：ローファイ・ヒップホップ。くたびれたテープのピアノとアーチトップギター
-- [『Paper Satellites』](examples/genre-demos/paper_satellites.mp3)：フューチャーベース。キックに合わせてうねるスーパーソーのコードと 808
-- [『Pixel Lantern』](examples/genre-demos/pixel_lantern.mp3)：ファミコン（NES）の制約で書いた、ゲームのフィールド用ループ
+- [『Late Set at the Corner』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3)：テナーサックスとピアノトリオのジャズ・ブルース
+- [『Midnight Coastline』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3)：シンセウェイヴ。ストリングマシンのパッドにグライドするリード
+- [『Rain on the Tram Line』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3)：ローファイ・ヒップホップ。くたびれたテープのピアノとアーチトップギター
+- [『Paper Satellites』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3)：フューチャーベース。キックに合わせてうねるスーパーソーのコードと 808
+- [『Pixel Lantern』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3)：ファミコン（NES）の制約で書いた、ゲームのフィールド用ループ
 
 どの曲も Claude（Opus 5.5）がこのスキルで作曲・編曲・ミックスしました。各サンプルフォルダには曲を書いたスクリプトとプロジェクトファイルがあり、Windows で固定バージョンのツールを使ってレンダリングし直すと、24 ビットの丸め誤差の範囲で同じマスターになります。[『Daybreak Signal』](examples/daybreak-signal) はピアノがメロディーを弾くアニメのオープニング風の曲で、曲をどう手直ししていくかを示しています。
+
+録音は MP3 ファイルで、リリース [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1) からダウンロードできます。
 
 ## クイックスタート
 
@@ -129,6 +131,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 ```
 
 GPU もアカウントも音声モデルも要りません。ダウンロードはすべて配布元か、このプロジェクト自身のリリースから行い、固定した SHA-256 で照合します。
+
+**実行するもの・取得するもの・送信するもの**：スキルが実行するのは Python スクリプト、FluidSynth、FFmpeg、インストールされていれば Surge XT で、すべてお使いのコンピューター上で動き、レンダリングはオフラインです。セットアップがダウンロードするのは github.com と GitHub のダウンロード用ホスト（api.github.com、raw.githubusercontent.com、objects.githubusercontent.com、release-assets.githubusercontent.com）、PyPI（pedalboard と、requirements をインストールするときの NumPy）、そして音源を元の録音からビルドするときだけアイオワ大学の theremin.music.uiowa.edu からだけで、ほかのホストへのリダイレクトはスクリプトが拒否します。何も送信しません。テレメトリーもアカウントもアップロードもありません（[PRIVACY.md](PRIVACY.md)）。
 
 ## 使い方
 

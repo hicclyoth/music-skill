@@ -31,19 +31,21 @@ No audio-generation model is involved. Besides the MP3 and WAV you get the MIDI,
 
 ## Listen
 
-**[Above the Clouds](examples/above-the-clouds)**, a concert overture for orchestra and organ: from a distant horn call through an Allegro, a storm and a still violin solo to its big tune, fff, with the organ. Hear [the whole overture](examples/above-the-clouds/above_the_clouds.mp3) (4:28).
+**[Above the Clouds](examples/above-the-clouds)**, a concert overture for orchestra and organ: from a distant horn call through an Allegro, a storm and a still violin solo to its big tune, fff, with the organ. Hear [the whole overture](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3) (4:28).
 
-**[Signal Fire](examples/genre-demos/signal_fire.mp3)**, festival house: a piano theme, a build-up and a supersaw drop on the skill's own synthesizers and drum machine.
+**[Signal Fire](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**, festival house: a piano theme, a build-up and a supersaw drop on the skill's own synthesizers and drum machine.
 
 More styles, in [examples/genre-demos](examples/genre-demos):
 
-- [Late Set at the Corner](examples/genre-demos/late_set.mp3): a jazz blues for tenor saxophone and piano trio
-- [Midnight Coastline](examples/genre-demos/midnight_coastline.mp3): synthwave, a gliding lead over string-machine pads
-- [Rain on the Tram Line](examples/genre-demos/tram_line_rain.mp3): lo-fi hip-hop, a worn-tape piano and an archtop guitar
-- [Paper Satellites](examples/genre-demos/paper_satellites.mp3): future bass, pumped supersaw chords and an 808
-- [Pixel Lantern](examples/genre-demos/pixel_lantern.mp3): a chiptune loop for a game's overworld, written to the NES's limits
+- [Late Set at the Corner](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3): a jazz blues for tenor saxophone and piano trio
+- [Midnight Coastline](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3): synthwave, a gliding lead over string-machine pads
+- [Rain on the Tram Line](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3): lo-fi hip-hop, a worn-tape piano and an archtop guitar
+- [Paper Satellites](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3): future bass, pumped supersaw chords and an 808
+- [Pixel Lantern](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3): a chiptune loop for a game's overworld, written to the NES's limits
 
 Claude (Opus 5.5) composed, arranged and mixed each piece with this skill. Each example folder has the scripts that wrote its pieces and their project files, and rendering a project again with the pinned Windows tools gives the same master to within 24-bit rounding. [Daybreak Signal](examples/daybreak-signal), an anime-opening-style piece with a piano melody, shows how a piece is revised.
+
+The recordings download as MP3 files from the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1).
 
 ## Quick start
 
@@ -129,6 +131,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 ```
 
 No GPU, no account, no audio model. Every download comes from its publisher or this project's own release and is checked against a pinned SHA-256.
+
+**What it runs, fetches and sends.** The skill runs its Python scripts, FluidSynth, FFmpeg and, if installed, Surge XT, all on your computer, and renders offline. Setup downloads only from github.com and GitHub's download hosts (api.github.com, raw.githubusercontent.com, objects.githubusercontent.com, release-assets.githubusercontent.com), from PyPI (pedalboard, and NumPy when you install the requirements) and, when a bank is built from its sources, from the University of Iowa's theremin.music.uiowa.edu; the scripts refuse a redirect to any other host. It sends nothing: no telemetry, no account, no uploads ([PRIVACY.md](PRIVACY.md)).
 
 ## Using it
 

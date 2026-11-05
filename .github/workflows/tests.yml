@@ -2,7 +2,14 @@ name: tests
 
 on:
   push:
+    branches: [main]
   pull_request:
+
+# Changes arrive as pull requests: a pull request's branch is tested once, through its pull_request run, and a newer
+# commit on it cancels the older run.
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

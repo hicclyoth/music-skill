@@ -5,7 +5,7 @@ license: "MIT; scripts/surge_host.py is GPL-3.0-or-later (LICENSES/GPL-3.0-or-la
 compatibility: "Python 3.10+ with NumPy. FluidSynth 2.x and FFmpeg 6 or newer: pinned portable builds on Windows x64, the system packages on Linux and macOS. Sound banks are downloaded once from this project's GitHub release (twenty-four built here, five repacked unchanged from FreePats), each checked against a pinned SHA-256, with each publisher's own download as the fallback. No GPU and no audio model."
 metadata:
   author: "owoevan-dev"
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Music production

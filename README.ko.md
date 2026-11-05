@@ -31,19 +31,21 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 
 ## 들어 보기
 
-**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](examples/above-the-clouds/above_the_clouds.mp3)(4:28)을 들어 보세요.
+**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)(4:28)을 들어 보세요.
 
-**[《Signal Fire》](examples/genre-demos/signal_fire.mp3)**: 페스티벌 하우스입니다. 피아노 테마, 빌드업, 슈퍼소 드롭을 스킬에 내장된 신시사이저와 드럼 머신으로 만들었습니다.
+**[《Signal Fire》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**: 페스티벌 하우스입니다. 피아노 테마, 빌드업, 슈퍼소 드롭을 스킬에 내장된 신시사이저와 드럼 머신으로 만들었습니다.
 
 다른 스타일은 [examples/genre-demos](examples/genre-demos)에 있습니다.
 
-- [《Late Set at the Corner》](examples/genre-demos/late_set.mp3): 테너 색소폰과 피아노 트리오의 재즈 블루스
-- [《Midnight Coastline》](examples/genre-demos/midnight_coastline.mp3): 신스웨이브. 스트링 머신 패드 위로 글라이드하는 리드
-- [《Rain on the Tram Line》](examples/genre-demos/tram_line_rain.mp3): 로파이 힙합. 낡은 테이프 느낌의 피아노와 아치톱 기타
-- [《Paper Satellites》](examples/genre-demos/paper_satellites.mp3): 퓨처 베이스. 킥에 맞춰 출렁이는 슈퍼소 코드와 808
-- [《Pixel Lantern》](examples/genre-demos/pixel_lantern.mp3): 패미컴(NES)의 제약에 맞춰 쓴 게임 필드용 루프
+- [《Late Set at the Corner》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3): 테너 색소폰과 피아노 트리오의 재즈 블루스
+- [《Midnight Coastline》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3): 신스웨이브. 스트링 머신 패드 위로 글라이드하는 리드
+- [《Rain on the Tram Line》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3): 로파이 힙합. 낡은 테이프 느낌의 피아노와 아치톱 기타
+- [《Paper Satellites》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3): 퓨처 베이스. 킥에 맞춰 출렁이는 슈퍼소 코드와 808
+- [《Pixel Lantern》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3): 패미컴(NES)의 제약에 맞춰 쓴 게임 필드용 루프
 
 모든 곡은 Claude(Opus 5.5)가 이 스킬로 작곡·편곡·믹싱했습니다. 각 예제 폴더에는 곡을 쓴 스크립트와 프로젝트 파일이 있고, Windows에서 고정된 버전의 도구로 다시 렌더링하면 24비트 반올림 오차 범위 안에서 같은 마스터가 나옵니다. [《Daybreak Signal》](examples/daybreak-signal)은 피아노가 멜로디를 맡는 애니메이션 오프닝 풍의 곡으로, 곡을 어떻게 다듬어 가는지 보여 줍니다.
+
+녹음은 MP3 파일이며, 릴리스 [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1)에서 내려받을 수 있습니다.
 
 ## 빠른 시작
 
@@ -129,6 +131,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 ```
 
 GPU도, 계정도, 오디오 모델도 필요 없습니다. 모든 파일은 배포처나 이 프로젝트의 릴리스에서 내려받고, 고정된 SHA-256으로 확인합니다.
+
+**실행하는 것, 가져오는 것, 보내는 것**: 스킬은 Python 스크립트, FluidSynth, FFmpeg와 설치되어 있다면 Surge XT를 실행하며, 모두 사용자의 컴퓨터에서 동작하고 렌더링은 오프라인으로 합니다. 설정 단계에서는 github.com과 GitHub의 다운로드 호스트(api.github.com, raw.githubusercontent.com, objects.githubusercontent.com, release-assets.githubusercontent.com), PyPI(pedalboard, 그리고 requirements를 설치할 때의 NumPy), 음원을 원본 녹음에서 빌드할 때만 아이오와 대학교의 theremin.music.uiowa.edu에서만 내려받으며, 다른 호스트로의 리디렉션은 스크립트가 거부합니다. 아무것도 보내지 않습니다. 텔레메트리도, 계정도, 업로드도 없습니다([PRIVACY.md](PRIVACY.md)).
 
 ## 사용법
 

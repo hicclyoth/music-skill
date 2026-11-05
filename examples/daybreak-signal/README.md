@@ -2,7 +2,7 @@
 
 An original anime-opening-style instrumental in TV size. Claude (Opus 5.5) composed, arranged and mixed it with the music-production skill. Nothing was played by hand and no audio model generated anything: `daybreak_signal.py` writes every note, and the skill renders it.
 
-- [piano.mp3](piano.mp3): the melody on the grand piano, doubled an octave below on long notes, over a guitar band and strings.
+- [daybreak_signal_piano.mp3](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/daybreak_signal_piano.mp3): the melody on the grand piano, doubled an octave below on long notes, over a guitar band and strings.
 
 This is the worked example: how the piece was revised, and how to render it yourself.
 
