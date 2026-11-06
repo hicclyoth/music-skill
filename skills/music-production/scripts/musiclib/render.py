@@ -205,7 +205,7 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
 
 def room_mix(p,clock,cfg,output,frames,duration):
     """The original chain (mix.chain "room"): every stem dry, one shared noise room, a delay send and a limiter."""
-    from .mixbus import DELAY_BAND
+    from .mixbus import DELAY_BAND,delay_times
     ir=output/'returns'/'room_ir.wav';audio.room_ir(ir,p['mix'].get('room_seconds',1.1))
     args=[];graph=[];dry=[];room=[];delay=[]
     for i,t in enumerate(p['tracks']):
@@ -216,8 +216,7 @@ def room_mix(p,clock,cfg,output,frames,duration):
         if fx.get('reverb_db') is not None:
             graph.append(f'[ri{i}]volume={fx["reverb_db"]}dB[r{i}]');room.append(f'[r{i}]')
         if fx.get('delay_db') is not None:
-            ms=clock.spb[0]*fx.get('delay_quarters',.75)*1000
-            graph.append(f'[di{i}]highpass=f={DELAY_BAND[0]},lowpass=f={DELAY_BAND[1]},adelay={ms:.6f}|{ms*1.5:.6f},volume={fx["delay_db"]}dB[e{i}]');delay.append(f'[e{i}]')
+            graph.append(f'[di{i}]highpass=f={DELAY_BAND[0]},lowpass=f={DELAY_BAND[1]},adelay={delay_times(clock,fx)},volume={fx["delay_db"]}dB[e{i}]');delay.append(f'[e{i}]')
     buses=dry[:];exports=[]
     if room:
         args.extend(['-i',ir])

@@ -79,6 +79,13 @@ DELAY_BAND = (500, 4000)  # a delay send's high- and low-pass (Hz), on both chai
 RETURN_LOWPASS = 13000    # each space's return low-pass (Hz); its high-pass is SPACES[name][5]
 
 
+def delay_times(clock, fx):
+    """A part's delay as FFmpeg's adelay takes it: left|right in ms, the right 1.5 times the left, from its
+    delay_quarters (0.75 by default) at the first tempo."""
+    ms = clock.spb[0] * fx.get('delay_quarters', .75) * 1000
+    return f'{ms:.6f}|{ms * 1.5:.6f}'
+
+
 def bus_of(track):
     if track['mix'].get('bus'):
         return track['mix']['bus']
@@ -160,8 +167,7 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
             graph.append(f'[r{k}]volume={send:.6f}dB[rs{k}]')
             sends[space_of(t)].append(f'[rs{k}]')
         if fx.get('delay_db') is not None:
-            ms = clock.spb[0] * fx.get('delay_quarters', .75) * 1000
-            graph.append(f'[e{k}]highpass=f={DELAY_BAND[0]},lowpass=f={DELAY_BAND[1]},adelay={ms:.6f}|{ms * 1.5:.6f},volume={fx["delay_db"]}dB[es{k}]')
+            graph.append(f'[e{k}]highpass=f={DELAY_BAND[0]},lowpass=f={DELAY_BAND[1]},adelay={delay_times(clock, fx)},volume={fx["delay_db"]}dB[es{k}]')
             delays.append(f'[es{k}]')
     sums = []
     wide = p['mix'].get('dynamics') == 'wide'

@@ -1438,7 +1438,16 @@ def checks(work,config=None):
         for g,n in (('returns','delay'),('premix','premix'),('master','master')):
             assert g4[g][n]['passages'] and not any(x.get('follows_part_levels') for x in g4[g][n]['passages']),(g,g4[g][n])
         assert first_change(tp)<1,first_change(tp)
-        for res in (r,m,q,bp,ec,sq,dy,bd,tp):apart(res)
+        # The same delay at another tempo and length in quarter notes (0.75 at 100 BPM, 1.125 at 150: 0.45 s, though the
+        # two products differ in the last digit) is the same route: a louder bass's move still follows the levels.
+        eq0=copy.deepcopy(cq);eq0['clock']['tempo']=[[0,100]];eq1=copy.deepcopy(eq0);eq1['clock']['tempo']=[[0,150]]
+        for tr in eq1['tracks']:
+            if tr['id'] in ('bass','lead'):tr['mix']['delay_quarters']=1.125
+        next(tr for tr in eq1['tracks'] if tr['id']=='bass')['mix']['level_dbfs']+=6
+        bass2=tone2(1000,.01);eqr=compare(chain('equal_delay_before',eq0,bass2,lead0,lag=.45),chain('equal_delay_after',eq1,2*bass2,lead0,lag=.45))
+        for g,n in (('returns','delay'),('premix','premix'),('master','master')):
+            e=eqr['files'][g][n];assert e['passages'] and not real(e),(g,e)
+        for res in (r,m,q,bp,ec,sq,dy,bd,tp,eqr):apart(res)
         return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed'],'echo':ec['summary']['changed'],
                 'band':bd['summary']['changed'],'tempo':tp['summary']['changed']}
     check('compare_finds_level_and_local_changes',compare_unit)
@@ -1655,7 +1664,52 @@ def checks(work,config=None):
                 run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'compare',str(rest),str(added),'--output',str(report),*extra],capture_output=True,text=True,encoding='utf-8',errors='replace')
                 saved=json.loads(report.read_text(encoding='utf-8')) if report.is_file() else {}
                 assert run.returncode==0 and saved.get('clip',{}).get('error') and saved['files']['master']['master']['passages'],(why,run.stderr[-600:],saved.get('clip'))
-            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard,'silent_side_clips':cases}
+            # compare judges a part's change as it is sent, through gains it models on FFmpeg's highpass and lowpass:
+            # tones through the delay's and the hall's filters, FFmpeg against the model.  Then two cases through the
+            # real mixer, two parts on the fx bus that share only a delay:
+            # - a lead of a loud 18 kHz tone over a weak 1 kHz line that turns to 2.3 kHz for 0.1 s, the other part 6 dB
+            #   louder: the delay's lowpass cuts 18 kHz 38 dB (an analog formula says 26), so the change counts in the
+            #   return, and it stays a change there, though the lead's stem shows nothing;
+            # - the lead 0.11 dB louder into FFmpeg's compressor, the other part 6 dB louder: the compressed lead differs
+            #   a little everywhere, under the stem's 40 dB test, and the return only follows the levels.
+            from musiclib import mixbus
+            from musiclib.compare import _band
+            cfgd=audio.load_config(config);mx=work/'mixer_case';mx.mkdir(exist_ok=True)
+            freqs=[40,100,250,500,1000,2000,4000,8000,13000,16000,18000,21000];seg,gap=rate//2,rate//10
+            tones=np.zeros(((seg+gap)*len(freqs),2))
+            for k,fq in enumerate(freqs):tones[k*(seg+gap):k*(seg+gap)+seg]=(.5*np.sin(2*np.pi*fq*np.arange(seg)/rate))[:,None]
+            audio.write_wav(mx/'tones.wav',tones.astype(np.float32))
+            lvl=lambda y,k:10*np.log10(np.mean(np.asarray(y[k*(seg+gap)+seg//4:k*(seg+gap)+3*seg//4],dtype=np.float64)**2))
+            filters={}
+            for hp,lp in (mixbus.DELAY_BAND,(mixbus.SPACES['hall'][5],mixbus.RETURN_LOWPASS)):
+                audio.ffmpeg(cfgd,['-i',mx/'tones.wav','-af',f'highpass=f={hp},lowpass=f={lp}','-c:a','pcm_f32le',mx/f'tones_{hp}.wav'],mx,f'tones_{hp}')
+                y,z=audio.read_wav(mx/f'tones_{hp}.wav')[0],_band(tones,hp,lp)
+                err=[abs(lvl(y,k)-lvl(z,k)) for k in range(len(freqs))];filters[f'{hp}-{lp}']=round(max(err),4)
+                assert max(err)<.05,(hp,lp,[round(e,3) for e in err])
+            pm=example();lead=next(t for t in pm['tracks'] if t['id']=='lead');other=copy.deepcopy(next(t for t in pm['tracks'] if t['id']=='bass'))
+            other['id']='other';pm['tracks']=[lead,other];pm['mix']={'chain':'bus','dynamics':'wide','target_lufs':-18};pm['clock']['tempo']=[[0,120]]
+            for tr in pm['tracks']:tr['mix'].update(bus='fx',reverb_db=None,delay_db=-6)
+            cm=Clock(pm);n=round((cm.end+cm.tail)*rate);tt=np.arange(n)/rate
+            st=lambda x:np.stack([x,.9*x],axis=1);sine=lambda f,a:a*np.sin(2*np.pi*f*tt)
+            def mixed(name,parts):
+                out=mx/name
+                for d in ('stems','returns','logs'):(out/d).mkdir(parents=True,exist_ok=True)
+                for k,x in parts.items():audio.write_wav(out/'stems'/f'{k}.wav',np.asarray(x,dtype=np.float32))
+                mixbus.mix(pm,cm,cfgd,out,n);mixbus.master(pm,cfgd,out)
+                save_json(out/'project.json',pm);save_json(out/'report.json',{'renderer_sha256':'one'})
+                save_json(out/'stem_receipts.json',[{'track':k,'cache_key':k,'raw_sha256':k} for k in parts]);return out
+            s0,s1=int(6*rate),int(6.1*rate);mid0=sine(1000,.00008);mid1=mid0.copy();mid1[s0:s1]=sine(2300,.00008)[s0:s1];o0=st(sine(700,.00004))
+            hf=compare(mixed('high_before',{'lead':st(sine(18000,.4)+mid0),'other':o0}),mixed('high_after',{'lead':st(sine(18000,.4)+mid1),'other':2*o0}))['files']
+            assert not hf['stems']['lead']['passages'] and any(x['start_s']<6.4 and x['end_s']>6.6 for x in real(hf['returns']['delay'])),(hf['stems']['lead'],hf['returns']['delay'])
+            def compressed(x,name):
+                audio.write_wav(mx/f'{name}_in.wav',x.astype(np.float32))
+                audio.ffmpeg(cfgd,['-i',mx/f'{name}_in.wav','-af','acompressor=threshold=0.08:ratio=3:attack=6:release=120:makeup=1','-c:a','pcm_f32le',mx/f'{name}.wav'],mx,name)
+                return audio.read_wav(mx/f'{name}.wav')[0]
+            voice=st((.15*np.sin(2*np.pi*440*tt)+.05*np.sin(2*np.pi*1320*tt))*(1+.5*np.sin(2*np.pi*.3*tt)));o1=st(sine(700,.02))
+            cl=compare(mixed('comp_before',{'lead':compressed(voice,'comp0'),'other':o1}),mixed('comp_after',{'lead':compressed(voice*10**(.11/20),'comp1'),'other':2*o1}))['files']
+            assert not cl['stems']['lead']['passages'] and cl['returns']['delay']['passages'] and not real(cl['returns']['delay']),(cl['stems']['lead'],cl['returns']['delay'])
+            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard,'silent_side_clips':cases,
+                    'filter_model_worst_db':filters,'hidden_high_change':real(hf['returns']['delay']),'compressed_level_only':cl['returns']['delay']['passages']}
         check('compare_reports_what_changed_and_where',compare_render)
         def loop_render():
             from musiclib import loop

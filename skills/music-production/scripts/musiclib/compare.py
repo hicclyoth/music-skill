@@ -178,15 +178,27 @@ def _trail(p, k):
     return out
 
 
+def _biquad_gain(f, fc, high, q=.707):
+    """The gain at the frequencies f (Hz) of FFmpeg's two-pole highpass (high) or lowpass at fc Hz: its biquad (the
+    audio EQ cookbook's, Q 0.707 as FFmpeg sets it by default) on the unit circle.  An analog formula in f / fc misses
+    the zero a digital lowpass puts at the Nyquist frequency: 12 dB too little cut at 18 kHz under a 4 kHz lowpass."""
+    w0 = 2 * math.pi * fc / RATE
+    c, alpha = math.cos(w0), math.sin(w0) / (2 * q)
+    b = (np.array([1 + c, -2 * (1 + c), 1 + c]) if high else np.array([1 - c, 2 * (1 - c), 1 - c])) / 2
+    a = np.array([1 + alpha, -2 * c, 1 - alpha])
+    z = np.exp(-2j * math.pi * np.asarray(f, dtype=np.float64) / RATE)
+    return np.abs((b[0] + b[1] * z + b[2] * z * z) / (a[0] + a[1] * z + a[2] * z * z))
+
+
 def _band(x, hp=None, lp=None):
-    """x (frames, channels) through the gains of FFmpeg's highpass and lowpass filters at hp and lp Hz (two poles,
-    Butterworth: 12 dB per octave), without their phase."""
+    """x (frames, channels) through the gains of FFmpeg's highpass and lowpass filters at hp and lp Hz, without their
+    phase."""
     f = np.fft.rfftfreq(len(x), 1 / RATE)
     h = np.ones_like(f)
     if hp:
-        h *= (f / hp) ** 2 / np.sqrt(1 + (f / hp) ** 4)
+        h *= _biquad_gain(f, hp, True)
     if lp:
-        h /= np.sqrt(1 + (f / lp) ** 4)
+        h *= _biquad_gain(f, lp, False)
     return np.fft.irfft(np.fft.rfft(x, axis=0) * h[:, None], n=len(x), axis=0)
 
 
@@ -308,18 +320,19 @@ def _explain(before, project, clock, files, data, same_runtime, stem_files):
     changed (another renderer, another project mix, a part sent to another bus or space, at another send level or with
     another delay time) or where nothing upstream moved in level: a mix processor that acts differently is a change, not
     a part's level.  `stem_files` holds the stems' paths in the two renders."""
-    from .mixbus import DELAY_BAND, RETURN_LOWPASS, SPACES, bus_of, space_of
+    from .mixbus import DELAY_BAND, RETURN_LOWPASS, SPACES, bus_of, delay_times, space_of
     tracks = project['tracks']
     stems = {n: data[('stems', n)] for n in files['stems'] if ('stems', n) in data}
     bus_chain = project['mix'].get('chain', 'room') == 'bus'
     chain_changed = not same_runtime or before['mix'] != project['mix']
 
     def route(t, c):
-        """How a part reaches the buses and returns: bus, space, sends, where it stands on the stage and its delay's time
-        in seconds, which follows the tempo of the render's clock `c`."""
+        """How a part reaches the buses and returns: bus, space, sends, where it stands on the stage and its delay's
+        times as the mix gives them to FFmpeg, which follow the tempo of the render's clock `c` (the same delay at
+        another tempo and length in beats is the same route, though its seconds may differ in the last digit)."""
         m = t['mix']
-        delay_s = c.spb[0] * m.get('delay_quarters', .75) if m.get('delay_db') is not None else None
-        return (bus_of(t), space_of(t), m.get('reverb_db'), m.get('delay_db'), delay_s, m.get('depth_m'), m.get('facing'))
+        delay = delay_times(c, m) if m.get('delay_db') is not None else None
+        return (bus_of(t), space_of(t), m.get('reverb_db'), m.get('delay_db'), delay, m.get('depth_m'), m.get('facing'))
     old, then = {t['id']: t for t in before['tracks']}, Clock(before)
     now = {t['id'] for t in tracks}
     rerouted = {t['id'] for t in tracks if t['id'] not in old or route(old[t['id']], then) != route(t, clock)} | (set(old) - now)
