@@ -92,12 +92,17 @@ def line_of(t):
     return None
 
 def _merge(notes):
-    """[pitch, start, end, sounding] events in onset order: a pitch repeated or held on across rests of a beat or less is
-    one event, one gesture; `sounding` keeps its notes' own (start, end), so a rest inside it is not taken for sound."""
+    """[pitch, start, end, sounding] events from notes in onset order: a pitch repeated or held on across rests of a beat
+    or less is one event, one gesture; `sounding` is the time the pitch sounds in it, its notes' (start, end) joined
+    where they overlap or meet, so a rest inside it is not taken for sound and a note struck again over the held pitch
+    is not counted twice."""
     out=[]
     for n in notes:
         e=n['on']+n['duration']
-        if out and out[-1][0]==n['pitch'] and n['on']-out[-1][2]<=1+1e-9:out[-1][2]=max(out[-1][2],e);out[-1][3].append((n['on'],e))
+        if out and out[-1][0]==n['pitch'] and n['on']-out[-1][2]<=1+1e-9:
+            x=out[-1];x[2]=max(x[2],e)
+            if n['on']<=x[3][-1][1]+1e-9:x[3][-1]=(x[3][-1][0],max(x[3][-1][1],e))
+            else:x[3].append((n['on'],e))
         else:out.append([n['pitch'],n['on'],e,[(n['on'],e)]])
     return out
 
@@ -145,8 +150,8 @@ def outside_chord(p,clock,limit=40):
     """Notes outside the written chord in every pitched part, named as embellishing tones (embellishment()).  A note
     is checked where it is struck on a beat or sounds a beat or more in the chord, or is held a beat or more into a
     chord (all of a shorter chord, if that is half a beat or more); a pitch repeated or held on across rests of a beat
-    or less is one gesture, approached by itself in a later chord, and a longer rest ends it.  Only the time a note
-    sounds counts: a chord that falls in a rest is not sounded against.  Lines and voices are found as in voices().  Notes not
+    or less is one gesture, approached by itself in a later chord, and a longer rest ends it.  Only the time a pitch
+    sounds counts, once where its notes overlap: a chord that falls in a rest is not sounded against.  Lines and voices are found as in voices().  Notes not
     resolved by step are listed: in common practice nearly every embellishing tone lies between notes consonant with
     the bass (Open Music Theory), while rock melodies leave such notes unresolved, mostly in pentatonic verses
     (Temperley 2007)."""

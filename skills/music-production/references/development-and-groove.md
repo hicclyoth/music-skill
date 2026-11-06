@@ -125,7 +125,8 @@ voicing the part's own rhythm (blocks, broken chords, a strum, held tones).
   a cause of a lead lost in a drop ([electronic.md](electronic.md)). The example below uses the melody's lowest note in
   the bar less a minor third. `start` begins near a given voicing; `avoid_parallels` avoids consecutive fifths and octaves
   wherever the range allows another voicing, for common-practice and choral writing (pop and rock move in parallel on
-  purpose, so it is off by default); `review` lists any that remain.
+  purpose, so it is off by default). Where the range allows none, the fewest remain; `review` lists parallels between
+  parts that each play one line (voices written a part each), not inside one chord part.
 
 ```python
 from musiclib.voicing import voice_lead

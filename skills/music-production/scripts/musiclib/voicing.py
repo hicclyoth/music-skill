@@ -20,8 +20,9 @@ cannot meet these rules in its range gives up the unisons first, then the distan
 spacing rules.  Voices never cross, since each keeps its rank.
 With `avoid_parallels`, voicings without consecutive perfect fifths or octaves between any two voices are chosen
 wherever the range allows one, at any cost in motion, as common-practice and choral writing ask; where it allows none
-(three voices for D then E between C4 and C5 have one voicing each), the fewest remain, and `review` lists them.  Pop
-and rock move in parallel on purpose (power chords), so it is off by default.
+(three voices for D then E between C4 and C5 have one voicing each), the fewest remain.  `review` lists parallels
+between parts that each play one line, as voices written a part each, but not inside one chord part.  Pop and rock
+move in parallel on purpose (power chords), so it is off by default.
 
 With fewer voices than chord tones, tones are left out in the order arrangers drop them: the perfect fifth, the root
 (the bass part plays it), an eleventh, a ninth; under a major seventh the root goes before the fifth, as it would rub

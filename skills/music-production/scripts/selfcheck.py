@@ -217,6 +217,13 @@ def checks(work,config=None):
         # A chord that falls in the rest between two repeated notes is not sounded against.
         q=song([part('lead','melody',[(0,60,1),(2,60,.25)])],['C',{'bar':1,'beat':1,'symbol':'D'},{'bar':1,'beat':2,'symbol':'C'}],bars=1)
         assert outside_chord(q,Clock(q))['count']==0
+        # A note struck again over the same held pitch adds no time: C4 sounds 0.6 beat into D (not enough to ask about)
+        # or a whole beat in D and 0.3 into the next C (not held on, so unresolved), with or without the second note.
+        for role in ('melody','harmony'):
+            for notes,kinds in (([(0,60,1.6)],None),([(0,60,1.6),(.75,60,.85)],None),
+                                ([(0,60,2.3)],{'not resolved by step':1}),([(0,60,2.3),(1.9,60,.4)],{'not resolved by step':1})):
+                q=song([part('x',role,notes)],['C',{'bar':1,'beat':1,'symbol':'D'},{'bar':1,'beat':2,'symbol':'C'}],bars=1)
+                assert outside_chord(q,Clock(q))['tracks'].get('x',{}).get('outside_chord')==kinds,(role,notes)
         # 6/8 beats in dotted quarters: attacks on them are not syncopated, one an eighth before the second beat pushes it.
         from musiclib.review import stiffness,repetition
         def compound(onsets):
@@ -1183,6 +1190,8 @@ def checks(work,config=None):
         # with room, none does.
         assert voice_lead(['D','E'],voices=3,low=60,high=72,avoid_parallels=True)==[[62,66,69],[64,68,71]]
         assert parallels(voice_lead(['D','E'],voices=3,low=55,high=79,avoid_parallels=True))==0
+        # Here the smoothest voicing keeps a parallel that one moving further avoids: a parallel must outweigh any motion.
+        assert parallels(voice_lead(['C','B','Fm','G'],voices=4,low=48,high=66,avoid_parallels=True))==0
         caps=[64,62,64,60];capped=voice_lead(['F','G','Em','Am'],voices=3,ceilings=caps)
         assert all(v[-1]<=c for v,c in zip(capped,caps)),capped
         assert sorted(chord_tones('Cmaj13',3))==[4,9,11] and sorted(chord_tones('G7',5))==[2,5,7,7,11] and sorted(chord_tones('C/E',3))==[0,4,7]
