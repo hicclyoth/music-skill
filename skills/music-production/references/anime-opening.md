@@ -59,7 +59,7 @@ Write the B-melo with two or three of these, not all of them. Let it end on a ch
   - **Down a minor third** (to VI): the bass climbs from 2 to 5, then III, which normally leads to vi, resolves to a major VI instead.
 
   The two are reciprocal: up and then down returns to the first key. A stepwise lift into a last chorus is still available, prepared by the new key's dominant.
-- **Distorted rhythm guitars play power chords** (root and fifth, often with the octave). Distortion adds intermodulation products, which stay simple for a fifth but turn a third into a dense cluster, and a power chord takes on the quality the surrounding harmony implies (Lilja 2015). Let the thirds come from the bass line, piano, strings and lead. `review` still checks the written chord list against the foreground.
+- **Distorted rhythm guitars play power chords** (root and fifth, often with the octave). Distortion's harmonics and intermodulation give most chords a major quality: a distorted major triad sounds much like a power chord, while a minor third clashes with that implied major third and turns rough, and a power chord takes on the quality the surrounding harmony implies (Lilja 2015). Let the minor thirds and colour tones come from the bass line, piano, strings and lead. `review` still checks the written chord list against the foreground.
 
 ## Melody for an instrumental lead
 
@@ -134,7 +134,7 @@ Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)).
 - Summach, J. (2011). [The Structure, Function, and Genesis of the Prechorus](https://mtosmt.org/issues/mto.11.17.3/mto.11.17.3.summach.html). *Music Theory Online* 17(3).
 - Witek, M. A. G., Clarke, E. F., Wallentin, M., Kringelbach, M. L. and Vuust, P. (2014). [Syncopation, Body-Movement and Pleasure in Groove Music](https://doi.org/10.1371/journal.pone.0094446). *PLoS ONE* 9(4): e94446.
 - Frühauf, J., Kopiez, R. and Platz, F. (2013). Music on the timing grid: the influence of microtiming on the perceived groove quality of a simple drum pattern performance. *Musicae Scientiae* 17(2), 246–260.
-- Lilja, E. (2015). [Dealing with the 3rd](https://iipc.utu.fi/MHM/Lilja2.pdf): distorted chords in classic heavy metal. Modern Heavy Metal conference, Helsinki.
+- Lilja, E. (2015). Dealing with the 3rd: anatomy of distorted chords and subsequent compositional features of classic heavy metal. In T.-M. Karjalainen and K. Kärki (eds.), *Modern Heavy Metal: Markets, Practices and Cultures*, pp. 393–403. Helsinki and Turku: Aalto University and the International Institute for Popular Culture. [Archived PDF](https://web.archive.org/web/20250124071258/https://iipc.utu.fi/MHM/Lilja2.pdf).
 - Elowsson, A. and Friberg, A. (2017). [Long-term Average Spectrum in Popular Music and its Relation to the Level of the Percussion](https://www.aes.org/e-lib/browse.cfm?elib=18638). AES 142nd Convention.
 - Pestana, P. D., Ma, Z., Reiss, J. D., Barbosa, A. and Black, D. A. A. (2013). [Spectral Characteristics of Popular Commercial Recordings 1950–2010](https://www.aes.org/e-lib/browse.cfm?elib=17010). AES 135th Convention, paper 8960.
 - Anime Nation. [Ask John: What Anime Have the Longest & Shortest Openings?](https://www.animenation.net/blog/?p=23043)
