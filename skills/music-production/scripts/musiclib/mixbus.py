@@ -20,6 +20,11 @@ up its density over a few to 40 ms, with discrete early reflections in the room,
 works as in the room chain.  A part with mix.depth_m gets its early reflections from that stage position before the
 mix (musiclib/stage.py) and sends more to its space, half the distance loss.
 
+Files.  returns/ keeps each bus (bus_<bus>.wav), each space's return (<space>_return.wav), the delay return
+(delay_return.wav) and the impulse responses.  The buses and the returns are the premix in parts: summed they give it
+back, which the render checks, so a mix can be rebuilt from them in another program.  The stems in stems/ are each
+part before its bus and without the shared spaces.
+
 Master.  The premix is brought to -18 LUFS for glue compression (about 2 dB on the loudest passages), an air shelf, a
 little presence and a -1 dBFS limiter.  One gain toward mix.target_lufs then feeds a -1.5 dBFS sample-peak limiter;
 if limiting costs loudness the gain is corrected (at most three passes).  With mix.loudness "loud" the gained mix first
@@ -119,8 +124,9 @@ def space_ir(name, seed=20261101):
 
 
 def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
-    """Mix the render's processed stems through the buses and spaces into premix.wav.  Each bus and impulse
-    response is kept in returns/, and bus_level_change_db.json compares every bus with its stems' sum.
+    """Mix the render's processed stems through the buses and spaces into premix.wav.  Each bus, reverb and delay
+    return and impulse response is kept in returns/; the buses and returns must add up to the premix, and
+    bus_level_change_db.json compares every bus with its stems' sum.
 
     With `tracks` (a layer of a game loop) only those parts go through the same buses and spaces into `premix`; the
     impulse responses of the full mix are reused and nothing else is written."""
@@ -166,18 +172,22 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
             graph += DRUM_BUS if b == 'drums' else [f'[sum_{b}]{BUS_FILTER[b]}[bus_{b}]']
         graph.append(f'[bus_{b}]asplit=2[busmix_{b}][busexp_{b}]' if full else f'[bus_{b}]anull[busmix_{b}]')
         sums.append(f'[busmix_{b}]')
+    returned = []  # each return the full mix writes to returns/: (graph label, file)
     for name, items in sends.items():
         if not items:
             graph.append(f'[{ir_input[name]}:a]anullsink')
             continue
         graph.append(''.join(items) + (f'amix=inputs={len(items)}:normalize=0' if len(items) > 1 else 'anull') + f'[send_{name}]')
         graph.append(f'[send_{name}][{ir_input[name]}:a]afir={audio.afir_options(cfg)},'
-                     f'highpass=f={SPACES[name][5]},lowpass=f=13000,apad,atrim=end_sample={frames}[ret_{name}]')
+                     f'highpass=f={SPACES[name][5]},lowpass=f=13000,apad,atrim=end_sample={frames}'
+                     + (f',asplit=2[ret_{name}][retexp_{name}]' if full else f'[ret_{name}]'))
         sums.append(f'[ret_{name}]')
+        returned.append((f'retexp_{name}', returns / f'{name}_return.wav'))
     if delays:
         graph.append(''.join(delays) + (f'amix=inputs={len(delays)}:normalize=0' if len(delays) > 1 else 'anull')
-                     + f',apad,atrim=end_sample={frames}[ret_delay]')
+                     + f',apad,atrim=end_sample={frames}' + (',asplit=2[ret_delay][retexp_delay]' if full else '[ret_delay]'))
         sums.append('[ret_delay]')
+        returned.append(('retexp_delay', returns / 'delay_return.wav'))
     # A loop from bar 1 replays the first frames on every repeat, where a fade-in would dent each downbeat.
     fade = '' if starts_at_zero(p) else ',afade=t=in:st=0:d=0.005'
     graph.append(''.join(sums) + f'amix=inputs={len(sums)}:normalize=0:duration=longest,'
@@ -188,21 +198,33 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
     for b in BUSES:
         if dry[b] and full:
             exports += ['-map', f'[busexp_{b}]', '-ar', str(RATE), '-c:a', 'pcm_f32le', returns / f'bus_{b}.wav']
+    for label, path in returned if full else ():
+        exports += ['-map', f'[{label}]', '-ar', str(RATE), '-c:a', 'pcm_f32le', path]
     audio.ffmpeg(cfg, [*args, '-filter_complex', text, '-map', '[mix]', '-ar', str(RATE), '-c:a', 'pcm_f32le',
                        premix, *exports], output / 'logs', 'mix' if full else 'mix_' + premix.stem)
     if not full:
         return None
 
-    change = {}
+    change, total = {}, None
     for b in BUSES:
         members = [s for s, t in zip(stems, tracks) if bus_of(t) == b]
         if members:
             summed = sum(audio.read_wav(s)[0].astype(np.float64) for s in members)
-            change[b] = round(k_level(audio.read_wav(returns / f'bus_{b}.wav')[0]) - k_level(summed), 2)
+            bus = np.asarray(audio.read_wav(returns / f'bus_{b}.wav')[0], dtype=np.float64)
+            change[b] = round(k_level(bus) - k_level(summed), 2)
+            total = bus if total is None else total + bus
+    for _, path in returned:
+        total = total + audio.read_wav(path)[0]
     save_json(output / 'bus_level_change_db.json', change)
+    # Summed, the buses and returns give the premix back up to float rounding (the premix fades in over its first 5 ms).
+    # The copy releases the mapped premix, which the master may rewrite.
+    mixed = np.asarray(audio.read_wav(premix)[0], dtype=np.float64)
+    skip = int(.01 * RATE)
+    worst = float(np.max(np.abs(total[skip:] - mixed[skip:]))) if len(mixed) > skip else 0.0
     return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
                                                                          if t['mix'].get('reverb_db') is not None},
-            'level_change_db': change}
+            'level_change_db': change, 'returns': [path.name for _, path in returned],
+            'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1), 'adds_up_to_premix': worst < 1e-5}
 
 
 def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):

@@ -1,0 +1,2363 @@
+{
+  "schema": "music-production/v1",
+  "title": "Porch Light",
+  "version": "1.0.r1",
+  "authorship": "Original composition authored for this project; no source melody or MIDI sequence copied",
+  "brief": "An original eight-bar miniature for the before-and-after example: one note changes between two renders.",
+  "clock": {
+    "bars": 8,
+    "meter": [
+      4,
+      4
+    ],
+    "tempo": [
+      [
+        0,
+        92
+      ]
+    ],
+    "tail_seconds": 4
+  },
+  "sections": [
+    {
+      "id": "question",
+      "start_bar": 0,
+      "bars": 4,
+      "intent": "A phrase that turns to the dominant"
+    },
+    {
+      "id": "answer",
+      "start_bar": 4,
+      "bars": 4,
+      "intent": "The answer: a held note in bar 5, which the example revises, and a close on the tonic"
+    }
+  ],
+  "tracks": [
+    {
+      "id": "flute",
+      "name": "flute",
+      "role": "melody",
+      "program": 73,
+      "bank": 0,
+      "engine": "soundfont",
+      "drums": false,
+      "range": [
+        60,
+        96
+      ],
+      "notes": [
+        {
+          "id": "flute_b001_n000",
+          "on": 0.0,
+          "duration": 1.5,
+          "pitch": 69,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b001_n001",
+          "on": 1.5,
+          "duration": 0.5,
+          "pitch": 71,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b001_n002",
+          "on": 2.0,
+          "duration": 1,
+          "pitch": 69,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b001_n003",
+          "on": 3.0,
+          "duration": 1,
+          "pitch": 66,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b002_n000",
+          "on": 4.0,
+          "duration": 2,
+          "pitch": 74,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b002_n001",
+          "on": 6.0,
+          "duration": 1,
+          "pitch": 71,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b002_n002",
+          "on": 7.0,
+          "duration": 1,
+          "pitch": 69,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b003_n000",
+          "on": 8.0,
+          "duration": 1.5,
+          "pitch": 71,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b003_n001",
+          "on": 9.5,
+          "duration": 0.5,
+          "pitch": 69,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b003_n002",
+          "on": 10.0,
+          "duration": 1,
+          "pitch": 71,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b003_n003",
+          "on": 11.0,
+          "duration": 1,
+          "pitch": 74,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b004_n000",
+          "on": 12.0,
+          "duration": 3,
+          "pitch": 69,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b005_n000",
+          "on": 16.0,
+          "duration": 3,
+          "pitch": 73,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b006_n000",
+          "on": 20.0,
+          "duration": 1,
+          "pitch": 71,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b006_n001",
+          "on": 21.0,
+          "duration": 1,
+          "pitch": 74,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b006_n002",
+          "on": 22.0,
+          "duration": 2,
+          "pitch": 78,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b007_n000",
+          "on": 24.0,
+          "duration": 1.5,
+          "pitch": 76,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b007_n001",
+          "on": 25.5,
+          "duration": 0.5,
+          "pitch": 74,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b007_n002",
+          "on": 26.0,
+          "duration": 1,
+          "pitch": 73,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b007_n003",
+          "on": 27.0,
+          "duration": 1,
+          "pitch": 76,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "flute_b008_n000",
+          "on": 28.0,
+          "duration": 3,
+          "pitch": 74,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        }
+      ],
+      "performance": {
+        "notes": {
+          "flute_b001_n000": {
+            "velocity": 74,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b001_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b001_n002": {
+            "velocity": 76,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b001_n003": {
+            "velocity": 72,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b002_n000": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b002_n001": {
+            "velocity": 76,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b002_n002": {
+            "velocity": 72,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b003_n000": {
+            "velocity": 76,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b003_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b003_n002": {
+            "velocity": 74,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b003_n003": {
+            "velocity": 78,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b004_n000": {
+            "velocity": 74,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b005_n000": {
+            "velocity": 84,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b006_n000": {
+            "velocity": 74,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b006_n001": {
+            "velocity": 78,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b006_n002": {
+            "velocity": 86,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b007_n000": {
+            "velocity": 84,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b007_n001": {
+            "velocity": 76,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b007_n002": {
+            "velocity": 76,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b007_n003": {
+            "velocity": 74,
+            "timing_ms": 0,
+            "gate": 0.98
+          },
+          "flute_b008_n000": {
+            "velocity": 72,
+            "timing_ms": 0,
+            "gate": 0.98
+          }
+        },
+        "cc": []
+      },
+      "mix": {
+        "level_dbfs": -22,
+        "pan": 0,
+        "highpass": 120,
+        "lowpass": 15000,
+        "reverb_db": -13,
+        "delay_db": null,
+        "eq": [],
+        "automation": []
+      }
+    },
+    {
+      "id": "piano",
+      "name": "piano",
+      "role": "harmony",
+      "program": 0,
+      "bank": 0,
+      "engine": "soundfont",
+      "drums": false,
+      "range": [
+        48,
+        84
+      ],
+      "notes": [
+        {
+          "id": "piano_b001_n000",
+          "on": 0.0,
+          "duration": 3.8,
+          "pitch": 57,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b001_n001",
+          "on": 0.0,
+          "duration": 3.8,
+          "pitch": 61,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b001_n002",
+          "on": 0.0,
+          "duration": 3.8,
+          "pitch": 66,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b002_n000",
+          "on": 4.0,
+          "duration": 3.8,
+          "pitch": 57,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b002_n001",
+          "on": 4.0,
+          "duration": 3.8,
+          "pitch": 62,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b002_n002",
+          "on": 4.0,
+          "duration": 3.8,
+          "pitch": 66,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b003_n000",
+          "on": 8.0,
+          "duration": 3.8,
+          "pitch": 59,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b003_n001",
+          "on": 8.0,
+          "duration": 3.8,
+          "pitch": 62,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b003_n002",
+          "on": 8.0,
+          "duration": 3.8,
+          "pitch": 66,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n000",
+          "on": 12.0,
+          "duration": 1.85,
+          "pitch": 55,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n001",
+          "on": 12.0,
+          "duration": 1.85,
+          "pitch": 62,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n002",
+          "on": 12.0,
+          "duration": 1.85,
+          "pitch": 64,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n003",
+          "on": 14.0,
+          "duration": 1.85,
+          "pitch": 55,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n004",
+          "on": 14.0,
+          "duration": 1.85,
+          "pitch": 61,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b004_n005",
+          "on": 14.0,
+          "duration": 1.85,
+          "pitch": 64,
+          "phrase": "question_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b005_n000",
+          "on": 16.0,
+          "duration": 3.8,
+          "pitch": 57,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b005_n001",
+          "on": 16.0,
+          "duration": 3.8,
+          "pitch": 61,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b005_n002",
+          "on": 16.0,
+          "duration": 3.8,
+          "pitch": 64,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b006_n000",
+          "on": 20.0,
+          "duration": 3.8,
+          "pitch": 57,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b006_n001",
+          "on": 20.0,
+          "duration": 3.8,
+          "pitch": 62,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b006_n002",
+          "on": 20.0,
+          "duration": 3.8,
+          "pitch": 66,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n000",
+          "on": 24.0,
+          "duration": 1.85,
+          "pitch": 55,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n001",
+          "on": 24.0,
+          "duration": 1.85,
+          "pitch": 59,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n002",
+          "on": 24.0,
+          "duration": 1.85,
+          "pitch": 62,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n003",
+          "on": 26.0,
+          "duration": 1.85,
+          "pitch": 55,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n004",
+          "on": 26.0,
+          "duration": 1.85,
+          "pitch": 61,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b007_n005",
+          "on": 26.0,
+          "duration": 1.85,
+          "pitch": 64,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b008_n000",
+          "on": 28.0,
+          "duration": 3.8,
+          "pitch": 54,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b008_n001",
+          "on": 28.0,
+          "duration": 3.8,
+          "pitch": 57,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        },
+        {
+          "id": "piano_b008_n002",
+          "on": 28.0,
+          "duration": 3.8,
+          "pitch": 64,
+          "phrase": "answer_p1",
+          "articulation": "voiced_chord"
+        }
+      ],
+      "performance": {
+        "notes": {
+          "piano_b001_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b001_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b001_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b002_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b002_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b002_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b003_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b003_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b003_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b004_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b004_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b004_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b004_n003": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b004_n004": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b004_n005": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b005_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b005_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b005_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b006_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b006_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b006_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b007_n000": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b007_n001": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b007_n002": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b007_n003": {
+            "velocity": 53,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b007_n004": {
+            "velocity": 55,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b007_n005": {
+            "velocity": 58,
+            "timing_ms": 18,
+            "gate": 0.9
+          },
+          "piano_b008_n000": {
+            "velocity": 47,
+            "timing_ms": 0,
+            "gate": 0.9
+          },
+          "piano_b008_n001": {
+            "velocity": 49,
+            "timing_ms": 9,
+            "gate": 0.9
+          },
+          "piano_b008_n002": {
+            "velocity": 52,
+            "timing_ms": 18,
+            "gate": 0.9
+          }
+        },
+        "cc": [
+          [
+            0.0,
+            64,
+            0
+          ],
+          [
+            0.07,
+            64,
+            100
+          ],
+          [
+            4.0,
+            64,
+            0
+          ],
+          [
+            4.07,
+            64,
+            100
+          ],
+          [
+            8.0,
+            64,
+            0
+          ],
+          [
+            8.07,
+            64,
+            100
+          ],
+          [
+            12.0,
+            64,
+            0
+          ],
+          [
+            12.07,
+            64,
+            100
+          ],
+          [
+            13.97,
+            64,
+            0
+          ],
+          [
+            14.07,
+            64,
+            100
+          ],
+          [
+            16.0,
+            64,
+            0
+          ],
+          [
+            16.07,
+            64,
+            100
+          ],
+          [
+            20.0,
+            64,
+            0
+          ],
+          [
+            20.07,
+            64,
+            100
+          ],
+          [
+            24.0,
+            64,
+            0
+          ],
+          [
+            24.07,
+            64,
+            100
+          ],
+          [
+            25.97,
+            64,
+            0
+          ],
+          [
+            26.07,
+            64,
+            100
+          ],
+          [
+            28.0,
+            64,
+            0
+          ],
+          [
+            28.07,
+            64,
+            100
+          ]
+        ]
+      },
+      "mix": {
+        "level_dbfs": -29,
+        "pan": 0,
+        "highpass": 120,
+        "lowpass": 15000,
+        "reverb_db": -17,
+        "delay_db": null,
+        "eq": [],
+        "automation": []
+      }
+    },
+    {
+      "id": "bass",
+      "name": "bass",
+      "role": "bass",
+      "program": 33,
+      "bank": 0,
+      "engine": "soundfont",
+      "drums": false,
+      "range": [
+        28,
+        55
+      ],
+      "notes": [
+        {
+          "id": "bass_b001_n000",
+          "on": 0.0,
+          "duration": 1.9,
+          "pitch": 38,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b001_n001",
+          "on": 2.0,
+          "duration": 1.4,
+          "pitch": 45,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b001_n002",
+          "on": 3.5,
+          "duration": 0.45,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b002_n000",
+          "on": 4.0,
+          "duration": 1.9,
+          "pitch": 35,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b002_n001",
+          "on": 6.0,
+          "duration": 1.4,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b002_n002",
+          "on": 7.5,
+          "duration": 0.45,
+          "pitch": 33,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b003_n000",
+          "on": 8.0,
+          "duration": 1.9,
+          "pitch": 31,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b003_n001",
+          "on": 10.0,
+          "duration": 1.4,
+          "pitch": 38,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b003_n002",
+          "on": 11.5,
+          "duration": 0.45,
+          "pitch": 32,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b004_n000",
+          "on": 12.0,
+          "duration": 1.9,
+          "pitch": 33,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b004_n001",
+          "on": 14.0,
+          "duration": 1.4,
+          "pitch": 40,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b004_n002",
+          "on": 15.5,
+          "duration": 0.45,
+          "pitch": 31,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b005_n000",
+          "on": 16.0,
+          "duration": 1.9,
+          "pitch": 30,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b005_n001",
+          "on": 18.0,
+          "duration": 1.4,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b005_n002",
+          "on": 19.5,
+          "duration": 0.45,
+          "pitch": 33,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b006_n000",
+          "on": 20.0,
+          "duration": 1.9,
+          "pitch": 35,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b006_n001",
+          "on": 22.0,
+          "duration": 1.4,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b006_n002",
+          "on": 23.5,
+          "duration": 0.45,
+          "pitch": 39,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b007_n000",
+          "on": 24.0,
+          "duration": 1.9,
+          "pitch": 40,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b007_n001",
+          "on": 26.0,
+          "duration": 1.9,
+          "pitch": 33,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "bass_b008_n000",
+          "on": 28.0,
+          "duration": 3.5,
+          "pitch": 38,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        }
+      ],
+      "performance": {
+        "notes": {
+          "bass_b001_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b001_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b001_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b002_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b002_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b002_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b003_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b003_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b003_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b004_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b004_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b004_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b005_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b005_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b005_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b006_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b006_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b006_n002": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b007_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b007_n001": {
+            "velocity": 70,
+            "timing_ms": 0,
+            "gate": 0.95
+          },
+          "bass_b008_n000": {
+            "velocity": 80,
+            "timing_ms": 0,
+            "gate": 0.95
+          }
+        },
+        "cc": []
+      },
+      "mix": {
+        "level_dbfs": -27,
+        "pan": 0,
+        "highpass": 35,
+        "lowpass": 15000,
+        "reverb_db": null,
+        "delay_db": null,
+        "eq": [],
+        "automation": []
+      }
+    },
+    {
+      "id": "drums",
+      "name": "drums",
+      "role": "drums",
+      "program": 0,
+      "bank": 0,
+      "engine": "soundfont",
+      "drums": true,
+      "range": [
+        35,
+        81
+      ],
+      "notes": [
+        {
+          "id": "drums_b001_n008",
+          "on": 0.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n000",
+          "on": 0.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n001",
+          "on": 0.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n010",
+          "on": 1.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n002",
+          "on": 1.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n003",
+          "on": 1.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n004",
+          "on": 2.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n009",
+          "on": 2.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n005",
+          "on": 2.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n011",
+          "on": 3.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n006",
+          "on": 3.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b001_n007",
+          "on": 3.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n008",
+          "on": 4.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n000",
+          "on": 4.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n001",
+          "on": 4.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n010",
+          "on": 5.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n002",
+          "on": 5.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n003",
+          "on": 5.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n004",
+          "on": 6.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n009",
+          "on": 6.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n005",
+          "on": 6.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n011",
+          "on": 7.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n006",
+          "on": 7.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b002_n007",
+          "on": 7.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n008",
+          "on": 8.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n000",
+          "on": 8.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n001",
+          "on": 8.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n010",
+          "on": 9.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n002",
+          "on": 9.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n003",
+          "on": 9.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n004",
+          "on": 10.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n009",
+          "on": 10.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n005",
+          "on": 10.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n011",
+          "on": 11.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n006",
+          "on": 11.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b003_n007",
+          "on": 11.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n008",
+          "on": 12.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n000",
+          "on": 12.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n001",
+          "on": 12.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n010",
+          "on": 13.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n002",
+          "on": 13.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n003",
+          "on": 13.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n004",
+          "on": 14.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n009",
+          "on": 14.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n005",
+          "on": 14.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n011",
+          "on": 15.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n006",
+          "on": 15.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b004_n007",
+          "on": 15.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "question_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n008",
+          "on": 16.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n000",
+          "on": 16.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n001",
+          "on": 16.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n010",
+          "on": 17.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n002",
+          "on": 17.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n003",
+          "on": 17.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n004",
+          "on": 18.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n009",
+          "on": 18.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n005",
+          "on": 18.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n011",
+          "on": 19.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n006",
+          "on": 19.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b005_n007",
+          "on": 19.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n008",
+          "on": 20.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n000",
+          "on": 20.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n001",
+          "on": 20.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n010",
+          "on": 21.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n002",
+          "on": 21.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n003",
+          "on": 21.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n004",
+          "on": 22.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n009",
+          "on": 22.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n005",
+          "on": 22.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n011",
+          "on": 23.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n006",
+          "on": 23.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b006_n007",
+          "on": 23.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n008",
+          "on": 24.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n000",
+          "on": 24.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n001",
+          "on": 24.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n010",
+          "on": 25.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n002",
+          "on": 25.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n003",
+          "on": 25.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n004",
+          "on": 26.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n009",
+          "on": 26.5,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n005",
+          "on": 26.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n011",
+          "on": 27.0,
+          "duration": 0.3,
+          "pitch": 37,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n006",
+          "on": 27.0,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b007_n007",
+          "on": 27.5,
+          "duration": 0.2,
+          "pitch": 42,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        },
+        {
+          "id": "drums_b008_n000",
+          "on": 28.0,
+          "duration": 0.3,
+          "pitch": 36,
+          "phrase": "answer_p1",
+          "articulation": "normal"
+        }
+      ],
+      "performance": {
+        "notes": {
+          "drums_b001_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b001_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b001_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b001_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b001_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b001_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b001_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b002_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b002_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b002_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b002_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b002_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b002_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b002_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b003_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b003_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b003_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b003_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b003_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b003_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b003_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b004_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b004_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b004_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b004_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b004_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b004_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b004_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b005_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b005_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b005_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b005_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b005_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b005_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b005_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b006_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b006_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b006_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b006_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b006_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b006_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b006_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b007_n000": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n001": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b007_n002": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n003": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b007_n004": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n005": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b007_n006": {
+            "velocity": 52,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n007": {
+            "velocity": 38,
+            "timing_ms": 6,
+            "gate": 1.0
+          },
+          "drums_b007_n008": {
+            "velocity": 82,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n009": {
+            "velocity": 68,
+            "timing_ms": 0,
+            "gate": 1.0
+          },
+          "drums_b007_n010": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b007_n011": {
+            "velocity": 74,
+            "timing_ms": 4,
+            "gate": 1.0
+          },
+          "drums_b008_n000": {
+            "velocity": 72,
+            "timing_ms": 0,
+            "gate": 1.0
+          }
+        },
+        "cc": []
+      },
+      "mix": {
+        "level_dbfs": -24,
+        "pan": 0,
+        "highpass": 100,
+        "lowpass": 15000,
+        "reverb_db": -24,
+        "delay_db": null,
+        "eq": [],
+        "automation": [],
+        "level_mode": "peak"
+      }
+    }
+  ],
+  "harmony": [
+    {
+      "bar": 1,
+      "beat": 0,
+      "symbol": "Dmaj7"
+    },
+    {
+      "bar": 2,
+      "beat": 0,
+      "symbol": "Bm7"
+    },
+    {
+      "bar": 3,
+      "beat": 0,
+      "symbol": "Gmaj7"
+    },
+    {
+      "bar": 4,
+      "beat": 0,
+      "symbol": "A7sus4"
+    },
+    {
+      "bar": 4,
+      "beat": 2,
+      "symbol": "A7"
+    },
+    {
+      "bar": 5,
+      "beat": 0,
+      "symbol": "F#m7"
+    },
+    {
+      "bar": 6,
+      "beat": 0,
+      "symbol": "Bm7"
+    },
+    {
+      "bar": 7,
+      "beat": 0,
+      "symbol": "Em7"
+    },
+    {
+      "bar": 7,
+      "beat": 2,
+      "symbol": "A7"
+    },
+    {
+      "bar": 8,
+      "beat": 0,
+      "symbol": "D69"
+    }
+  ],
+  "decisions": [
+    "Every part plays on the default MS Basic bank, so the quick start setup renders the example.",
+    "The flute is the lead and sends to the plate; its held note in bar 5 rings into bar 6, so a change to that note reaches the plate return past the note itself."
+  ],
+  "mix": {
+    "target_lufs": -16,
+    "peak_ceiling_db": -1.6,
+    "max_limit_db": 1.3,
+    "room_seconds": 1.05,
+    "chain": "bus"
+  }
+}

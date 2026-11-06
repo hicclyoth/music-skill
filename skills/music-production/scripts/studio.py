@@ -31,6 +31,12 @@ def main():
     analyze.add_argument('--span',action='append',default=[],metavar='NAME:FIRST-LAST',help='also measure bars FIRST to LAST (1-based) under NAME; repeatable')
     analyze.add_argument('--reference',help='compare the whole master with a reference: a name in references/tonal-references.json, a render folder or a WAV file')
     analyze.add_argument('--config',type=Path,help='needed with a WAV reference: FFmpeg converts and meters it')
+    cmp=sub.add_parser('compare',help='Compare two renders: what the project changed, which parts were synthesized again, and where each stem, bus, return, the premix and the master changed')
+    cmp.add_argument('before',type=Path);cmp.add_argument('after',type=Path)
+    cmp.add_argument('--output',type=Path,help='JSON report (default: <after>/compare_<before folder>.json)')
+    cmp.add_argument('--differences',type=Path,metavar='FOLDER',help='a new folder for every changed file as after minus before, level-matched: the change alone')
+    cmp.add_argument('--clip',type=Path,metavar='MP3',help='an old-then-new MP3 of 8 seconds around the first change in the master, both at the same loudness (needs --config)')
+    cmp.add_argument('--config',type=Path,help='needed with --clip: FFmpeg measures and encodes it')
     prof=sub.add_parser('profile',help='Describe the written score per part and section: density, register, intervals, rhythm, repetition')
     prof.add_argument('project',type=Path);prof.add_argument('--output',type=Path,help='full JSON (without it, the full profile is printed)')
     configure=sub.add_parser('configure')
@@ -84,6 +90,16 @@ def main():
         tone={k:r['tonal_balance'][k] for k in ('slope_db_per_octave_100hz_4khz','low_end_vs_line_db','top_end_vs_line_db')}
         compared={k:v for k,v in (r['reference_comparison'] or {}).items() if k!='side_minus_mid_difference_db'} or None
         print(json.dumps({'output':str(out),'sections':[{k:s[k] for k in ('section','level_lufs_ungated','lr_correlation')} for s in r['sections']],'lead_presence':r['lead_presence'],'melody_groups':[{k:m[k] for k in m if k!='balance'} | {'balance':m['balance'][:3]} for m in r['melody_groups']],'tonal_balance':tone,'master':r['master'],'reference_comparison':compared,'warnings':r['warnings']}));return
+    if args.command=='compare':
+        from musiclib.compare import compare,clip
+        from musiclib.audio import load_config
+        if args.clip and not args.config:raise ValueError('--clip needs --config: FFmpeg measures and encodes the clip')
+        out=args.output or args.after/f'compare_{args.before.resolve().name}.json';fresh(out)
+        if args.clip:fresh(args.clip)
+        r=compare(args.before,args.after,args.differences)
+        if args.clip:r['clip']=clip(load_config(args.config),r,args.clip)
+        save_json(out,r)
+        print(json.dumps({'output':str(out),'warnings':r['warnings'],**r['summary'],'clip':r.get('clip')},ensure_ascii=False));return
     p=load_project(args.project)
     if args.command=='validate':print(json.dumps(validate(p)));return
     if args.command=='profile':

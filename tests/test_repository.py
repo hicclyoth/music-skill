@@ -17,6 +17,7 @@ SCRIPTS = SKILL / 'scripts'
 EXAMPLE = ROOT / 'examples' / 'daybreak-signal'
 OVERTURE = ROOT / 'examples' / 'above-the-clouds'
 GENRES = ROOT / 'examples' / 'genre-demos'
+BEFORE_AFTER = ROOT / 'examples' / 'before-after'
 GENRE_DEMOS = ('signal_fire', 'late_set', 'midnight_coastline', 'tram_line_rain', 'paper_satellites', 'pixel_lantern')
 CONFIG = os.environ.get('MUSIC_SKILL_CONFIG')
 DEMOS = {'piano': ['1.1.r3p4', '--arr', 'r3', '--lead', 'piano', '--mix', 'bus']}
@@ -222,6 +223,28 @@ def test_genre_demo_script_writes_the_published_project(tmp_path, name):
     assert load(tmp_path / name / 'song.json') == load(GENRES / f'{name}.json')
 
 
+def test_before_after_example(tmp_path):
+    """The before-and-after example as its README runs it: the script writes the published project, and the revision
+    changes the flute's held note in bar 5 and nothing else."""
+    r = subprocess.run([sys.executable, str(BEFORE_AFTER / 'porch_light.py'), str(tmp_path)],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    assert r.returncode == 0, r.stderr[-2000:]
+    before = load(BEFORE_AFTER / 'porch_light.json')
+    assert load(tmp_path / 'song.json') == before and before['mix']['chain'] == 'bus'
+    assert not any(t.get('soundfont') for t in before['tracks']), 'every part plays on the default bank'
+    r = subprocess.run([sys.executable, str(SCRIPTS / 'studio.py'), 'revise', str(tmp_path / 'song.json'), '--track', 'flute',
+                        '--note', 'flute_b005_n000', '--pitch', '76', '--output', str(tmp_path / 'song_r2.json')],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace')
+    assert r.returncode == 0, r.stderr[-2000:]
+    after = load(tmp_path / 'song_r2.json')
+    assert [h['note'] for h in after.pop('revision_history')] == ['flute_b005_n000']
+    changed = [(n['id'], n['pitch'], m['pitch']) for t, u in zip(before['tracks'], after['tracks'])
+               for n, m in zip(t['notes'], u['notes']) if n != m]
+    assert changed == [('flute_b005_n000', 73, 76)]
+    after['tracks'] = before['tracks']
+    assert after == before
+
+
 def test_selfcheck(tmp_path):
     work = tmp_path / 'selfcheck'
     cmd = [sys.executable, str(SCRIPTS / 'selfcheck.py'), '--work', str(work)] + (['--config', CONFIG] if CONFIG else [])
@@ -229,4 +252,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (89 if CONFIG else 72), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (91 if CONFIG else 73), [c['name'] for c in report['checks']]

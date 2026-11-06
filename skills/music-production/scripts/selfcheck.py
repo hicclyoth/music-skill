@@ -1294,6 +1294,40 @@ def checks(work,config=None):
         assert path==wc/name and path.read_bytes()==good and file_hash(path)==meta['sha256']
         return {'short_read':'tried again, never cached','damaged_cache':'downloaded again','damaged_wheel':'replaced'}
     check('a_short_or_damaged_download_is_never_kept',short_downloads)
+    def compare_unit():
+        # Hand-made renders of the setup study: one where the piano's note in bar 3 changes (and its whole part moves
+        # 0.01 dB, as a part whose level is set from its loudness does) under a master 0.3 dB quieter, and one where
+        # only the lead is 1 dB louder.
+        from musiclib.compare import compare
+        p=example();clock=Clock(p);rate=audio.RATE;frames=round((clock.end+clock.tail)*rate);t=np.arange(frames)/rate
+        def tone(k):
+            x=.1*np.sin(2*np.pi*110*2**(k/5)*t)*(1+.5*np.sin(2*np.pi*.3*t+k));return np.stack([x,.9*x],axis=1)
+        stems={tr['id']:tone(k) for k,tr in enumerate(p['tracks'])}
+        on,off=clock.seconds(8.5),clock.seconds(10);a,b=int(on*rate),int(off*rate)
+        note=copy.deepcopy(p);next(n for n in note['tracks'][0]['notes'] if n['id']=='piano_n7')['pitch']+=1
+        note_stems={k:v.copy() for k,v in stems.items()};note_stems['piano'][a:b]=tone(9)[a:b];note_stems['piano']*=10**(.01/20)
+        louder=copy.deepcopy(p);next(tr for tr in louder['tracks'] if tr['id']=='lead')['mix']['level_dbfs']+=1
+        louder_stems={k:v*(10**(1/20) if k=='lead' else 1) for k,v in stems.items()}
+        for name,proj,parts,master_db in (('before',p,stems,0),('note',note,note_stems,-.3),('louder',louder,louder_stems,0)):
+            out=work/'compare_unit'/name;(out/'stems').mkdir(parents=True,exist_ok=True)
+            save_json(out/'project.json',proj);save_json(out/'report.json',{'renderer_sha256':'one','master':{'integrated_lufs':-18}})
+            again=lambda k:k+('2' if name=='note' and k=='piano' else '')
+            save_json(out/'stem_receipts.json',[{'track':k,'cache_key':again(k),'raw_sha256':again(k)} for k in parts])
+            for k,x in parts.items():audio.write_wav(out/'stems'/f'{k}.wav',x.astype(np.float32))
+            mix=sum(parts.values());audio.write_wav(out/'premix.wav',mix.astype(np.float32));audio.write_wav(out/'master.wav',(mix*10**(master_db/20)).astype(np.float32))
+        r=compare(work/'compare_unit'/'before',work/'compare_unit'/'note',work/'compare_unit'/'difference');f=r['files']
+        assert r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'] and r['synthesis']['synthesized_again']==['piano'],r['summary']
+        assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and f['stems']['piano']['level_db']==.01,f['stems']['piano']
+        assert f['premix']['premix']['level_db']==0 and abs(f['master']['master']['level_db']+.3)<.011,(f['premix'],f['master'])
+        for e in (f['stems']['piano'],f['premix']['premix'],f['master']['master']):
+            assert len(e['passages'])==1 and abs(e['passages'][0]['start_s']-on)<.02 and abs(e['passages'][0]['end_s']-off)<.02,e
+        d,_=audio.read_wav(work/'compare_unit'/'difference'/'stems_piano.wav');d=np.abs(np.asarray(d))
+        assert d[:a-480].max()<1e-5 and d[b+480:].max()<1e-5 and d[a:b].max()>.05,'the difference is the changed note alone'
+        m=compare(work/'compare_unit'/'before',work/'compare_unit'/'louder');g=m['files']
+        assert m['summary']['project']==['lead mix: level_dbfs -25 -> -24'] and m['synthesis']['synthesized_again']==[]
+        assert g['stems']['lead']['level_db']==1 and not g['stems']['lead']['passages'] and m['summary']['changed']['stems']=={'lead':'level only, +1.00 dB'}
+        return {'note':r['summary']['changed'],'louder':m['summary']['changed']}
+    check('compare_finds_level_and_local_changes',compare_unit)
     if config:
         from musiclib.render import render
         p=example();save_json(work/'example.json',p);cache=work/'cache'
@@ -1416,7 +1450,11 @@ def checks(work,config=None):
             out=work/'render_bus';assert all((out/'returns'/f'{s}_ir.wav').is_file() for s in ('room','plate','hall'))
             change=json.loads((out/'bus_level_change_db.json').read_text(encoding='utf-8'))
             assert set(change)==set(r['buses']['assignment'].values()) and all(abs(v)<6 for v in change.values()),change
-            return {'buses':r['buses']['assignment'],'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
+            # Each space a part sends to and the delay come back as files, and with the buses they add up to the premix.
+            spaces=sorted(set(r['buses']['spaces'].values()));wanted=[f'{s}_return.wav' for s in spaces]+['delay_return.wav']
+            assert sorted(r['buses']['returns'])==sorted(wanted) and all((out/'returns'/n).is_file() for n in wanted),r['buses']['returns']
+            assert r['checks']['buses_and_returns_add_up_to_premix'] and r['buses']['sum_minus_premix_peak_dbfs']<-100,r['buses']
+            return {'buses':r['buses']['assignment'],'returns':r['buses']['returns'],'sum_minus_premix_peak_dbfs':r['buses']['sum_minus_premix_peak_dbfs'],'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
         check('bus_chain_render_and_delivery_checks',bus_render)
         def chorus_pass_logs():
             # A part with a chorus logs its later FFmpeg pass as ".pass1"; a part named like that pass ("<id>_1")
@@ -1438,6 +1476,29 @@ def checks(work,config=None):
             assert any('lead_minus_accompaniment_db_median' in s and np.isfinite(s['lead_minus_accompaniment_level_db']) for s in a['lead_presence']),a['lead_presence']
             return {'sections':len(a['sections']),'lead_presence':a['lead_presence']}
         check('analysis_reports_sections_stems_and_lead',analysis)
+        def compare_render():
+            # The bus mix again with one piano note a semitone higher (only the piano is synthesized again, and every
+            # file that changes changes from that note on) and with the lead 1 dB louder (its stem and its plate and
+            # delay returns only move in level, and nothing is synthesized again).  A render against itself is identical.
+            from musiclib.compare import compare,clip
+            q=json.loads((work/'bus.json').read_text(encoding='utf-8'))
+            note=copy.deepcopy(q);next(n for n in note['tracks'][0]['notes'] if n['id']=='piano_n7')['pitch']+=1;save_json(work/'bus_note.json',note)
+            louder=copy.deepcopy(q);next(t for t in louder['tracks'] if t['id']=='lead')['mix']['level_dbfs']+=1;save_json(work/'bus_louder.json',louder)
+            for name in ('note','louder'):render(work/f'bus_{name}.json',work/f'render_bus_{name}',config,cache)
+            same=compare(work/'render_bus',work/'render_bus')
+            assert not same['project_changes'] and all(e['identical'] for g in same['files'].values() for e in g.values())
+            r=compare(work/'render_bus',work/'render_bus_note');f=r['files'];on=Clock(note).seconds(8.5)
+            assert r['synthesis']['synthesized_again']==['piano'] and r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'],r['summary']
+            assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and [k for k,e in f['returns'].items() if not e['identical']]==['hall'],r['summary']
+            moved=[e for g in ('stems','buses','returns','premix','master') for e in f[g].values() if not e['identical']]
+            assert all(len(e['passages'])==1 and abs(e['passages'][0]['start_s']-on)<.15 for e in moved),r['summary']
+            heard=clip(audio.load_config(config),r,work/'note_ab.mp3')
+            assert heard and (work/'note_ab.mp3').stat().st_size>10000 and abs(heard['start_s']-(f['master']['master']['passages'][0]['start_s']-1.5))<.02,heard
+            m=compare(work/'render_bus',work/'render_bus_louder');g=m['files']
+            assert m['synthesis']['synthesized_again']==[] and g['stems']['lead']['level_db']==1 and not g['stems']['lead']['passages'],m['summary']
+            assert all(g['returns'][s]['level_db']==1 and not g['returns'][s]['passages'] for s in ('plate','delay')),m['summary']
+            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard}
+        check('compare_reports_what_changed_and_where',compare_render)
         def loop_render():
             from musiclib import loop
             q=copy.deepcopy(p);q['mix']['chain']='bus';q['loop']={'start_bar':0};save_json(work/'loop.json',q)

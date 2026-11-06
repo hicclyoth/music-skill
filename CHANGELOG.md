@@ -4,9 +4,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.2.0] - Unreleased
 
-More styles, each with a guide written from its sources, and a nylon-string guitar.
+More styles, each with a guide written from its sources, a nylon-string guitar, and a way to see what a revision changed.
 
 ### Added
+
+- **`studio.py compare`** for two renders of a project. It reports:
+  - what the project changed: notes, mix, clock;
+  - which parts were synthesized again;
+  - for every stem, bus, reverb and delay return, the premix and the master: identical sample for sample, or its overall level change and the passages, in bar:beat, where it differs and how loud the difference is.
+
+  `--clip` cuts eight seconds of the change, old then new at the same loudness, and `--differences` writes each changed file as after minus before. The agent now compares every revision with the previous render. Two selfchecks cover it; the selfcheck now runs 91 checks (73 without a renderer configuration).
+- **Reverb and delay returns as files.** On the bus chain, `returns/` now also holds each reverb's return and the delay return. With the six buses they add up to the premix, and every render checks that, so a mix can be rebuilt in another program.
+- **[Before and after](examples/before-after)**: an eight-bar piece, one revision of it, and what `compare` reports, on the default bank alone. It is also a fixed pair to test a change to the renderer against.
 
 - **Guides for more styles**, each sourced from research, the styles' documented descriptions and production practice, with the sources listed at its end:
   - [film-score.md](skills/music-production/references/film-score.md): emotional underscore, scoring to picture, suspense and horror;
@@ -21,11 +30,12 @@ More styles, each with a guide written from its sources, and a nylon-string guit
   - a layer's `highpass` filters each take below its own fundamental without phase shift;
   - `pitch_source: "spectrum"` tunes from the spectral peak.
 
-  A selfcheck covers them (89 checks, 72 without a renderer configuration).
+  A selfcheck covers them.
 
 ### Changed
 
 - The skill's description names the new styles, and its first step routes each to its guide.
+- The README and SKILL.md now say exactly what a one-note change renders again: only that part is synthesized again, and every render mixes all the parts again, the reverbs and the master included. SKILL.md had also listed effect returns in `returns/` that the bus chain did not write.
 - Corrections found while checking sources: two horror-scoring findings now say what the papers found, and the chromatic-mediant example in the film guide is a real I–♭VI over a common tone.
 - The README counts thirty banks, about 3.5 GB of downloads, and no longer says acoustic guitars are missing (steel-string ones still are).
 

@@ -43,7 +43,7 @@ More styles, in [examples/genre-demos](examples/genre-demos):
 - [Paper Satellites](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3): future bass, pumped supersaw chords and an 808
 - [Pixel Lantern](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3): a chiptune loop for a game's overworld, written to the NES's limits
 
-Claude (Opus 5.5) composed, arranged and mixed each piece with this skill. Each example folder has the scripts that wrote its pieces and their project files, and rendering a project again with the pinned Windows tools gives the same master to within 24-bit rounding. [Daybreak Signal](examples/daybreak-signal), an anime-opening-style piece with a piano melody, shows how a piece is revised.
+Claude (Opus 5.5) composed, arranged and mixed each piece with this skill. Each example folder has the scripts that wrote its pieces and their project files, and rendering a project again with the pinned Windows tools gives the same master to within 24-bit rounding. [Daybreak Signal](examples/daybreak-signal), an anime-opening-style piece with a piano melody, shows how a piece is revised. [Before and after](examples/before-after) changes one note of a short piece, and `compare` shows everything in the render that changed with it: the part, its bus, the reverb's tail and the master.
 
 The recordings download as MP3 files from the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1).
 
@@ -62,13 +62,13 @@ The recordings download as MP3 files from the release [examples-1](https://githu
 
    > Write a one-minute looping town theme for my RPG: recorder, harp and light strings.
 
-You get an MP3 and a WAV, the MIDI, a stem per part and the project file. On a 24-thread laptop the examples above rendered in half a minute (a jazz trio, a chiptune loop) to five minutes (house on the built-in synthesizers); the four-and-a-half-minute overture took three.
+You get an MP3 and a WAV, the MIDI, a stem per part, the buses and reverb returns that add up to the mix, and the project file. On a 24-thread laptop the examples above rendered in half a minute (a jazz trio, a chiptune loop) to five minutes (house on the built-in synthesizers); the four-and-a-half-minute overture took three.
 
 ## Why not just generate it?
 
 A text-to-music model hands you a finished waveform. Some can regenerate a section, but you can't open the result and move one note, and you can't say where its sounds came from.
 
-Here the agent writes the score, so the music is made of decisions you can read and change: the melody in bar 33, the voicing of a chord, how hard the drummer hits the crash. Change one note and only that part renders again. The sounds are multisampled recordings of real instruments under licences you can check, or the skill's own synthesizers, and no model trained on other people's recordings is involved.
+Here the agent writes the score, so the music is made of decisions you can read and change: the melody in bar 33, the voicing of a chord, how hard the drummer hits the crash. Change one note and only that part is played again; the mix is rebuilt around it. The sounds are multisampled recordings of real instruments under licences you can check, or the skill's own synthesizers, and no model trained on other people's recordings is involved.
 
 If Claude or another agent is already cutting your video or building your game, it knows what the music has to fit: how long each scene runs, where the cuts land, when the narration starts, how a level loops. It can write to those numbers, with a swell that peaks on the reveal, a quieter bed under the voice, a loop as long as the level, and when the edit changes, rewrite just the bars that moved.
 
@@ -81,7 +81,7 @@ If Claude or another agent is already cutting your video or building your game, 
 5. **Mix and master.** Parts go through drum, bass, rhythm, ensemble and lead buses and four generated reverbs, then a master chain to the project's loudness target (−16 LUFS by default, −14 for streaming) with the true peak at or below −1 dBTP. Orchestral and organ music can skip the compressors and keep their full dynamics; electronic music can add sidechain ducking, tempo-synced delays, filter sweeps and a loud club master.
 6. **Measure.** `analyze` reports each section's level, spectrum and stereo image, how far the melody sits above the accompaniment, and how the master's tonal balance compares with published measurements of commercial recordings or with a reference in its genre. The numbers point at problems; they do not replace listening.
 
-Changing one note re-renders only that part. Changing the mix reuses every part as it was synthesized and only mixes again.
+Changing one note synthesizes only that part again. Every render mixes all the parts again, so the shared reverbs, their tails and the master follow the change; changing only the mix reuses every part as it was synthesized. `compare` shows what changed between two renders: which parts were synthesized again, and which stems, buses and reverb returns changed, where and by how much.
 
 For a game, a project can loop. The render folds the reverb tail back into the loop start and writes the loop points into a WAV and an Ogg file, in the forms Godot and RPG Maker look for, with a cue point at every section. It can also split the loop into layers that add up to the mix, for music that builds as play heats up.
 
@@ -152,6 +152,8 @@ Ask your agent in plain words:
 
 > The chorus melody in bar 33 is too busy. Simplify it and render again.
 
+> What changed from the last version? Let me hear the difference.
+
 > Send me the MIDI and the stems too.
 
 ## Sound banks
@@ -169,7 +171,7 @@ Every recorded bank is CC0, free for any use without restrictions (the Iowa reco
 
 ## How well it works
 
-`selfcheck.py` runs 89 checks (72 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision re-renders one part. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
+`selfcheck.py` runs 91 checks (73 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision synthesizes one part again, and `compare` finds the change from that note on, in every file it reached and nowhere else. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
 
 Whether the music is good is another matter, and only listening can tell. The pieces above are the best evidence this repository has.
 

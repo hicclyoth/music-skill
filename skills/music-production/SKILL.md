@@ -29,8 +29,8 @@ Copy this checklist into the project's notes and tick it off. Each step ends on 
 - [ ] **6. Render**: `mix.chain` is `"bus"` for a finished mix; `studio.py render` completes with every check passed.
 - [ ] **7. Measure**: `studio.py analyze` ran, with `--reference` where a genre reference fits; section levels, spectrum, tonal balance, stereo and lead presence are explained or fixed.
 - [ ] **8. Listen**: the user heard the full piece. Until then, say plainly that nobody has listened yet.
-- [ ] **9. Revise**: one cause at a time, the previous version kept, compared at equal loudness, then a full-form pass.
-- [ ] **10. Deliver**: master, MP3, MIDI, stems and project, and for a game loop `loop.wav`/`loop.ogg` with the loop points; a credit for any bank that needs one (the optional banks need none; MS Basic parts get its credit line); measured checks; what changed and what is still open.
+- [ ] **9. Revise**: one cause at a time, the previous version kept, rendered into a new folder with the same cache. `studio.py compare` against the previous render shows that only the intended parts and bars changed (if anything else did, find out why first), and its `--clip` gives the user the change old then new at equal loudness. Then a full-form pass.
+- [ ] **10. Deliver**: master, MP3, MIDI, stems (and `returns/` for a remix) and project, and for a game loop `loop.wav`/`loop.ogg` with the loop points; a credit for any bank that needs one (the optional banks need none; MS Basic parts get its credit line); measured checks; what changed and what is still open.
 
 ## Commands
 
@@ -42,6 +42,7 @@ python <skill>/scripts/studio.py validate <project>/song.json
 python <skill>/scripts/studio.py review   <project>/song.json --output <project>/review_r1 --config <config.json>
 python <skill>/scripts/studio.py render   <project>/song.json --config <config.json> --output <project>/render_r1 --cache <project>/cache
 python <skill>/scripts/studio.py analyze  <project>/render_r1 --span chorus:17-24
+python <skill>/scripts/studio.py compare  <project>/render_r1 <project>/render_r2 --clip <project>/r1_r2.mp3 --config <config.json>
 python <skill>/scripts/studio.py profile  <project>/song.json --output <project>/profile_r1.json
 python <skill>/scripts/studio.py revise   <project>/song.json --track piano --note piano_b004_n003 --pitch 74 --output <project>/song_r2.json
 python <skill>/scripts/studio.py export-midi <project>/song.json --output <project>/song.mid
@@ -51,7 +52,7 @@ python <skill>/scripts/selfcheck.py --work <new empty folder> --config <config.j
 
 Errors go to stderr as `ERROR: ...` with exit code 2. Outputs never overwrite: use a new folder for every render and review, and a new file for every revision and report. Installing banks, rendering and the selfcheck can take several minutes; run them with a long timeout or in the background. `--resume` continues the same project in an existing render folder. Parts render in parallel, one per processor up to 8 and one per 2 GB of free memory (`--jobs` sets it); the result is the same for any number.
 
-A render writes `master.wav` (24-bit), `master.flac`, `preview.mp3`, `composition.mid` (performed), `score.mid` (notation timing), one MIDI per part in `midi/`, processed stems in `stems/`, effect returns in `returns/` and `report.json`. A project with `loop` also gets `loop.wav`, `loop.ogg` and `loop.json`: the loop with the tail folded back from its start, the loop points and a cue point per section written into the files. With `loop.layers`, every layer also comes as its own loop in `layers/`. The raw synthesis cache is keyed by notes, performance, instrument, the tempo as played and dependency hashes, so a mix edit reuses every part and a one-note edit re-renders one part.
+A render writes `master.wav` (24-bit), `master.flac`, `preview.mp3`, `composition.mid` (performed), `score.mid` (notation timing), one MIDI per part in `midi/`, processed stems in `stems/` (each part before its bus and without the shared reverbs) and `report.json`. With `mix.chain` `"bus"`, `returns/` holds the six buses and the reverb and delay returns, which add up to `premix.wav`, the mix before mastering. A project with `loop` also gets `loop.wav`, `loop.ogg` and `loop.json`: the loop with the tail folded back from its start, the loop points and a cue point per section written into the files. With `loop.layers`, every layer also comes as its own loop in `layers/`. The raw synthesis cache is keyed by notes, performance, instrument, the tempo as played and dependency hashes, so a mix edit reuses every part and a one-note edit synthesizes one part again. Every render mixes all the parts again, so the shared reverbs, their tails and the master follow the change. `compare` reports what changed between two renders: the project's edits, the parts synthesized again, and per stem, bus, return, premix and master whether it is identical, its overall level change and the passages (bar:beat) where it differs. It does not judge the sound.
 
 ## Writing the project
 
