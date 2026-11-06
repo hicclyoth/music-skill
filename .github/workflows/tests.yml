@@ -63,5 +63,7 @@ jobs:
         env:
           MUSIC_SKILL_CONFIG: ${{ runner.temp }}/runtime/local-config.json
           # A loop's Ogg Vorbis copy is optional for users; here it is required, so a missing encoder fails the run.
-          MUSIC_SKILL_REQUIRE_OGG: "1"
+          # Not on macOS: Homebrew's ffmpeg has no Vorbis encoder (ffmpeg-full has it), so there the loop test notes
+          # the copy as skipped, as it does for users with that FFmpeg.
+          MUSIC_SKILL_REQUIRE_OGG: ${{ runner.os != 'macOS' && '1' || '' }}
         run: python -m pytest -q tests

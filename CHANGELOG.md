@@ -7,7 +7,8 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (two General MIDI soundfonts and video drivers the tests never use), which made up much of a 248 MB download that a slow mirror once stretched past 20 minutes. The step now stops after 15 minutes.
-- CI requires a loop's Ogg Vorbis copy. The loop test otherwise accepts it as skipped when FFmpeg has no Vorbis encoder, so a lighter install could have tested less without failing.
+- CI requires a loop's Ogg Vorbis copy on Linux and Windows. The loop test otherwise accepts it as skipped when FFmpeg has no Vorbis encoder, so a lighter install could have tested less without failing.
+- On macOS, Homebrew's `ffmpeg` has no Vorbis encoder (`ffmpeg-full` has it), so a loop rendered with it has no Ogg copy, and the loop test notes the copy as skipped there. The macOS job had been doing so all along.
 
 ## [0.2.0] - 2026-11-06
 
