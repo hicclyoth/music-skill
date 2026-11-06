@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (two General MIDI soundfonts and video drivers the tests never use), which made up much of a 248 MB download that a slow mirror once stretched past 20 minutes. The step now stops after 15 minutes.
+- CI requires a loop's Ogg Vorbis copy. The loop test otherwise accepts it as skipped when FFmpeg has no Vorbis encoder, so a lighter install could have tested less without failing.
+
 ## [0.2.0] - 2026-11-06
 
 More styles, each with a guide written from its sources, a nylon-string guitar, and a way to see what a revision changed.
@@ -142,6 +149,7 @@ First public release.
 - `match_notes: "across"` measures each dynamic against its own median, so a dynamic recorded over less of the range than the others can step slightly at the edge of its range (on the Kawai, 0.5 dB at most).
 - Installing banks assumes a runtime folder that no other program changes during the install: archive members are checked against links in the destination before they are written, not while.
 
+[Unreleased]: https://github.com/owoevan-dev/music-skill/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/owoevan-dev/music-skill/releases/tag/v0.2.0
 [0.1.1]: https://github.com/owoevan-dev/music-skill/releases/tag/v0.1.1
 [0.1.0]: https://github.com/owoevan-dev/music-skill/releases/tag/v0.1.0

@@ -42,7 +42,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install FluidSynth and FFmpeg (Ubuntu)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y fluidsynth ffmpeg libarchive-tools
+        # Without the recommended packages (two General MIDI soundfonts and video drivers, none of which the tests use):
+        # they made up much of a 248 MB download that a slow mirror once stretched past 20 minutes.
+        timeout-minutes: 15
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fluidsynth ffmpeg libarchive-tools
       - name: Install FluidSynth and FFmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install fluid-synth ffmpeg
@@ -59,4 +62,6 @@ jobs:
       - name: Run the tests, renders included
         env:
           MUSIC_SKILL_CONFIG: ${{ runner.temp }}/runtime/local-config.json
+          # A loop's Ogg Vorbis copy is optional for users; here it is required, so a missing encoder fails the run.
+          MUSIC_SKILL_REQUIRE_OGG: "1"
         run: python -m pytest -q tests

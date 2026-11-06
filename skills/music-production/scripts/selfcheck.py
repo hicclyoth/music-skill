@@ -2,6 +2,7 @@
 import argparse
 import copy
 import json
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -1721,7 +1722,10 @@ def checks(work,config=None):
             tail=np.asarray(m[end:],dtype=np.float64);d=np.asarray(a,dtype=np.float64)-np.asarray(m[:end],dtype=np.float64)
             assert len(a)==end and loop.read_smpl(out/'loop.wav')==[(0,0,end-1)] and lp['gain_db']==0
             assert np.allclose(d[:len(tail)],tail,atol=2e-7) and not np.any(d[len(tail):]),'the loop is the master plus its folded tail'
-            assert ('ogg' in lp['files'] and r['checks']['loop_ogg_tags'] and r['checks']['loop_ogg_length_exact']) or 'ogg_skipped' in lp
+            # The Ogg Vorbis copy needs FFmpeg's libvorbis encoder and is noted as skipped without it.  With
+            # MUSIC_SKILL_REQUIRE_OGG set (CI sets it) it is required, so an FFmpeg without the encoder fails here.
+            ogg=('ogg' in lp['files'] and r['checks']['loop_ogg_tags'] and r['checks']['loop_ogg_length_exact'])
+            assert ogg or ('ogg_skipped' in lp and not os.environ.get('MUSIC_SKILL_REQUIRE_OGG')),lp.get('ogg_skipped',lp['files'])
             return {'loop_samples':end,'files':lp['files'],'abruptness':lp['seam']['abruptness']}
         check('loop_render_folds_the_tail_into_wav_and_ogg',loop_render)
         def layer_render():
