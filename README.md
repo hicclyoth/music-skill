@@ -57,7 +57,7 @@ The recordings download as MP3 files from the release [examples-1](https://githu
    ```
 
    For Codex and other agents: `npx skills add owoevan-dev/music-skill`.
-2. Ask your agent to set up the renderer and the sound banks. It runs the commands under [Install](#install): about 3.6 GB of downloads, then about five minutes on our test machine.
+2. Ask your agent to set up the renderer and the sound banks. It runs the commands under [Install](#install): about 3.7 GB of downloads, then about five minutes on our test machine.
 3. Ask for a piece in plain words:
 
    > Write a one-minute looping town theme for my RPG: recorder, harp and light strings.
@@ -124,7 +124,7 @@ sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install
 python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Then the sound banks, as this project built them: all twenty-nine are about 3.4 GB to download and 8 GB installed, and the downloads stay in the runtime folder unless you add `--delete-sources`, so keep about 12 GB free. `--only orchestra`, `band`, `world` or `examples` (the banks the examples use) installs a group, or name the banks (`--only vcsl,rusty`); a project that needs a bank you haven't installed stops with the command that adds it. `--from-source` builds the banks from their publishers' samples instead.
+Then the sound banks, as this project built them: all thirty are about 3.5 GB to download and 8 GB installed, and the downloads stay in the runtime folder unless you add `--delete-sources`, so keep about 12 GB free. `--only orchestra`, `band`, `world` or `examples` (the banks the examples use) installs a group, or name the banks (`--only vcsl,rusty`); a project that needs a bank you haven't installed stops with the command that adds it. `--from-source` builds the banks from their publishers' samples instead.
 
 ```
 python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/local-config.json --runtime <folder>/.runtime --output <folder>/local-config.studio.json
@@ -148,6 +148,8 @@ Ask your agent in plain words:
 
 > Make a synthwave cue for a night drive in my racing game: 100 BPM, a gated snare and a gliding lead.
 
+> Write a bossa nova for a rainy café scene: nylon guitar, flute and a soft kit.
+
 > The chorus melody in bar 33 is too busy. Simplify it and render again.
 
 > Send me the MIDI and the stems too.
@@ -158,7 +160,7 @@ Ask your agent in plain words:
 |---|---|---|
 | Pianos and keyboards | Steinway B, a Kawai grand, upright pianos, harpsichords, Yamaha TX81Z FM voices and a pipe organ from VCSL, by Versilian Studios; the Osiris Piano, recorded with and without the sustain pedal, by Karoryfer Samples | CC0 |
 | Orchestra | Strings (also by section, tremolo and pizzicato), brass, trombone, tuba, double bass, woodwinds, piccolo and glockenspiel from VSCO 2 Community Edition, by Versilian Studios; harp, mallets, tubular bells, timpani and orchestral percussion from VCSL; horn, bass trombone, clarinets, flutes, solo strings and percussion from the University of Iowa Electronic Music Studios | CC0; Iowa: free for any use without restrictions |
-| Band | FreePats FSBS electric guitars (two distorted, one clean); Bass YR, picked and finger, samples by Andrea Biasior; from Karoryfer Samples, Big Rusty Drums, a five-string bass, a pizzicato double bass, an archtop guitar, a baritone sax and a tuba; a solo cello by Karoryfer Lecolds and bigcat instruments | CC0 |
+| Band | FreePats FSBS electric guitars (two distorted, one clean); Bass YR, picked and finger, samples by Andrea Biasior; from Karoryfer Samples, Big Rusty Drums, a five-string bass, a pizzicato double bass, an archtop guitar, a baritone sax and a tuba; a solo cello by Karoryfer Lecolds and bigcat instruments; a nylon-string classical guitar from the University of Iowa Electronic Music Studios | CC0; Iowa: free for any use without restrictions |
 | Solo and world | Tenor sax, saxello, recorders, ocarina, harmonicas, folk harp, dan tranh, psaltery, kalimbas, balafon and world percussion from VCSL; an erhu; a tenor steel pan; a sung "ah" | CC0; steel pan: Unlicense |
 | Synthesizers | Built-in synthesizers and drum machines; Surge XT with fifty curated factory presets, optional and installed by default | built in: MIT; Surge XT: GPL-3.0, run by a separate GPL program |
 | Everything else | MuseScore MS Basic | MIT |
@@ -167,7 +169,7 @@ Every recorded bank is CC0, free for any use without restrictions (the Iowa reco
 
 ## How well it works
 
-`selfcheck.py` runs 88 checks (71 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision re-renders one part. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
+`selfcheck.py` runs 89 checks (72 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision re-renders one part. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
 
 Whether the music is good is another matter, and only listening can tell. The pieces above are the best evidence this repository has.
 
@@ -185,7 +187,7 @@ Whether the music is good is another matter, and only listening can tell. The pi
 
 - It doesn't sing or write lyrics. Of plugins it runs only Surge XT; your own VST plugins are not supported yet.
 - The sound is only as good as the free banks. The YR basses have one velocity layer, the section strings speak slowly, marimba, xylophone and piccolo are sampled sparsely, and a sampled guitar bend shifts the whole sample instead of changing the string's tone.
-- No bank yet covers acoustic guitars, a choir or East Asian instruments beyond an erhu and a dan tranh; such parts fall back to MS Basic's sparse General MIDI samples.
+- No bank yet covers steel-string acoustic guitars, a choir or East Asian instruments beyond an erhu and a dan tranh; such parts fall back to MS Basic's sparse General MIDI samples.
 - Surge XT starts its oscillators at random phases, so a Surge part is a slightly different take each time it is synthesized; the render cache keeps a take until the part changes. Its tempo-synced delays and LFOs follow one tempo per part, the written tempo most of its notes start under, so a pickup or a ritardando does not set it and a later tempo change does not move it. Everything else renders the same every time.
 - The agent cannot listen. `review` and `analyze` locate problems; a person has to hear the result, and the skill tells the agent never to claim it listened.
 - A long piece with many synthesizer or effect parts needs memory, up to about 2 GB for each part rendered at once; the renderer runs fewer parts at a time when free memory is short, and `--jobs` sets the number.
@@ -200,7 +202,7 @@ Whether the music is good is another matter, and only listening can tell. The pi
 | [arrangement.md](skills/music-production/references/arrangement.md) | Form, melody, voicing and the jobs of the parts |
 | [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | Performance, the bus chain, and reading `analyze` |
 | [soundbanks.md](skills/music-production/references/soundbanks.md) | The sound banks, their quirks, and adding your own |
-| [Genre guides](skills/music-production/references) | Electronic music, beats, jazz and funk, anime openings, game and scene music, orchestra, organ, piano and chamber music |
+| [Genre guides](skills/music-production/references) | Electronic music and techno, hip-hop beats and trap, jazz, blues, bossa nova and funk, rock and metal, pop and ballads, film scores and horror, anime openings, game and scene music, orchestra, baroque, organ, piano and chamber music |
 | [setup.md](skills/music-production/references/setup.md) | Installing the renderer on Windows, Linux and macOS |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | Using outside scores, MIDI and samples |
 
@@ -210,4 +212,4 @@ Bug reports, listening notes and sound bank suggestions are welcome as [issues](
 
 ## Licence
 
-[MIT](LICENSE) for the code and documentation. The example recordings and compositions are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Third-party tools and sound banks keep their own licences and are not in this repository: the tools come from their publishers and all twenty-nine banks from this project's release, twenty-four built from the publishers' samples and five repacked unchanged from FreePats. `skills/music-production/scripts/surge_host.py` is GPL-3.0-or-later, the licence of the Surge XT and pedalboard it runs. The picture of the overture is drawn by code from its project file, and the logo's lettering is Noto Serif TC (SIL Open Font License) turned into outlines.
+[MIT](LICENSE) for the code and documentation. The example recordings and compositions are dedicated to the public domain under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Third-party tools and sound banks keep their own licences and are not in this repository: the tools come from their publishers and all thirty banks from this project's release, twenty-five built from the publishers' samples and five repacked unchanged from FreePats. `skills/music-production/scripts/surge_host.py` is GPL-3.0-or-later, the licence of the Surge XT and pedalboard it runs. The picture of the overture is drawn by code from its project file, and the logo's lettering is Noto Serif TC (SIL Open Font License) turned into outlines.

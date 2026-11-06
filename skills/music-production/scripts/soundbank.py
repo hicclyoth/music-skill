@@ -455,6 +455,23 @@ def cut_sources(manifest, src_root, out_root):
                 raise ValueError(f'{n["file"]}: the cut does not reproduce the recorded note')
     return len(manifest['notes'])
 
+def highpass(x, rate, hz, order=6):
+    """A zero-phase high-pass by FFT with a Butterworth magnitude, |H| = 1 / sqrt(1 + (hz / f) ** (2 * order)): no
+    phase shift, so a note keeps its attack; 0.2 s of zero padding each side keeps the circular wrap out of the take.
+    Order 6 takes 10 dB at 0.83 times the cutoff and leaves 1.37 times it within 0.1 dB."""
+    x = np.asarray(x)
+    dtype, two = x.dtype, x.ndim == 2
+    y = np.asarray(x, dtype=np.float64)
+    if not two:
+        y = y[:, None]
+    pad = int(0.2 * rate)
+    n = len(y) + 2 * pad
+    f = np.fft.rfftfreq(n, 1 / rate)
+    H = np.zeros(len(f))
+    H[1:] = 1 / np.sqrt(1 + (hz / f[1:]) ** (2 * order))
+    out = np.fft.irfft(np.fft.rfft(np.pad(y, ((pad, pad), (0, 0))), axis=0) * H[:, None], n=n, axis=0)[pad:pad + len(y)]
+    return (out if two else out[:, 0]).astype(dtype)
+
 def split_sources(split, src_root, out_root):
     """Cut each source file of `split['groups']` into one float WAV per note, named <group>_<dyn>_<note>.wav.
 
@@ -506,8 +523,14 @@ def split_sources(split, src_root, out_root):
                 source['noise_bands'] = noise_bands(x, rate, spans)
             else:
                 fo = {**opts, **{k: entry[k] for k in ('quiet_db', 'edge_db', 'min_note', 'partial') if k in entry}}
+                # A room's rumble under a soft plucked run can hide its notes from the finder: it then works on a copy
+                # high-passed at `analysis_highpass_hz`, and the notes are still cut from the recording as it is.
+                hp = entry.get('analysis_highpass_hz', group.get('analysis_highpass_hz'))
+                if hp:
+                    source['analysis_highpass_hz'] = hp
                 try:
-                    found, summary = align_run(x, rate, _note_run(entry['notes']), tolerance=tolerance / 100, **fo)
+                    found, summary = align_run(highpass(x, rate, hp) if hp else x, rate, _note_run(entry['notes']),
+                                               tolerance=tolerance / 100, **fo)
                 except ValueError as exc:
                     raise ValueError(f'{entry["file"]}: {exc}') from None
                 source.update(left_out=summary['left_out'], missing=[note_name(w) for w in summary['missing']])
@@ -536,7 +559,12 @@ def split_sources(split, src_root, out_root):
         folder = contained(out_root, group['name'], 'group')
         folder.mkdir(parents=True, exist_ok=True)
         written = 0
+        # `leave_out`: takes judged unusable after listening or measuring ({"dyn", "note", "why"}), as a player's
+        # soft note in a loud run; the layer then serves that key from a neighbouring dynamic, as for a missing note.
+        dropped = {(d['dyn'], d['note']) for d in group.get('leave_out', [])}
         for (dyn, which), cands in sorted(candidates.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
+            if (dyn, which if isinstance(which, str) else note_name(which)) in dropped:
+                continue
             if prefer and len(cands) > 1:
                 def distance(c):
                     lo, hi = prefer[c['entry']['string']]
@@ -1064,6 +1092,9 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
     looped = layer.get('loop') in ('recorded', 'found')
     dn = layer.get('denoise')
     dc = layer.get('declick')
+    # `highpass`: {"ratio", "max_hz"}, a zero-phase high-pass at that fraction of each take's fundamental, at most
+    # max_hz, before anything else: a room's rumble under soft plucked notes, which a stationary denoiser cannot follow.
+    hpf = layer.get('highpass')
     noise, per_take, profile_from = {}, {}, {}
     if dn and (root / 'split.json').is_file():
         # Notes cut from longer recordings: each take uses its recording's own noise, measured between its notes when
@@ -1103,12 +1134,15 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             if rows and sum(len(r) for r in rows) >= 20:
                 noise[dyn] = np.concatenate(rows).mean(axis=0)
     for e in entries:
-        key = (str(e['file']) if not mics and not looped and not dn and dc is None else
+        key = (str(e['file']) if not mics and not looped and not dn and dc is None and not hpf else
                json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), layer.get('ring_db'), looped,
                            layer.get('loop_repair'), dn] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])
-                          + ([dc] if dc is not None else [])))
+                          + ([dc] if dc is not None else []) + ([hpf, e['named']] if hpf else [])))
         if key not in loaded:
             x, info = mic_mix(e['files'], mics, ffmpeg) if mics else read_audio(e['file'], ffmpeg)
+            if hpf:
+                f0 = 440.0 * 2 ** ((e['named'] - 69) / 12)
+                x = highpass(x, info['rate'], min(hpf.get('max_hz', 120.0), hpf.get('ratio', 0.73) * f0))
             noise_db = noise_from = None
             rel = e['file'].relative_to(root).as_posix()
             keep = (partial_bins(e['measured'], dn['keep_partials_below'], info['rate'])
@@ -1172,9 +1206,14 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
                 # Interpolation reads a few frames past the loop end: there they repeat the loop's first frames.
                 x = np.concatenate([x[:loop[1]], x[loop[0]:loop[0] + 16]])
             seg = x[int(0.25 * info['rate']):int(0.85 * info['rate'])].mean(axis=1)
-            f0 = (yin_f0(seg, info['rate'], fmin=layer.get('fmin', 25.0), fmax=layer.get('fmax', 4200.0),
-                         threshold=layer.get('yin_threshold', 0.12))
-                  if layer.get('pitch_check', True) and split_cents is None and len(seg) > 2048 else None)
+            if layer.get('pitch_source') == 'spectrum':
+                # The strongest peak within a semitone of the named fundamental over `spectrum_window` seconds: for
+                # plucked strings recorded over a room's rumble, which can pull YIN or the split's tracker off pitch.
+                f0 = spectral_pitch(x.mean(axis=1), info['rate'], e['named'], tuple(layer.get('spectrum_window', (0.2, 1.2))))
+            else:
+                f0 = (yin_f0(seg, info['rate'], fmin=layer.get('fmin', 25.0), fmax=layer.get('fmax', 4200.0),
+                             threshold=layer.get('yin_threshold', 0.12))
+                      if layer.get('pitch_check', True) and split_cents is None and len(seg) > 2048 else None)
             body = x[:int(1.0 * info['rate'])]
             # Sustained layers are matched by early RMS; percussive layers by peak.
             level = (float(np.abs(x).max()) * 0.115 if layer.get('level') == 'peak'

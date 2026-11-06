@@ -1,6 +1,6 @@
-# Electronic music: EDM, future bass, synthwave and chiptune
+# Electronic music: EDM, techno, future bass, synthwave and chiptune
 
-Read this when the request is a dance track (house, trance, festival EDM), future bass, synthwave or retrowave, chiptune or NES-style game music, or any cue built from synthesizers and drum machines. These styles are made in the studio rather than played: the sound of each part, how the parts duck and echo around each other, and a loud, controlled master are as much a part of the piece as its notes. Everything here uses the `synth`, `surge` and `drum_synth` engines and the production tools in [schema.md](schema.md); for hip-hop and lo-fi beats see [beats.md](beats.md).
+Read this when the request is a dance track (house, techno, trance, festival EDM), future bass, synthwave or retrowave, chiptune or NES-style game music, or any cue built from synthesizers and drum machines. These styles are made in the studio rather than played: the sound of each part, how the parts duck and echo around each other, and a loud, controlled master are as much a part of the piece as its notes. Everything here uses the `synth`, `surge` and `drum_synth` engines and the production tools in [schema.md](schema.md); for hip-hop and lo-fi beats see [beats.md](beats.md).
 
 ## Brief
 
@@ -11,6 +11,7 @@ Settle these from the request, deciding what it leaves open and saying so:
   | Style | Tempo (BPM) | Pulse | Signature |
   |---|---|---|---|
   | House | 120–128 | four on the floor, open hat on the off-beat | piano or organ stabs, plucks, a clap on 2 and 4 |
+  | Techno | 120–135 (Detroit, minimal); 135–150 for harder styles | four on the floor, open hat on the off-beat, sixteenth hats | a loop that changes by process: filter sweeps, an acid line, a rumble under the kick, dub chord stabs |
   | Trance | 132–140 | four on the floor, bass on the off-beats or rolling sixteenths | supersaw lead, long breakdown on pads |
   | Festival EDM | 126–130 | four on the floor | build-up and drop, a big supersaw or brass hook |
   | Future bass | 140–160 felt in half time | snare on beat 3 | supersaw chords pumping against the kick, wobbling chord swells |
@@ -92,6 +93,44 @@ The production tools work on a part's processed stem ([schema.md](schema.md)); `
 - **Low end.** `mix.mono_below_hz` 100–150 keeps the bass and kick in the middle, as club systems and vinyl cutting want.
 - **Loudness.** `mix.loudness: "loud"` rounds peaks in an oversampled soft clipper before the limiter. A festival-house test track reached −9.1 LUFS at −1.2 dBTP this way, its drop the loudest section, with clipper and limiter taking at most 0.2 dB of level from any section (`mastering.limiting_db` in the report). If a section loses more than about 3 dB there (`analyze` warns), its transients flatten and it can measure quieter than the sparser sections around it: lower `target_lufs`, or lower that section's peaks with `mix.saturate` on its loudest parts (a supersaw lead's unison peaks, the kick). Ask the user to listen for the kick losing its click before pushing further.
 
+## Techno
+
+Techno grew in Detroit in the mid-1980s from synth-pop, electro, funk and house, on drum machines, sequencers and synthesizers, the Roland TR-808 and TR-909 above all. It favours repeated sequences over the harmonic motion of other styles (Wikipedia, Techno). What changes is mostly the sound of the loop, not its notes.
+
+- **The pulse.**
+  - The kick on every beat and an open hat on every off-beat eighth: the "poumtchak" pattern, a continuous alternation of bass drum and hi-hat. Zeiner-Henriksen (2010) linked it to the vertical movements of club dancing: head nodding, bouncing, foot tapping.
+  - Closed hats or a shaker in sixteenths over it.
+  - A clap or snare on 2 and 4 in most styles; minimal techno often leaves it out.
+  - A ride on the off-beats for the peak.
+- **Repetition with process.** A loop of one to four bars runs for minutes while its sound moves.
+  - Garcia (2005) reads the pleasure of repetitive dance music as "process pleasure": pleasure in the unfolding of its processes.
+  - Smith (2021), analysing 2010s trance and house, shows how continuous processes, filter sweeps, crescendos and pitch slides, work as ornament, as orientation (they tell dancers where a section is going) and, in breakdowns, as disorientation.
+  - On the engine:
+    - `mix.filter_sweep` on the loop over 16–32 bars;
+    - a delay's `send_db` or `feedback` raised over a section;
+    - a part's `automation`;
+    - a new percussion layer every 8 or 16 bars.
+- **The rumble.** A low, swelling tail under the kick, made in the studio by sending the kick to a long reverb, low-passing it at 250–300 Hz, distorting it and ducking it by the kick so it swells between hits (Attack Magazine; MusicRadar). On the engine:
+  - a second `drum_synth` part playing the kick's notes with a long `kit.decay` (2–3);
+  - `lowpass` 200–300 Hz and `saturate` 0.3–0.5;
+  - `duck` by the main kick (`keys` [36], `depth_db` 8–12, `release_ms` about an eighth note), so it pumps between the kicks.
+- **The acid line.** `acid_bass` is a TB-303-style line, its resonant filter swept by its envelope.
+  - Write sixteenths with rests, octave jumps and a few accents (higher velocities open the filter).
+  - Turn the cutoff over a section with `filter_sweep`.
+- **Chords and stabs.**
+  - A minor-seventh or ninth stab on an off-beat with a dotted-eighth delay (`mix.delay` `beats: 0.75`, feedback 0.4–0.6): the dub chord of Detroit and Berlin techno (a convention).
+  - Pads on `warm_pad` or Surge `moody_pad` under breakdowns.
+- **Polymeter.** A sequence of three or five sixteenths looped against the 4/4 bar shifts its accents bar by bar and returns after three or five bars (a convention).
+- **Arrangement.**
+  - DJ-friendly: 16–32 bars of drums to start and end.
+  - Parts enter and leave on 8- and 16-bar boundaries.
+  - One or two breakdowns, shorter and subtler than trance's, ended by a filter rise rather than a big drop.
+  - A track runs 6–8 minutes; a cue can compress that into 2–3.
+- **The mix.**
+  - The kick and the rumble own the low end, with `mono_below_hz` 100–150.
+  - The bass ducked by the kick; bright but not harsh hats.
+  - `loudness: "loud"` at −9 to −8 LUFS for a club master, −14 for streaming.
+
 ## Future bass
 
 Half-time drums at 140–160 BPM with a big clap or snare on beat 3; chords of sevenths and ninths (IVmaj7–V–iii7–vi suits it) on `future_bass_chord`, ducked deep by the kick and held through each bar so the pumping is heard; a pitch LFO on the chords for the wobbling swell; a lead built from short notes, for example short notes on `vocal_ah` with a dotted-eighth delay where a vocal chop would go. Drop the chords on the drop's downbeat with the kick. These are conventions of the style, not measurements.
@@ -137,6 +176,11 @@ Keep to one note at a time per part, except for `chip_arp` chords, and to four o
 - Brøvig-Hanssen, R., Sandvik, B. and Aareskjold-Drecker, J. M. (2020). [Dynamic Range Processing and Its Influence on Perceived Timing in Electronic Dance Music](https://doi.org/10.30535/mto.26.2.3). *Music Theory Online* 26(2).
 - Danielsen, A., Johansson, M., Brøvig, R., Sandvik, B. and Bøhler, K. K. (2023). [Shaping rhythm: timing and sound in five groove-based genres](https://doi.org/10.1017/S0261143023000041). *Popular Music* 42(1). Producers' and musicians' own accounts of timing and sound in EDM, hip-hop, jazz and other styles.
 - Szabo, A. (2010). How to Emulate the Super Saw. Thesis, KTH Royal Institute of Technology.
+- Zeiner-Henriksen, H. T. (2010). [The "PoumTchak" Pattern: Correspondences Between Rhythm, Sound, and Movement in Electronic Dance Music](https://www.duo.uio.no/handle/10852/56756). PhD thesis, University of Oslo.
+- Garcia, L.-M. (2005). [On and On: Repetition as Process and Pleasure in Electronic Dance Music](https://mtosmt.org/issues/mto.05.11.4/mto.05.11.4.garcia.php). *Music Theory Online* 11(4).
+- Smith, J. W. (2021). [The Functions of Continuous Processes in Contemporary Electronic Dance Music](https://mtosmt.org/ojs/index.php/mto/article/view/466). *Music Theory Online* 27(2).
+- [Techno](https://en.wikipedia.org/wiki/Techno). Wikipedia, read 6 November 2026: origins, drum machines, repeated sequences.
+- Attack Magazine, [Adding reverb to a techno kick](https://www.attackmagazine.com/technique/tutorials/adding-reverb-techno-kick/) and [Dark techno rumble](https://www.attackmagazine.com/technique/beat-dissected/dark-techno-rumble/); MusicRadar, [How to create rumbling techno kick drums with reverb](https://musicradar.com/how-to/how-to-create-rumbling-techno-kick-drums-with-reverb). Practitioners' accounts of the rumble.
 - Merlini, M. (2023). [More 1980s than the 1980s: Hauntological and Hyperreal Meanings of Synthwave Soundtracks](https://riviste.unimi.it/index.php/sss/article/view/14136). *Sound Stage Screen*.
 - Collins, K. (2007). In the Loop: Creativity and Constraint in 8-bit Video Game Audio. *Twentieth-Century Music* 4(2), 209–227.
 - Cook, K. M. (2023). [8-Bit Affordances: Jun Chikuma's Soundtrack to Faxanadu](https://mtosmt.org/issues/mto.23.29.3/mto.23.29.3.cook.php). *Music Theory Online* 29(3).

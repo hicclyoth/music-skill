@@ -1,6 +1,6 @@
-# Jazz and funk: swing, comping, walking bass and the groove
+# Jazz, blues, bossa nova and funk: swing, comping, walking bass and the groove
 
-Read this when the request is a jazz combo or big-band-flavoured cue (swing, ballad, bossa nova, jazz waltz), a cafe or bar scene, funk, pop-funk or city pop, or any piece whose harmony is built from sevenths and extensions. Both styles live in the rhythm section's time: jazz in the swing of the ride cymbal and the walking bass, funk in sixteenth-note parts locked to the downbeat. For lo-fi and hip-hop beats built on the same harmony see [beats.md](beats.md).
+Read this when the request is a jazz combo or big-band-flavoured cue (swing, ballad, bossa nova, jazz waltz), blues (a 12-bar, a shuffle, a slow blues), a cafe or bar scene, funk, pop-funk or city pop, or any piece whose harmony is built from sevenths and extensions. Both styles live in the rhythm section's time: jazz in the swing of the ride cymbal and the walking bass, funk in sixteenth-note parts locked to the downbeat. For lo-fi and hip-hop beats built on the same harmony see [beats.md](beats.md).
 
 ## Brief
 
@@ -15,6 +15,8 @@ Settle these from the request, deciding what it leaves open and saying so:
   | Medium swing | 120–180 | swung eighths, walking bass |
   | Up-tempo | 200–300 | swing that flattens toward even eighths (below) |
   | Bossa nova | 120–140 | straight eighths, a syncopated guitar and bass on 1 and 3 |
+  | Slow blues | 50–70 dotted quarters in 12/8 | three eighths to the beat, backbeat on 2 and 4 |
+  | Shuffle blues | 90–140 | swung eighths at a triplet ratio, backbeat on 2 and 4 |
   | Jazz waltz | 120–180 in 3/4 | swung, bass on 1 or walking in three |
   | Funk | 90–115 | sixteenths, straight or lightly swung, everything on the One |
   | Pop-funk, city pop | 100–125 | sixteenths, slap or picked bass, bright keys and horns |
@@ -66,6 +68,71 @@ Funk grooves are built from short figures, each part repeating its own pattern w
 
 Keep every part's notes short unless they need to sustain: funk's energy comes from the silences between the hits as much as from the hits.
 
+## Blues
+
+The blues is built on a repeating chord progression, the twelve-bar sequence most of all, on call and response between the voice and the instruments, on the blues scale and its blue notes, and on a groove of shuffles or walking bass (Wikipedia, Blues).
+
+- **The twelve-bar form** (Wikipedia, Twelve-bar blues):
+
+  | Bars | 1–4 | 5–8 | 9–12 |
+  |---|---|---|---|
+  | Basic | I · I · I · I | IV · IV · I · I | V · IV · I · I (or V in bar 12) |
+  | Quick change | I · IV · I · I | IV · IV · I · I | V · IV · I · V |
+
+  - Dominant sevenths on every chord.
+  - A turnaround in bars 11–12 leads back to the top: I–IV–I–V7, or a chromatic line falling toward the V7.
+  - The minor blues runs i7–iv7–♭VI7–V7–i7.
+  - Eight- and sixteen-bar blues stretch or shorten the same plan.
+- **AAB phrasing.** The three lines of four bars align with an AAB pattern:
+  - a phrase over I;
+  - the phrase repeated over IV;
+  - an answer over V that closes into the turnaround.
+
+  Each line leaves its last bar or two open, and an instrument answers there (call and response). An instrumental lead takes the voice's lines; a guitar, harmonica or piano fills the gaps.
+- **Blue notes.** The blues scale sits over the major chords: its minor third, flattened fifth and flattened seventh against a major third and a dominant seventh in the chords make a deliberate conflict.
+  - Blue notes are lower than expected: a quarter-tone to a semitone, often reached by a glide. Van der Merwe (1989) ranks the degrees treated that way: the third, then the seventh, the fifth and the sixth.
+  - Weisethaunet (2001) separates the blue note as a pitch from the broader "blue" feeling of a performance.
+  - On the engine, write the scale note and bend it with `performance.bend` on a monophonic lead:
+    - the minor third pushed a quarter- to a half-tone toward the major third and released (a "curl");
+    - a full bend from the fourth into the fifth;
+    - vibrato on held notes ([performance-and-mix.md](performance-and-mix.md)).
+- **The groove.**
+  - A **shuffle** swings eighths at about a triplet ratio: `performance.swing` `{"ratio": 0.66, "unit": 0.5}` on drums, bass, comping and lead (a convention). At fast tempos, flatten it as for jazz (above).
+  - A **slow blues** is written in 12/8 (`meter` [12, 8]; one beat is a dotted quarter, three eighths).
+  - **Drums.** A backbeat on 2 and 4 under the shuffle on the hi-hat or ride, the kick on 1 and 3, ghost notes on the snare's triplets.
+  - **Bass.** A shuffle bass climbs root–fifth–sixth–flat seventh on each chord, or walks.
+  - **Piano.** A boogie-woogie left hand: eighths through 1–3–5–6–♭7–6–5–3.
+- **Instruments.**
+  - Lead guitar: `fsbs_clean`, or `guitar_shiny` pickup 0:26 for a clean jazz-blues tone, with bends.
+  - Harmonica: `vcsl_winds` Harmonica in C (0:22; vibrato 1:22). A diatonic harmonica is played in "second position", a fifth above its key, for the blues: a C harmonica plays a blues in G. Both VCSL harmonicas are sampled only on C, E and G of each octave, so every other note is one of those stretched up to two semitones, and the draw notes are blow notes moved. Keep the harmonica to short fills; lead on the guitar or a tenor sax (`vcsl_winds` 1:66, sampled every whole tone).
+  - Piano: the uprights `vcsl_keys` 0:3, 1:3 for a barrelhouse.
+  - Organ: Surge `organ_1`.
+  - Bass: `bass_sneaky` (upright) or `bass_darkblack`.
+  - Drums: `rusty`.
+  - Horns for jump blues: tenor sax `vcsl_winds` 0:66, `vsco` trumpet 0:56.
+- **Endings.** A last turnaround that stops on the I7 or I9, often approached a semitone above (♭II7) or from ♭VI7 (a convention).
+
+## Bossa nova
+
+Bossa nova is a relaxed style of samba from Rio de Janeiro in the late 1950s, played on the nylon-string classical guitar with the fingers. Its core is João Gilberto's guitar beat, the batida, which takes one layer of the samba ensemble, the tamborim, into the picking hand (Wikipedia, Bossa nova).
+
+- **The guitar** (`iowa_guitar` 0:24, the nylon-string guitar in [soundbanks.md](soundbanks.md)).
+  - The thumb keeps the bass regular: the root on beats 1 and 3, or the root and then the fifth.
+  - The fingers pluck the chord, three or four notes, syncopated against it. Wikipedia gives the basic one-bar pattern in 2/4: the thumb on 1 and 2, the chord on both eighths of beat 1 and the second sixteenth of beat 2. Written in 4/4 at 120–140, that is chords on beats 1 and 2 and the "and" of 3, the bass on 1 and 3.
+  - Vary it in two-bar patterns that push a chord ahead of the bar line by an eighth; let the pushed chord ring over the bar line rather than striking it again on 1.
+  - Keep the notes short (`gate` 0.5–0.7) and the velocities soft, 50–75.
+- **Harmony.** Major sevenths, minor sevenths and ninths, 6/9 chords, dominants with flat nines, sharp elevenths and thirteenths, half-diminished ii–V into minor, and chromatic lines through the inner voices or the bass. Bossa nova's "ambiguous" chords are often credited to jazz, but samba guitarists used similar structures before it (Wikipedia, Bossa nova).
+  - Check each voicing against the tune: a semitone or minor ninth between them (a flat thirteenth in the tune over a voiced fifth, a natural ninth over a voiced flat nine, a natural note over its flattened form) sounds wrong, not rich. Leave the clashing note out of the chord or change the melody note.
+  - On the guitar, keep the thumb's bass on or above E2: a D or E-flat root goes up an octave (D3 on the A string).
+- **Percussion on a kit.**
+  - The surdo's pattern on the kick: 1, the "and" of 2, 3 and the "and" of 4 (in 4/4).
+  - A side stick (37) on the bossa clave, a son clave with the side of two notes pushed an eighth: in eighths over two bars, positions 0, 3, 6, 10 and 13.
+  - Eighths on the hi-hat or the ride.
+  - A shaker or cabasa (`vcsl_world` 128:25, keys 69–71) in sixteenths, well under the side stick: the shaker samples are quiet, so its stem's level reads high for what it is.
+- **Bass.** `bass_sneaky`, the surdo's rhythm on root and fifth. TalkingBass gives the most common figure as the root on 1 (a dotted quarter), the fifth on the "and" of 2 and again on 3 (a dotted quarter), the root on the "and" of 4: each eighth anticipates the next note. The simpler two-feel, the root on 1 and the fifth on 3, also suits it. Where the guitar pushes the next chord early, push its root with it.
+- **Melody.** Long notes against the guitar's syncopation, mostly stepwise, at a speaking volume: a flute (`vsco` 0:73, or the `iowa_winds` alto flute), a tenor sax with vibrato (`vcsl_winds` 1:66), a muted trumpet (`vsco_colors` 0:59), or the piano. The `vsco` flute was recorded with spaced microphones: give it `width` 0.3 or so, or the tune spreads across the room instead of sitting in front.
+- **The mix.** Intimate and dry: a short room, the guitar and the bass close; `target_lufs` −16 suits it.
+
 ## Symptoms and causes
 
 | Symptom | Likely causes | What to check or change |
@@ -76,6 +143,8 @@ Keep every part's notes short unless they need to sustain: funk's energy comes f
 | Walking bass wanders | no chord tone on beat 1, approaches that resolve nowhere | the beat-1 chord tone and the beat-4 approach |
 | Solo sounds like scales | constant eighths, no rests, no target notes | phrase lengths, rests, chord tones on strong beats, a motif in sequence |
 | Funk feels busy | every part plays every sixteenth | rests, shorter notes, one part at a time on each sixteenth |
+| The blues sounds like a scale exercise | blue notes as plain semitones; no answers between phrases | bends and curls on the third and seventh; a fill in each line's last bar |
+| Bossa nova sounds stiff | the chord on every beat; loud, long guitar notes | the syncopated pattern above, short notes, soft velocities |
 
 ## Sources
 
@@ -84,4 +153,8 @@ Keep every part's notes short unless they need to sustain: funk's energy comes f
 - Berliner, P. F. (1994). *Thinking in Jazz: The Infinite Art of Improvisation*. University of Chicago Press. How jazz musicians learn and build solos, comping and walking lines.
 - Danielsen, A. (2006). *Presence and Pleasure: The Funk Grooves of James Brown and Parliament*. Wesleyan University Press.
 - Vincent, R. (1996). *Funk: The Music, the People, and the Rhythm of the One*. St. Martin's Griffin.
+- van der Merwe, P. (1989). *Origins of the Popular Style: The Antecedents of Twentieth-Century Popular Music*. Clarendon Press. Quoted in Wikipedia, [Blue note](https://en.wikipedia.org/wiki/Blue_note), on the order of the blue degrees.
+- Weisethaunet, H. (2001). [Is there such a thing as the 'blue note'?](https://www.cambridge.org/core/journals/popular-music/article/is-there-such-a-thing-as-the-blue-note/EE4A6BCF75165945F6024E01D7F56C31) *Popular Music* 20(1), 99–116.
+- Wikipedia, read 6 November 2026: [Blues](https://en.wikipedia.org/wiki/Blues), [Twelve-bar blues](https://en.wikipedia.org/wiki/Twelve-bar_blues) and [Bossa nova](https://en.wikipedia.org/wiki/Bossa_nova), with the sources they cite.
+- TalkingBass (2019). [Bossa nova bass lines: a beginner's guide](https://www.talkingbass.net/bossa-nova-bass-lines-beginners/). The two-feel and the dotted-quarter–eighth figure on root and fifth, read 6 November 2026.
 - Danielsen, A., Johansson, M., Brøvig, R., Sandvik, B. and Bøhler, K. K. (2023). [Shaping rhythm: timing and sound in five groove-based genres](https://doi.org/10.1017/S0261143023000041). *Popular Music* 42(1).

@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - Unreleased
+
+More styles, each with a guide written from its sources, and a nylon-string guitar.
+
+### Added
+
+- **Guides for more styles**, each sourced from research, the styles' documented descriptions and production practice, with the sources listed at its end:
+  - [film-score.md](skills/music-production/references/film-score.md): emotional underscore, scoring to picture, suspense and horror;
+  - [pop-and-ballad.md](skills/music-production/references/pop-and-ballad.md): song form, pop harmony, the key change, a lead instrument that sings;
+  - [rock-and-metal.md](skills/music-production/references/rock-and-metal.md): rock, punk and grunge, and four metal styles (traditional heavy metal, thrash, power and melodic metal, metalcore), with riffs, breakdowns, double-tracked guitars and the mix;
+  - [baroque.md](skills/music-production/references/baroque.md): the continuo and the rule of the octave, counterpoint and suspensions, galant schemata, dances, ritornello form, fugue, ground bass and chorale, and strings, harpsichord and ornaments on the banks;
+  - boom bap and trap in [beats.md](skills/music-production/references/beats.md), techno in [electronic.md](skills/music-production/references/electronic.md), blues and bossa nova in [jazz-and-funk.md](skills/music-production/references/jazz-and-funk.md).
+- **A nylon-string classical guitar**, `iowa_guitar` (0:24, E2–B5, three dynamics), cut from the University of Iowa's 2011 recordings: the thirtieth bank, in the `band` group.
+- **`soundbank.py`**, for recordings with low rumble and uneven tuning:
+  - `analysis_highpass_hz` lets a split find notes in a high-passed copy while cutting them from the recording as it is;
+  - `leave_out` drops a take judged unusable;
+  - a layer's `highpass` filters each take below its own fundamental without phase shift;
+  - `pitch_source: "spectrum"` tunes from the spectral peak.
+
+  A selfcheck covers them (89 checks, 72 without a renderer configuration).
+
+### Changed
+
+- The skill's description names the new styles, and its first step routes each to its guide.
+- Corrections found while checking sources: two horror-scoring findings now say what the papers found, and the chromatic-mediant example in the film guide is a real I–♭VI over a common tone.
+- The README counts thirty banks, about 3.5 GB of downloads, and no longer says acoustic guitars are missing (steel-string ones still are).
+
 ## [0.1.1] - 2026-11-05
 
 Packaging for the Claude plugin directory, and a fix for the chorus effect. The sound banks are unchanged.

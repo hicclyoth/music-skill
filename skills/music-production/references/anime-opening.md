@@ -1,6 +1,6 @@
 # Anime-opening style: a band cue in about ninety seconds
 
-Read this when the request is an anime opening, a J-rock or J-pop-style band cue, an energetic theme for a game or video in that style, or an instrumental version of a song like that. The style compresses a whole song's arc into the length of a TV opening: a hook in the first seconds, a verse, a build, a chorus that pays it off, and a hard ending. Instrumental here means an instrument carries the vocal line, so the melody has to be singable and the lead part has to phrase like a singer.
+Read this when the request is an anime opening, a J-rock or J-pop-style band cue, an energetic theme for a game or video in that style, or an instrumental version of a song like that. The style compresses a whole song's arc into the length of a TV opening: a hook in the first seconds, a verse, a build, a chorus that pays it off, and a hard ending. Instrumental here means an instrument carries the vocal line, so the melody has to be singable and the lead part has to phrase like a singer. Rock and metal outside this form, with riffs, palm-muted guitars and breakdowns, are in [rock-and-metal.md](rock-and-metal.md).
 
 ## Brief
 

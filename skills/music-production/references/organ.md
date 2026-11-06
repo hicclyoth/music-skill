@@ -1,6 +1,6 @@
 # Organ music: the pipe organ bank
 
-Read this when a part is for pipe organ: a chorale or hymn, a prelude, a solemn scene, organ with orchestra. It covers what the bank's organ can do, how organ parts are written for hands and feet, how an organ phrases without dynamics, and the church it is heard in.
+Read this when a part is for pipe organ: a chorale or hymn, a prelude, a solemn scene, organ with orchestra. It covers what the bank's organ can do, how organ parts are written for hands and feet, how an organ phrases without dynamics, and the church it is heard in. For baroque counterpoint, continuo and forms, see [baroque.md](baroque.md).
 
 ## The instrument in the bank
 

@@ -57,7 +57,7 @@ music-skill 是一個 [Agent Skill](https://agentskills.io)，讓 AI agent 像�
    ```
 
    Codex 和其他 agent：`npx skills add owoevan-dev/music-skill`。
-2. 請 agent 安裝渲染工具和音色庫。它會執行[安裝](#安裝)一節的指令：下載約 3.6 GB，在我們的測試電腦上接著約五分鐘就完成其餘步驟。
+2. 請 agent 安裝渲染工具和音色庫。它會執行[安裝](#安裝)一節的指令：下載約 3.7 GB，在我們的測試電腦上接著約五分鐘就完成其餘步驟。
 3. 用平常的話點一首曲子：
 
    > 幫我的 RPG 寫一首一分鐘、可以循環的城鎮主題：直笛、豎琴和輕柔的弦樂。
@@ -124,7 +124,7 @@ sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS：brew instal
 python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-接著下載音色庫（本專案建好的版本）：全部二十九個下載約 3.4 GB、安裝後約 8 GB；除非加上 `--delete-sources`，下載的檔案會留在 runtime 資料夾，所以請預留約 12 GB。`--only orchestra`、`band`、`world` 或 `examples`（範例曲用到的音色庫）可以只裝一組，也可以直接寫音色庫名稱（`--only vcsl,rusty`）；專案用到還沒安裝的音色庫時，會停下來並列出安裝指令。加上 `--from-source` 則改從各發布者的原始取樣自行建置。
+接著下載音色庫（本專案建好的版本）：全部三十個下載約 3.5 GB、安裝後約 8 GB；除非加上 `--delete-sources`，下載的檔案會留在 runtime 資料夾，所以請預留約 12 GB。`--only orchestra`、`band`、`world` 或 `examples`（範例曲用到的音色庫）可以只裝一組，也可以直接寫音色庫名稱（`--only vcsl,rusty`）；專案用到還沒安裝的音色庫時，會停下來並列出安裝指令。加上 `--from-source` 則改從各發布者的原始取樣自行建置。
 
 ```
 python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/local-config.json --runtime <folder>/.runtime --output <folder>/local-config.studio.json
@@ -148,6 +148,8 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 > 幫我的賽車遊戲寫一段夜間駕駛的 synthwave 配樂：100 BPM，閘門殘響小鼓，滑音主旋律。
 
+> 幫雨天咖啡館的場景寫一首巴薩諾瓦：尼龍弦吉他、長笛和輕柔的鼓。
+
 > 第 33 小節的副歌旋律太忙了，簡化一下再重新渲染。
 
 > 也把 MIDI 和分軌給我。
@@ -158,7 +160,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 |---|---|---|
 | 鋼琴與鍵盤 | VCSL（Versilian Studios）的 Steinway B、Kawai 平台鋼琴、直立鋼琴、大鍵琴、Yamaha TX81Z FM 音色和管風琴；Karoryfer Samples 的 Osiris Piano，分別錄了踩與不踩延音踏板的版本 | CC0 |
 | 管弦樂 | VSCO 2 Community Edition（Versilian Studios）的弦樂（含分部、震音與撥奏）、銅管、長號、低音號、低音提琴、木管、短笛和鐘琴；VCSL 的豎琴、木槌類打擊樂、管鐘、定音鼓和管弦打擊樂；愛荷華大學電子音樂工作室的法國號、低音長號、單簧管、長笛、獨奏弦樂和打擊樂 | CC0；愛荷華：可自由用於任何用途，沒有限制 |
-| 樂團 | FreePats FSBS 電吉他（兩種破音、一種乾淨音色）；Bass YR 撥片與指彈貝斯，取樣由 Andrea Biasior 錄製；Karoryfer Samples 的 Big Rusty Drums、五弦貝斯、撥奏低音提琴、弧頂爵士吉他、上低音薩克斯風和低音號；Karoryfer Lecolds 與 bigcat instruments 的獨奏大提琴 | CC0 |
+| 樂團 | FreePats FSBS 電吉他（兩種破音、一種乾淨音色）；Bass YR 撥片與指彈貝斯，取樣由 Andrea Biasior 錄製；Karoryfer Samples 的 Big Rusty Drums、五弦貝斯、撥奏低音提琴、弧頂爵士吉他、上低音薩克斯風和低音號；Karoryfer Lecolds 與 bigcat instruments 的獨奏大提琴；愛荷華大學電子音樂工作室的尼龍弦古典吉他 | CC0；愛荷華：可自由用於任何用途，沒有限制 |
 | 獨奏與世界樂器 | VCSL 的次中音薩克斯風、saxello、直笛、陶笛、口琴、民謠豎琴、越南箏（đàn tranh）、psaltery（撥弦齊特琴）、卡林巴、巴拉風和世界打擊樂；二胡；次中音鋼鼓；人聲「啊」 | CC0；鋼鼓：Unlicense |
 | 合成器 | 內建的合成器與鼓機；Surge XT 和五十個精選原廠音色，選用、預設安裝 | 內建：MIT；Surge XT：GPL-3.0，由獨立的 GPL 程式執行 |
 | 其他樂器 | MuseScore MS Basic | MIT |
@@ -167,7 +169,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 效果如何
 
-`selfcheck.py` 共有 88 項檢查（沒有渲染設定時為 71 項），從 MIDI 來回轉換、壓縮檔安全，到實際渲染都包括在內。例如：只改一個音時只會重新渲染一個聲部；舊的單一殘響混音能逐位元重現先前的版本；響度量測對 BS.1770 的標準測試音讀出 −3.01 LUFS。CI 會跑完所有檢查（包括渲染），環境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 89 項檢查（沒有渲染設定時為 72 項），從 MIDI 來回轉換、壓縮檔安全，到實際渲染都包括在內。例如：只改一個音時只會重新渲染一個聲部；舊的單一殘響混音能逐位元重現先前的版本；響度量測對 BS.1770 的標準測試音讀出 −3.01 LUFS。CI 會跑完所有檢查（包括渲染），環境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音樂好不好聽是另一回事，只有實際聆聽才知道。上面這些曲子是這個 repo 最好的證據。
 
@@ -185,7 +187,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 - 不會唱歌、不寫歌詞。外掛只支援 Surge XT，還不能載入你自己的 VST 外掛。
 - 音色的上限取決於免費音色庫：YR 貝斯只有一層力度，弦樂起音偏慢，馬林巴、木琴與短笛的取樣稀疏，取樣吉他的推弦是把整段取樣變調，不會有真實琴弦的音色變化。
-- 目前還沒有木吉他、合唱，以及二胡和越南箏以外的東亞樂器音色庫；這些聲部只能用 MS Basic 取樣稀疏的 General MIDI 音色。
+- 目前還沒有鋼弦木吉他、合唱，以及二胡和越南箏以外的東亞樂器音色庫；這些聲部只能用 MS Basic 取樣稀疏的 General MIDI 音色。
 - Surge XT 的振盪器每次都從隨機相位開始，所以同一個 Surge 聲部每次合成都會有細微差異；渲染快取會保留一次的結果，直到這個聲部改動為止。它的節拍同步延遲和 LFO 每個聲部只用一個速度：該聲部大多數音符起始時的樂譜速度，所以弱起拍或漸慢不會決定它，曲中變速也不會跟著改。其他部分每次渲染都完全相同。
 - agent 聽不到聲音。`review` 和 `analyze` 只能找出問題，結果必須由人來聽；skill 也要求 agent 不得宣稱自己聽過。
 - 長曲裡如果有很多合成器或效果處理的聲部，會用掉不少記憶體，同時渲染的每個聲部最多約 2 GB；可用記憶體不足時，渲染程式會自動減少同時處理的聲部數，也可以用 `--jobs` 指定。
@@ -200,7 +202,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | [arrangement.md](skills/music-production/references/arrangement.md) | 曲式、旋律、和聲配置與各聲部的職責 |
 | [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏、匯流排混音，以及如何解讀 `analyze` |
 | [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色庫的特性與限制，以及如何加入自己的音色庫 |
-| [曲風指南](skills/music-production/references) | 電子音樂、節拍、爵士與放克、動漫片頭、遊戲與場景配樂、管弦樂、管風琴、鋼琴與室內樂 |
+| [曲風指南](skills/music-production/references) | 電子音樂與 techno、嘻哈節拍與 trap、爵士、藍調、巴薩諾瓦與放克、搖滾與金屬、流行與抒情曲、電影配樂與恐怖、動漫片頭、遊戲與場景配樂、管弦樂、巴洛克、管風琴、鋼琴與室內樂 |
 | [setup.md](skills/music-production/references/setup.md) | 在 Windows、Linux 和 macOS 安裝渲染工具 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 使用外部樂譜、MIDI 與取樣的注意事項 |
 
@@ -212,4 +214,4 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 授權
 
-程式碼與文件採用 [MIT](LICENSE) 授權。範例的錄音與樂曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 釋出到公有領域。第三方工具和音色庫保留各自的授權，不包含在這個 repo 裡：工具從發布者下載，二十九個音色庫都從本專案的 release 下載，其中二十四個以發布者的取樣建置，五個是 FreePats 的原檔重新打包。`skills/music-production/scripts/surge_host.py` 採用 GPL-3.0-or-later，與它執行的 Surge XT 和 pedalboard 相同。序曲的那張圖是程式直接從它的專案檔畫出來的；logo 的文字是將 Noto Serif TC（SIL Open Font License）轉成外框。
+程式碼與文件採用 [MIT](LICENSE) 授權。範例的錄音與樂曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 釋出到公有領域。第三方工具和音色庫保留各自的授權，不包含在這個 repo 裡：工具從發布者下載，三十個音色庫都從本專案的 release 下載，其中二十五個以發布者的取樣建置，五個是 FreePats 的原檔重新打包。`skills/music-production/scripts/surge_host.py` 採用 GPL-3.0-or-later，與它執行的 Surge XT 和 pedalboard 相同。序曲的那張圖是程式直接從它的專案檔畫出來的；logo 的文字是將 Noto Serif TC（SIL Open Font License）轉成外框。

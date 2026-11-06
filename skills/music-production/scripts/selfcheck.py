@@ -554,6 +554,38 @@ def checks(work,config=None):
         assert partial['sources'][0]['missing']==['F#4'] and len(partial['notes'])==6
         return {'notes':len(m['notes']),'cents':{g[0][7:-4]:g[1] for g in got}}
     check('split_finds_each_note_of_a_chromatic_run',split_run)
+    def split_highpass():
+        from soundbank import split_sources,highpass,spectral_pitch,read_audio
+        rate=44100;t=np.arange(rate)/rate;mid=slice(rate//4,-rate//4)
+        # The zero-phase high-pass: -3 dB at its cutoff, about -36 dB an octave under it (order 6), flat at four times
+        # it, and a click left where it was.
+        gain=lambda f:20*np.log10(np.std(highpass(np.sin(2*np.pi*f*t),rate,100)[mid])/np.std(np.sin(2*np.pi*f*t)[mid]))
+        g=[round(gain(f),2) for f in (50,100,400)]
+        assert abs(g[0]+36.1)<1 and abs(g[1]+3.01)<.3 and abs(g[2])<.05,g
+        click=np.zeros(rate);click[rate//2]=1
+        assert int(np.argmax(np.abs(highpass(click,rate,100))))==rate//2
+        # The chromatic run under a 60 Hz hum about 5 dB under its notes, so the gaps are never quiet: the split reads a
+        # copy high-passed at 120 Hz (the hum 41 dB under the notes there), cuts the notes from the recording as it is
+        # (the hum still in them), and drops the take named in leave_out.
+        root=work/'split_source';x,_,truth=chromatic_run()
+        aiff(root/'H.mf.C4F4.aiff',x+.1*np.sin(2*np.pi*60*np.arange(len(x))/rate),rate)
+        group={'name':'H','files':[{'file':'H.mf.C4F4.aiff','dyn':'mf','notes':['C4','F4'],'analysis_highpass_hz':120}],
+               'leave_out':[{'dyn':'mf','note':'D#4','why':'a take judged unusable'}]}
+        m=split_sources({'groups':[group]},root,work/'split_hum')
+        got={n['file'].split('_')[-1][:-4]:n for n in m['notes']}
+        assert sorted(got)==sorted(['C4','C#4','D4','E4','F4']) and m['sources'][0]['analysis_highpass_hz']==120,(sorted(got),m['sources'])
+        for midi,cents,start in truth:
+            name=['C','C#','D','D#','E','F'][midi-60]+'4'
+            if name in got:
+                assert abs(got[name]['cents']-cents)<4 and -.03<start-got[name]['start']/rate<.03,(name,got[name],cents,start)
+        y,_=read_audio(work/'split_hum'/got['C4']['file']);y=np.asarray(y,dtype=np.float64).reshape(len(y),-1)[:,0]
+        n=np.arange(len(y))/rate;hum=float(2*abs(np.mean(y*np.exp(-2j*np.pi*60*n))))   # the 60 Hz amplitude in the cut
+        assert .07<hum<.13,hum
+        # Tuning from the spectrum: an A4 played 20 cents flat reads -20 cents.
+        f=spectral_pitch(np.sin(2*np.pi*440*2**(-20/1200)*t)*.3,rate,69,(.2,.9))
+        cents=1200*np.log2(f/440);assert abs(cents+20)<1,cents
+        return {'gain_db_at_50_100_400_hz':g,'notes':len(got),'hum_in_cut':round(hum,3),'spectral_cents':round(float(cents),2)}
+    check('split_reads_a_high_passed_copy_and_leaves_out_takes',split_highpass)
     def split_bank():
         from soundbank import build
         from musiclib import sf2

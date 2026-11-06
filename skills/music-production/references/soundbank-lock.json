@@ -3298,6 +3298,166 @@
       ]
     },
     {
+      "name": "iowa_guitar",
+      "kind": "split",
+      "page": "https://theremin.music.uiowa.edu/MISguitar.html",
+      "base": "https://theremin.music.uiowa.edu/",
+      "source_folder": "iowa-mis",
+      "retrieved": "2026-11-06",
+      "license": "University of Iowa Electronic Music Studios, Musical Instrument Samples: \"Since 1997, these recordings have been freely available on this website and may be downloaded and used for any projects, without restrictions.\" (https://theremin.music.uiowa.edu/MIS.html, retrieved 2026-11-02)",
+      "checksum_evidence": "Size and SHA-256 of each file recorded at retrieval on 2026-11-06 (the publisher lists none); every cut note is checked against the hash in the notes manifest",
+      "spec": "soundbanks/iowa_guitar.json",
+      "notes": "soundbanks/iowa_guitar.notes.json",
+      "version": "Iowa MIS (2011 recording) build b2",
+      "output_sha256": "2b63a36b6ce404906c2c98765c60c90d540d8d2e55384cdd2170d93624e3bec1",
+      "files": [
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulA.A2B2.mono.aif",
+          "bytes": 11435348,
+          "sha256": "f750e2f42758ad946e630b74eb127e000dbdaf46dddec5b33d3664122bb21df2",
+          "last_modified": "Tue, 03 Jul 2012 17:04:36 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulA.C3B3.mono.aif",
+          "bytes": 37609006,
+          "sha256": "39904825e7dff5570cb19157f345e0af3be9bad0741cc60cf35cd2b7763731ba",
+          "last_modified": "Tue, 03 Jul 2012 17:16:20 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulB.C4B4.mono.aif",
+          "bytes": 24467178,
+          "sha256": "0eb6e6da6a963e1b59a3136bf0db625a9501baf412112d37d89844fc4e1ff555",
+          "last_modified": "Tue, 03 Jul 2012 17:30:50 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulD.D3B3.mono.aif",
+          "bytes": 32439030,
+          "sha256": "b4dad827de4dd7a10c40df709b3695c3b51b12a4cc8f8c05a6ce01d7f896362c",
+          "last_modified": "Tue, 03 Jul 2012 17:48:52 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulE.E2B2.mono.aif",
+          "bytes": 30192880,
+          "sha256": "3c1af9a8162241461d3b17cb7b36e17c151a74ab15cc0af69e623a31e91e47ee",
+          "last_modified": "Wed, 27 Jun 2012 22:06:56 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sulG.G3B3.mono.aif",
+          "bytes": 11550946,
+          "sha256": "9b25aea96d4f268067de6dec0f63802ed3878a52ab67ea6c7eb1d6c477cc1d24",
+          "last_modified": "Tue, 03 Jul 2012 18:19:56 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sul_E.C5Bb5.mono.aif",
+          "bytes": 20383030,
+          "sha256": "e0923e5919ab44414831027a51cc63d12f859e37bc70b6307e2140caa79664bd",
+          "last_modified": "Tue, 03 Jul 2012 16:57:50 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.ff.sul_E.E4B4.mono.aif",
+          "bytes": 16226830,
+          "sha256": "8e2acd05d89e3d9e784f4e2846de89af915b6daa566bf6e9302bab40aacb0b6b",
+          "last_modified": "Tue, 03 Jul 2012 16:47:50 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulA.A2B2.mono.aif",
+          "bytes": 9866986,
+          "sha256": "a298fddd7cc2d5e83eb63852360040dc87b63caa1638cf82589f8614e158525c",
+          "last_modified": "Tue, 03 Jul 2012 18:58:44 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulA.C3B3.mono.aif",
+          "bytes": 32876958,
+          "sha256": "df38afee2f363a8a4262384e496e7de0720318be10851f10b18f7285464ae985",
+          "last_modified": "Tue, 03 Jul 2012 19:08:36 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulB.C4B4.mono.aif",
+          "bytes": 27247554,
+          "sha256": "2a78d4e9e2126ac802d1382d9fe8b90cb98a200f7c4d39d7f69b3f12a6fc7879",
+          "last_modified": "Tue, 03 Jul 2012 19:29:58 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulD.D3B3.mono.aif",
+          "bytes": 31178804,
+          "sha256": "464a66a5fbd4c8f835bcddfeb9c875ee2d75e81e156cfe80a362473681c9ffa7",
+          "last_modified": "Tue, 03 Jul 2012 20:22:58 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulE.E2B2.mono.aif",
+          "bytes": 23977478,
+          "sha256": "faef0e44dff6fcf99b2bd1cb50ab1ed519980e6c70951069cdbce38597c58b23",
+          "last_modified": "Tue, 03 Jul 2012 20:55:24 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sulG.G3B3.mono.aif",
+          "bytes": 12625590,
+          "sha256": "6e9bcd0b29470ba131aa43d08e51f94b9daaf00a16fff07f52be95196d48bece",
+          "last_modified": "Tue, 03 Jul 2012 21:35:06 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sul_E.C5B5.mono.aif",
+          "bytes": 20033538,
+          "sha256": "eb107a42ac344d186c52ab82d4d668697045a23c48972728d3fd31f0f85ed1ec",
+          "last_modified": "Tue, 03 Jul 2012 21:29:56 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.mf.sul_E.E4B4.mono.aif",
+          "bytes": 17010446,
+          "sha256": "3c04d367aa3cdf9fa4c9cd6ba3591704de6da5917a714057b307699d1ed6128b",
+          "last_modified": "Tue, 03 Jul 2012 21:17:36 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulA.A2B2.mono.aif",
+          "bytes": 9251892,
+          "sha256": "363638190f9ee854256182d07960d53f2704c2bf7206737b3e9a3d62a89b76d8",
+          "last_modified": "Tue, 03 Jul 2012 21:54:18 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulA.C3B3.mono.aif",
+          "bytes": 32562606,
+          "sha256": "7006845a2feac262c6591e36e70d1b920898caf335e63a709d9f55a25a62c916",
+          "last_modified": "Tue, 03 Jul 2012 22:00:28 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulB.C4B4.mono.aif",
+          "bytes": 29421152,
+          "sha256": "3f38f083277fe38ad5020a2caca881305d441c161914aea919021c9be7bccf99",
+          "last_modified": "Tue, 03 Jul 2012 22:19:52 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulD.D3B3.mono.aif",
+          "bytes": 25661666,
+          "sha256": "9db09f85d4714eff0018061d3d7db5b0258206c8d5211e06ab6015de4a01f183",
+          "last_modified": "Tue, 03 Jul 2012 22:34:08 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulE.E2B2.mono.aif",
+          "bytes": 21920754,
+          "sha256": "8523d89b6a8e6c29d1f3c81502343ff6fb5e13280c2c5d2ccbf5d1315add9350",
+          "last_modified": "Tue, 03 Jul 2012 22:48:34 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sulG.G3B3.mono.aif",
+          "bytes": 12149088,
+          "sha256": "8bbb85733df9471f0ad1a2a323b9f4b9cd1893ae2012c16470ded006582056bf",
+          "last_modified": "Wed, 04 Jul 2012 02:29:22 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sul_E.C5B5.mono.aif",
+          "bytes": 18580450,
+          "sha256": "e8f9d49881794cc321332d07a3dff3779ac06ecb748a85ff481166b00afbff94",
+          "last_modified": "Tue, 03 Jul 2012 23:07:34 GMT"
+        },
+        {
+          "path": "sound files/MIS/Piano_Other/guitar/Guitar.pp.sul_E.E4B4.mono.aif",
+          "bytes": 13819602,
+          "sha256": "ea9093ad964d99874da5caf300ef6ba15ab85cddf0d644824a63c7e9c4911f09",
+          "last_modified": "Tue, 03 Jul 2012 23:02:52 GMT"
+        }
+      ]
+    },
+    {
       "name": "vsco_colors",
       "repository": "sgossner/VSCO-2-CE",
       "commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
@@ -3874,6 +4034,12 @@
         "bytes": 17061348,
         "sha256": "16918185b68a5189c00d3edc4a9e0e942b10cfb65f0f3975d6f6c2c5225ac212",
         "sf2_bytes": 23691096
+      },
+      "iowa_guitar": {
+        "file": "iowa_guitar-b2.sf2.xz",
+        "bytes": 53496012,
+        "sha256": "96988b30e30d6c413bd1d6b84131734de7e71875619c9e7a9d093684673f7dcd",
+        "sf2_bytes": 148794422
       }
     },
     "archives": {
@@ -3929,7 +4095,8 @@
       "bass_sneaky",
       "guitar_shiny",
       "piano_osiris",
-      "vcsl_keys"
+      "vcsl_keys",
+      "iowa_guitar"
     ],
     "world": [
       "vcsl_winds",

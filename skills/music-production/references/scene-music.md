@@ -43,7 +43,7 @@ Write the main theme first, then derive the set from it. Keeping the set in rela
 
 ## Scene starting points
 
-These are conventions of the genre, not findings, and the brief overrides any of them. Each row also follows the cue levels above: soft and steady where text is read.
+These are conventions of the genre, not findings, and the brief overrides any of them. Tension, horror and emotional climaxes are written in more depth in [film-score.md](film-score.md). Each row also follows the cue levels above: soft and steady where text is read.
 
 | Scene | Starting point | Instruments to consider |
 |---|---|---|
