@@ -1351,7 +1351,7 @@ def checks(work,config=None):
             save_json(out/'stem_receipts.json',[{'track':k,'cache_key':again(k),'raw_sha256':again(k)} for k in parts])
             for k,x in parts.items():audio.write_wav(out/'stems'/f'{k}.wav',x.astype(np.float32))
             mix=sum(parts.values());audio.write_wav(out/'premix.wav',mix.astype(np.float32));audio.write_wav(out/'master.wav',(mix*10**(master_db/20)).astype(np.float32))
-        real=lambda e:[q for q in e['passages'] if not q.get('follows_part_levels')]
+        real=lambda e:[q for q in e.get('passages',[]) if not q.get('follows_part_levels')]
         r=compare(work/'compare_unit'/'before',work/'compare_unit'/'note',work/'compare_unit'/'difference');f=r['files']
         assert r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'] and r['synthesis']['synthesized_again']==['piano'],r['summary']
         assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and f['stems']['piano']['level_db']==.2,f['stems']['piano']
@@ -1369,7 +1369,56 @@ def checks(work,config=None):
         assert h['stems']['bass']['level_db']==6.02 and not h['stems']['bass']['passages'],h['stems']['bass']
         for e in (h['premix']['premix'],h['master']['master']):
             assert real(e) and abs(real(e)[0]['start_s']-on)<.02 and all(x['start_s']>on-.02 for x in real(e)),e
-        return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed']}
+        # A change and the level passages around it never overlap, even a change shorter than the joining gap with the
+        # piano's level move on both sides of it.
+        blip=copy.deepcopy(note);bl={k:v.copy() for k,v in stems.items()};z=a+int(.1*rate)
+        bl['piano'][a:z]=tone(9)[a:z];bl['piano']*=10**(.2/20)
+        out=work/'compare_unit'/'blip';(out/'stems').mkdir(parents=True,exist_ok=True)
+        save_json(out/'project.json',blip);save_json(out/'report.json',{'renderer_sha256':'one'})
+        save_json(out/'stem_receipts.json',[{'track':k,'cache_key':k+('2' if k=='piano' else ''),'raw_sha256':k+('2' if k=='piano' else '')} for k in bl])
+        for k,x in bl.items():audio.write_wav(out/'stems'/f'{k}.wav',x.astype(np.float32))
+        mix=sum(bl.values());audio.write_wav(out/'premix.wav',mix.astype(np.float32));audio.write_wav(out/'master.wav',mix.astype(np.float32))
+        def apart(res):
+            for g in ('buses','returns','premix','master'):
+                for e in res['files'][g].values():
+                    ch,fo=real(e),[x for x in e.get('passages',[]) if x.get('follows_part_levels')]
+                    assert not any(x['start_s']<y['end_s'] and y['start_s']<x['end_s'] for x in ch for y in fo),(g,e['passages'])
+        bp=compare(work/'compare_unit'/'before',out)
+        for e in (bp['files']['premix']['premix'],bp['files']['master']['master']):
+            assert len(real(e))==1 and abs(real(e)[0]['start_s']-on)<.02 and abs(real(e)[0]['end_s']-z/rate)<.03,e
+        # A chain with buses and a shared delay (the files as the bus mix writes them, the delay a plain echo):
+        # - chain_echo: the bass, 40 dB under the lead, gets 6 dB louder while the lead changes 0.1 s of its tone; the
+        #   lead's new echo in the shared delay is a change, not the bass's level move;
+        # - chain_squash and chain_dynamics: the stems are identical and only the lead bus acts differently, with the
+        #   project mix the same or changed: nothing there is put down to a part's level.
+        cq=copy.deepcopy(p)
+        for tr in cq['tracks']:
+            if tr['id'] in ('bass','lead'):tr['mix']['delay_db']=-6
+        tone2=lambda f,amp:np.stack([amp*np.sin(2*np.pi*f*t),.9*amp*np.sin(2*np.pi*f*t)],axis=1)
+        lead0,bass0=tone2(1700,.1),tone2(1000,.001);e0,e1=int(6*rate),int(6.1*rate);lead1=lead0.copy();lead1[e0:e1]=tone2(2300,.1)[e0:e1]
+        lag=int(.375*rate);squash=lambda x:x*(1-.3*np.abs(x)/np.abs(x).max())
+        def chain(name,proj,bass,lead,bus_lead=None):
+            out=work/'compare_unit'/name;(out/'stems').mkdir(parents=True,exist_ok=True);(out/'returns').mkdir(exist_ok=True)
+            save_json(out/'project.json',proj);save_json(out/'report.json',{'renderer_sha256':'one'})
+            save_json(out/'stem_receipts.json',[{'track':k,'cache_key':k,'raw_sha256':k} for k in ('bass','lead')])
+            bus=lead if bus_lead is None else bus_lead;echo=np.zeros_like(lead);echo[lag:]=.5*(bass+lead)[:-lag]
+            for f,x in (('stems/bass',bass),('stems/lead',lead),('returns/bus_bass',bass),('returns/bus_lead',bus),('returns/delay_return',echo),('premix',bass+bus+echo),('master',bass+bus+echo)):
+                audio.write_wav(out/f'{f}.wav',x.astype(np.float32))
+            return out
+        louder_bass=copy.deepcopy(cq);next(tr for tr in louder_bass['tracks'] if tr['id']=='bass')['mix']['level_dbfs']+=6
+        wide=copy.deepcopy(cq);wide['mix']['dynamics']='wide'
+        c0=chain('chain_before',cq,bass0,lead0)
+        ec=compare(c0,chain('chain_echo',louder_bass,2*bass0,lead1));g2=ec['files']
+        assert g2['stems']['bass']['level_db']==6.02 and abs(real(g2['stems']['lead'])[0]['start_s']-6)<.02,g2['stems']
+        dl=real(g2['returns']['delay']);assert dl and abs(dl[0]['start_s']-6.375)<.02 and dl[0]['end_s']>6.47,g2['returns']['delay']
+        assert any(abs(x['start_s']-6)<.02 for x in real(g2['premix']['premix'])) and max(x['end_s'] for x in real(g2['premix']['premix']))>6.47,g2['premix']
+        sq=compare(c0,chain('chain_squash',cq,bass0,lead0,squash(lead0)));dy=compare(c0,chain('chain_dynamics',wide,bass0,lead0,squash(lead0)))
+        for res in (sq,dy):
+            assert all(e['identical'] for e in res['files']['stems'].values()),res['summary']
+            for g,n in (('buses','lead'),('premix','premix'),('master','master')):
+                e=res['files'][g][n];assert e['passages'] and not any(x.get('follows_part_levels') for x in e['passages']),(g,e)
+        for res in (r,m,q,bp,ec,sq,dy):apart(res)
+        return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed'],'echo':ec['summary']['changed']}
     check('compare_finds_level_and_local_changes',compare_unit)
     if config:
         from musiclib.render import render
@@ -1553,18 +1602,38 @@ def checks(work,config=None):
             assert m['synthesis']['synthesized_again']==[] and g['stems']['lead']['level_db']==1 and not g['stems']['lead']['passages'],m['summary']
             assert all(g['returns'][s]['level_db']==1 and not g['returns'][s]['passages'] for s in ('plate','delay')),m['summary']
             assert not real(g['premix']['premix']) and not real(g['master']['master']),m['summary']
-            # A clip whose old side is silent (a part added in a rest): the silent side stays silent, the other is cut
-            # at its own loudness, and the clip is made.
-            for name,tone_at in (('silent_before',None),('silent_after',(10.,14.))):
+            # Clips with a silent side, decoded and heard back by level: a part added in a rest (old side silent), the
+            # same removed (new side silent), and an old master that ends before the change (padded with silence). Each
+            # clip is 8 s old, 0.8 s apart, 8 s new; the silent side stays silent and the other carries the tone.
+            rate=audio.RATE;ff=audio.load_config(config)['ffmpeg']['path']
+            def master_case(name,seconds,tone_at):
                 d=work/'clip_case'/name;d.mkdir(parents=True,exist_ok=True);save_json(d/'project.json',p)
                 save_json(d/'report.json',{'renderer_sha256':'one'});save_json(d/'stem_receipts.json',[])
-                n=20*audio.RATE;x=np.zeros((n,2));tt=np.arange(n)/audio.RATE;x[:4*audio.RATE]=(.2*np.sin(2*np.pi*220*tt[:4*audio.RATE]))[:,None]
-                if tone_at:x[int(tone_at[0]*audio.RATE):int(tone_at[1]*audio.RATE)]=(.2*np.sin(2*np.pi*330*tt[:int(4*audio.RATE)]))[:,None]
-                audio.write_wav(d/'master.wav',x.astype(np.float32))
-            s=compare(work/'clip_case'/'silent_before',work/'clip_case'/'silent_after')
-            quiet=clip(audio.load_config(config),s,work/'silent_ab.mp3')
-            assert quiet and quiet['levels_lufs'][0] is None and quiet['levels_lufs'][1] is not None and (work/'silent_ab.mp3').stat().st_size>10000,quiet
-            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard,'silent_side_clip':quiet}
+                x=np.zeros((int(seconds*rate),2));tt=np.arange(4*rate)/rate;x[:4*rate]=(.2*np.sin(2*np.pi*220*tt))[:,None]
+                if tone_at:x[int(tone_at*rate):int((tone_at+2)*rate)]=(.2*np.sin(2*np.pi*330*tt[:2*rate]))[:,None]
+                audio.write_wav(d/'master.wav',x.astype(np.float32));return d
+            rest,added,short,late=master_case('rest',20,None),master_case('added',20,11),master_case('short',10,None),master_case('late',20,12)
+            def heard_back(mp3):
+                wav=mp3.with_suffix('.wav');audio.run([ff,'-hide_banner','-nostdin','-y','-i',mp3,'-ar',str(rate),'-c:a','pcm_f32le',wav],work/'clip_case','decode')
+                y=np.asarray(audio.read_wav(wav)[0],dtype=np.float64);rms=lambda a,b:float(np.sqrt(np.mean(y[int(a*rate):int(b*rate)]**2)))
+                return len(y)/rate,rms(.5,7.5),rms(9.3,16.3)
+            cases={}
+            for name,(before,after),silent in (('added',(rest,added),'old'),('removed',(added,rest),'new'),('short_old',(short,late),'old')):
+                made=clip(audio.load_config(config),compare(before,after),work/f'clip_{name}.mp3');length,old_rms,new_rms=heard_back(work/f'clip_{name}.mp3')
+                quiet,loud=(old_rms,new_rms) if silent=='old' else (new_rms,old_rms)
+                assert made and abs(length-16.8)<.15 and quiet<1e-4 and loud>.02,(name,made,length,old_rms,new_rms)
+                assert (made['levels_lufs'][0] is None)==(silent=='old') and (made['levels_lufs'][1] is None)==(silent=='new'),(name,made)
+                cases[name]={'old_rms':round(old_rms,4),'new_rms':round(new_rms,4),'seconds':round(length,2)}
+            # Through the command line: when the clip cannot be made (its folder cannot be created, or the
+            # configuration cannot be read), the report is still written and says why.
+            import subprocess,sys
+            blocker=work/'clip_case'/'a_file';blocker.write_text('x',encoding='utf-8')
+            for why,extra in (('folder',['--clip',str(blocker/'x.mp3'),'--config',str(config)]),('config',['--clip',str(work/'cli_ab.mp3'),'--config',str(work/'no_such_config.json')])):
+                report=work/f'cli_{why}.json'
+                run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'compare',str(rest),str(added),'--output',str(report),*extra],capture_output=True,text=True,encoding='utf-8',errors='replace')
+                saved=json.loads(report.read_text(encoding='utf-8')) if report.is_file() else {}
+                assert run.returncode==0 and saved.get('clip',{}).get('error') and saved['files']['master']['master']['passages'],(why,run.stderr[-600:],saved.get('clip'))
+            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard,'silent_side_clips':cases}
         check('compare_reports_what_changed_and_where',compare_render)
         def loop_render():
             from musiclib import loop

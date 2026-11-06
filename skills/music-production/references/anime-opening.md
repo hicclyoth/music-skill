@@ -59,7 +59,7 @@ Write the B-melo with two or three of these, not all of them. Let it end on a ch
   - **Down a minor third** (to VI): the bass climbs from 2 to 5, then III, which normally leads to vi, resolves to a major VI instead.
 
   The two are reciprocal: up and then down returns to the first key. A stepwise lift into a last chorus is still available, prepared by the new key's dominant.
-- **Distorted rhythm guitars play power chords** (root and fifth, often with the octave). Distortion's harmonics and intermodulation give most chords a major quality: a distorted major triad sounds much like a power chord, while a minor third clashes with that implied major third and turns rough, and a power chord takes on the quality the surrounding harmony implies (Lilja 2015). Let the minor thirds and colour tones come from the bass line, piano, strings and lead. `review` still checks the written chord list against the foreground.
+- **Distorted rhythm guitars play power chords** (root and fifth, often with the octave). Distortion's harmonics and intermodulation give most chords a major quality: a distorted major triad sounds much like a power chord, while a minor third clashes with that implied major third and turns rough; that major quality coexists with the minor-mode melodies around it (Lilja 2015). Let the minor thirds and colour tones come from the bass line, piano, strings and lead. `review` still checks the written chord list against the foreground.
 
 ## Melody for an instrumental lead
 

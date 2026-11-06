@@ -15,9 +15,12 @@ A part's level is set from its loudness, so one changed note also moves the whol
 piano 0.01 dB with one FluidSynth and 0.11 dB with another), and a part's level can be changed on purpose.  Its stem
 reports that as its overall level.  In a file that mixes parts such a move is no single gain for the file and shows
 wherever the part plays.  Every passage stays in the report; one whose difference the parts' level moves account for,
-within 6 dB, is marked `follows_part_levels`.  What they account for follows the chain: a bus from its parts' stems, a
-return from the parts that send to it, the premix from the buses and returns (it is their sum), the master from the
-premix.
+within 6 dB, is marked `follows_part_levels`, and the two kinds of passage never overlap.  What the moves account for
+follows the chain: a bus from its parts' stems, a return from the parts that send to it, the premix from the buses and
+returns (it is their sum), the master from the premix.  They account for nothing where a part itself changed (in a
+return, for the length of its space or delay after), where nothing upstream moved in level (a bus or return whose own
+processing acts differently has not moved), or where the chain changed: another renderer, another project mix, a part
+sent elsewhere or at another level.
 """
 import json
 import math
@@ -178,21 +181,24 @@ def _difference(entry, pr, louder, windows):
     entry['difference_db'] = round(float(_db(pr[windows].sum() / louder[windows].sum())), 1)
 
 
-def _spans(windows):
-    """The first and last window of each run of marked windows, runs closer than MERGE_S joined."""
+def _spans(windows, barrier=None):
+    """The first and last window of each run of marked windows, runs closer than MERGE_S joined unless a `barrier`
+    window lies between them."""
     spans = []
     for i in np.flatnonzero(windows):
-        if spans and i - spans[-1][1] <= MERGE_S * RATE / HOP:
+        if (spans and i - spans[-1][1] <= MERGE_S * RATE / HOP
+                and (barrier is None or not barrier[spans[-1][1] + 1:i].any())):
             spans[-1][1] = int(i)
         else:
             spans.append([int(i), int(i)])
     return spans
 
 
-def _passages(clock, windows):
+def _passages(clock, windows, barrier=None):
     """The passages of the marked windows, in seconds and bar:beat."""
     return [{'start_s': round(s * HOP / RATE, 2), 'end_s': round((e + 1) * HOP / RATE, 2),
-             'from': position(clock, s * HOP / RATE), 'to': position(clock, (e + 1) * HOP / RATE)} for s, e in _spans(windows)]
+             'from': position(clock, s * HOP / RATE), 'to': position(clock, (e + 1) * HOP / RATE)}
+            for s, e in _spans(windows, barrier)]
 
 
 def compare_audio(before, after, clock, mix=False):
@@ -251,19 +257,35 @@ def _files(render):
     return {g: {k: p for k, p in files.items() if p.is_file()} for g, files in out.items()}
 
 
-def _explain(project, clock, files, data):
+def _explain(before, project, clock, files, data, same_runtime):
     """Split the passages of the mixed files into changes and what the parts' level moves account for (see the module
-    notes), the chain in order: buses, returns, premix, master."""
-    from .mixbus import bus_of, space_of
+    notes), the chain in order: buses, returns, premix, master.  Level moves explain nothing where the chain itself
+    changed (another renderer, another project mix, a part sent to another bus or space or at another send level) or
+    where nothing upstream moved in level: a mix processor that acts differently is a change, not a part's level."""
+    from .mixbus import SPACES, bus_of, space_of
     tracks = project['tracks']
     stems = {n: data[('stems', n)] for n in files['stems'] if ('stems', n) in data}
     bus_chain = project['mix'].get('chain', 'room') == 'bus'
+    chain_changed = not same_runtime or before['mix'] != project['mix']
+
+    def route(t):
+        m = t['mix']
+        return (bus_of(t), space_of(t), m.get('reverb_db'), m.get('delay_db'), m.get('delay_quarters'), m.get('depth_m'),
+                m.get('facing'))
+    old = {t['id']: t for t in before['tracks']}
+    now = {t['id'] for t in tracks}
+    rerouted = {t['id'] for t in tracks if t['id'] not in old or route(old[t['id']]) != route(t)} | (set(old) - now)
+    # A stem that moved in level is a part's level move; a bus or return counts as moved only when its parts moved
+    # (`from_parts`), not when its own processing acts differently.
+    moved = lambda u: u.get('from_parts', abs(u['gain'] - 1.0) > 1e-6) or bool(np.any(u.get('pr_level', 0.0)))
 
     def amp(units, g_file, release=0):
         """What the units' level moves leave in a file matched by g_file, as an amplitude per window: each unit's
         move against the file's gain on its own level, plus whatever part of its own difference its parts' moves
         already account for.  Where a unit itself changed (and for a bus compressor's release after), its level move
-        explains nothing: the change is played there."""
+        explains nothing: the change is played there.  With no unit moved, nothing is explained."""
+        if not any(moved(u) for u in units):
+            return 0.0
         total = 0.0
         for u in units:
             p = _near_max(u['pa'])
@@ -287,38 +309,65 @@ def _explain(project, clock, files, data):
             inside[s:t + 1] = True
         w['real'] = w['counted'] & inside
         w['pr_level'] = np.where(explained & ~inside, w['pr'], 0.0)
+        # The level passages are joined only where no change lies between them, so the two kinds never overlap.
         e['passages'] = sorted([{**q, 'follows_part_levels': False} for q in _passages(clock, w['real'])]
-                               + [{**q, 'follows_part_levels': True} for q in _passages(clock, w['counted'] & ~inside)],
+                               + [{**q, 'follows_part_levels': True} for q in _passages(clock, w['counted'] & ~inside, inside)],
                                key=lambda q: q['start_s'])
         if w['real'].any():
             _difference(e, w['pr'], w['louder'], w['real'])
 
     for name in files['buses']:
-        if ('buses', name) in data:
-            members = [stems[t['id']] for t in tracks if bus_of(t) == name and t['id'] in stems]
-            label('buses', name, amp(members, data[('buses', name)]['gain'], RELEASE_WINDOWS) ** 2)
+        if ('buses', name) not in data:
+            continue
+        members = [t['id'] for t in tracks if bus_of(t) == name]
+        off = chain_changed or bool(rerouted & (set(members) | {t['id'] for t in before['tracks'] if bus_of(t) == name}))
+        units = [stems[i] for i in members if i in stems]
+        data[('buses', name)]['from_parts'] = not off and any(moved(u) for u in units)
+        label('buses', name, 0.0 if off else amp(units, data[('buses', name)]['gain'], RELEASE_WINDOWS) ** 2)
     for name in files['returns']:
         w = data.get(('returns', name))
         if w is None:
             continue
-        if name == 'delay':
-            senders = [t['id'] for t in tracks if t['mix'].get('delay_db') is not None]
-        else:
-            senders = [t['id'] for t in tracks if t['mix'].get('reverb_db') is not None and (not bus_chain or space_of(t) == name)]
-        # A return is its senders' sends through one space: a sender's level move reaches it as that share of the
-        # return's own level, at most all of it.
-        moved = max([abs(stems[i]['gain'] - w['gain']) for i in senders if i in stems] or [0.0])
-        label('returns', name, moved ** 2 * _near_max(w['louder']))
+
+        def senders(proj):
+            if name == 'delay':
+                return [t for t in proj['tracks'] if t['mix'].get('delay_db') is not None]
+            return [t for t in proj['tracks'] if t['mix'].get('reverb_db') is not None and (not bus_chain or space_of(t) == name)]
+        sent = senders(project)
+        bound = 0.0
+        w['from_parts'] = False
+        if not (chain_changed or rerouted & ({t['id'] for t in sent} | {t['id'] for t in senders(before)})):
+            # A return is its senders' sends through one space or delay.  Where a sender itself changed, for the
+            # space's or delay's length after, nothing in the return is put down to level moves: the change sounds
+            # there.  Elsewhere, with the sends and the routing unchanged (else this return is not explained at all),
+            # only the senders' level moves can make the return differ, by at most the largest move against the
+            # return's gain on its whole level (a share-weighted estimate from the dry stems misjudged it: the
+            # return's own filters keep a noise's highs and cut a piano's lows).
+            if name == 'delay':
+                tail_s = max([clock.spb[0] * t['mix'].get('delay_quarters', .75) * 1.5 for t in sent] or [0.0]) + .05
+            elif bus_chain and name in SPACES:
+                tail_s = SPACES[name][1] + 1.15 * max(SPACES[name][0])
+            else:
+                tail_s = project['mix'].get('room_seconds', 1.1) + .1
+            tail = int(math.ceil(tail_s * RATE / HOP))
+            parts = [(stems[t['id']], t['mix']['delay_db' if name == 'delay' else 'reverb_db']) for t in sent if t['id'] in stems]
+            w['from_parts'] = any(moved(s) for s, _ in parts)
+            if w['from_parts']:
+                level = max(abs(s['gain'] - w['gain']) for s, _ in parts)
+                own = sum(_trail(s['counted'].astype(float), tail) for s, _ in parts) > 0
+                bound = np.where(own, 0.0, level ** 2 * _near_max(w['louder']))
+        label('returns', name, bound)
     wp, wm = data.get(('premix', 'premix')), data.get(('master', 'master'))
     if wp is not None:
         units = [data[('buses', n)] for n in files['buses'] if ('buses', n) in data] or list(stems.values())
         units += [data[('returns', n)] for n in files['returns'] if ('returns', n) in data]
-        label('premix', 'premix', amp(units, wp['gain']) ** 2)
+        off = chain_changed or bool(rerouted)
+        label('premix', 'premix', 0.0 if off else amp(units, wp['gain']) ** 2)
         if wm is not None:
             # The master is the premix through a gain and the master chain: what the premix's level moves leave
             # reaches it scaled by the master's level over the premix's.
             g2 = float(wm['pb'].mean() / max(float(wp['pb'].mean()), 1e-30))
-            label('master', 'master', g2 * (np.sqrt(wp['bound']) + np.sqrt(wp['pr_level'])) ** 2)
+            label('master', 'master', 0.0 if off else g2 * (np.sqrt(wp['bound']) + np.sqrt(wp['pr_level'])) ** 2)
 
 
 def _span_text(passages):
@@ -393,7 +442,8 @@ def compare(before, after, differences=None):
                 audio.write_wav(differences / f'{group}_{name}.wav', residual.astype(np.float32))
             entries[name] = entry
         files[group] = entries
-    _explain(b['project'], clock, files, data)
+    _explain(a['project'], b['project'], clock, files, data,
+             a['report'].get('renderer_sha256') == b['report'].get('renderer_sha256'))
     changes = project_changes(a['project'], b['project'])
     synth = synthesis(a, b)
     summary = {'project': project_lines(changes), **{k: v for k, v in synth.items() if k != 'reused'},
