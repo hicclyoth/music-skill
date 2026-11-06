@@ -11,19 +11,18 @@ These are loops first: a two-, four- or eight-bar figure of drums, bass and chor
 
 Settle these from the request, deciding what it leaves open and saying so:
 
-- **Style and tempo.** These are conventional ranges, not data:
+- **Style and tempo.** From the sources named; take the tempo from the brief and a reference of the style:
 
-  | Style | Tempo (BPM) | Feel | Sound |
+  | Style | Tempo | Feel | Sound |
   |---|---|---|---|
-  | Lo-fi, chillhop | 70–90 | swung sixteenths, soft drums | jazz chords on keys or guitar, vinyl noise, tape wobble, muffled highs |
-  | Jazz-hop | 80–95 | swung, live-sounding | upright bass, piano or guitar, a horn or sax line |
-  | Boom bap | 85–95 (some guides say 80–100) | swung sixteenths, hard kick and snare | gritty sampler drums, a short chord loop or chopped stabs, a bass line under them |
-  | Trap | 140–160 is usual, about 100–176 in all; felt in half time | straight, with triplet and thirty-second hi-hat rolls | an 808 bass with slides, the snare or clap on beat 3, dark bells and pads |
+  | Lo-fi, chillhop | downtempo, "poky" (Wikipedia, Lofi hip hop) | soft drums | piano or guitar melodies, vinyl hiss (Wikipedia); jazz roots; the worn sound below |
+  | Boom bap | midtempo (Wikipedia, Boom bap) | swung sixteenths (Frane 2017); a hard kick and snare | gritty sampler drums (the SP-1200, the MPC), a looped or chopped sample |
+  | Trap | about 140–160 BPM with the kick and snare at half that (Computer Music 2016); 100–176 occur (Wikipedia) | double- and triple-time hi-hats (Wikipedia) | an 808 bass, synthesized strings, brass, woodwinds and keys (Wikipedia) |
 
 - **Loop or arc.**
   - A study or stream beat loops. Give it a `loop` ([game-music.md](game-music.md)) and keep its energy level.
-  - A track for listening can have an intro, two or three variations of the loop and an ending, two to three minutes in all.
-- **Room for a voice.** Say whether a rapper or singer will go over it. A beat for vocals keeps its melody short and out of the voice's register.
+  - A track for listening can have an intro, variations of the loop and an ending.
+- **Room for a voice.** Say whether a rapper or singer will go over it. A beat for vocals keeps its melody short and out of the voice's register, as a comping piano stays below the lead's (Israels, in [anime-opening.md](anime-opening.md)).
 - **Nothing sampled.** In sample-based hip-hop, producers build beats from short loops and drum breaks cut from older records (Schloss 2004). Here every note is written: compose the loop on instruments, then give it the sound described below. Do not imitate a recognisable record's sample.
 
 ## Groove
@@ -38,34 +37,32 @@ Settle these from the request, deciding what it leaves open and saying so:
   - 58% and 62% are progressively looser;
   - 66% is a full triplet swing, and 71% leans toward dotted notes.
 - **Swing needs notes on the off-sixteenths.** Frane also proposed swing density, the share of the even sixteenth positions that hold notes. A swing setting moves only the notes that are there, so a beat with few off-sixteenths sounds straighter at the same setting.
-- **Parts against each other.** Swinging the hats while the keys stay straight, or the reverse, gives a push and pull between layers. Producers in hip-hop and R&B describe shaping timing and sound together: a hit's attack and weight change where it seems to fall (Danielsen et al. 2023). Judge the result with all the parts playing.
+- **Parts against each other.** Swinging the hats while the keys stay straight, or the reverse, gives a push and pull between layers. Producers and musicians in hip-hop, electronic dance music and three other groove-based genres describe shaping timing and sound together: a hit's attack and weight change where it seems to fall (Danielsen et al. 2023). Judge the result with all the parts playing.
 - **Behind the beat.** `performance.offset_ms` +10 to +30 on the snare or the keys lays them back against the kick and hats.
-  - Jazz soloists play their downbeats late against the drummer's ride while meeting it on the off-beats (Friberg and Sundström 2002).
+  - At slow tempos, jazz soloists played their downbeats after the drummer's ride cymbal while meeting it on the off-beats (Friberg and Sundström 2002).
   - The same delay in a beat reads as relaxed rather than late when it is consistent.
 - **Velocity.** Accent the hats on the beat or the off-beat, and keep a few ghost snares well below the backbeat. `musiclib.expression` adds the small drift of a player.
 
 ## Lo-fi and chillhop
 
-- **Drums.** A soft kick, a snare or side-stick (37) on 2 and 4, and swung hats. Use the sampled `rusty` kit through the worn sound below, or `drum_synth` `"808"` with `decay` 0.6–0.8 for a softer machine.
-- **Bass.** `bass_sneaky` (upright bass, finger and pluck layers, round robins, ghost notes) on roots and fifths with approach notes ([jazz-and-funk.md](jazz-and-funk.md)), or `sub_bass` for a synth bottom.
-- **Harmony.** Lo-fi and jazz-hop borrow jazz harmony:
-  - major and minor sevenths and ninths, dominant thirteenths;
-  - ii–V–I and I–vi–ii–V loops, IVmaj7–iii7–vi7 and similar.
+- **Drums.** An example plan: a soft kick, a snare or side-stick (37) on 2 and 4, and swung hats. Use the sampled `rusty` kit through the worn sound below, or `drum_synth` `"808"` with `decay` 0.6–0.8 for a softer machine.
+- **Bass.** `bass_sneaky` (upright bass, finger and pluck layers, round robins, ghost notes) on roots and fifths with approach notes ([jazz-and-funk.md](jazz-and-funk.md)), or Surge `sub_bass_3` (or `sub_bass`) for a synth bottom.
+- **Harmony.** Lo-fi has jazz roots (Wikipedia, Lofi hip hop): seventh and extended chords, ii–V–I ([jazz-and-funk.md](jazz-and-funk.md)) and I–vi–ii–V, the doo-wop schema with ii for IV (Open Music Theory, Four-Chord Schemas).
 
   Voice them as a pianist would ([jazz-and-funk.md](jazz-and-funk.md)): rootless, in the middle register, with the bass taking the root.
 - **Keys.**
   - The upright pianos of `vcsl_keys` (0:3, 1:3) for a worn piano.
-  - `fm_epiano` or the TX81Z FM pianos (`vcsl_keys` 0:4, 1:4) for an electric piano.
+  - The dark Surge electric pianos `ep_1` and `soft_suitcase`, `fm_epiano`, or the TX81Z FM pianos (`vcsl_keys` 0:4, 1:4) for an electric piano.
   - `lofi_keys` for a soft synth.
 - **Guitar.** `guitar_shiny`, an archtop with four dynamics: pickup 0:26 for a warm jazz tone, microphone 0:25 for an acoustic one.
-- **Lead.** `sax_bear`, a flute (`iowa_winds`), `vocal_ah` for a wordless voice, or the keys alone. Play it in short phrases with long rests, so a listener can work over it.
+- **Lead.** `sax_bear`, a flute (`iowa_winds`), `vocal_ah` for a wordless voice, or the keys alone. Lo-fi beats are made to relax or study to (Winston and Saywood 2019): short phrases with long rests stay out of the way.
 
 ## Boom bap
 
 The name imitates the kick ("boom") and the snare ("bap"). The style's drum loop puts a hard-hitting kick on the downbeats and a snappy snare on the backbeats, mixed up front, with the kick's low end emphasised; the rest is a looped or chopped sample (Wikipedia's boom-bap article and its sources).
 
 - **Drums.**
-  - The kick on 1 and 3, the snare hard on 2 and 4: the basic boom-bap loop. Vary the kick from bar to bar, for example on the "and" of 2 or 3 or just before the downbeat, and keep the snare where it is.
+  - The kick on 1 and 3, the snare hard on 2 and 4: the basic boom-bap loop (Wikipedia, Boom bap). Vary the kick from bar to bar, for example on the "and" of 2 or 3 or just before the downbeat, and keep the snare where it is.
   - Try the snare a little late on beat 2 (`timing_ms` +10 to +20), as in the breaks Frane measured, and judge by ear.
   - Hats in swung eighths or sixteenths, an open hat on the last off-beat of the bar, and ghost snares around the backbeat.
 - **The sampler's sound.** The 12-bit, 26.04 kHz E-mu SP-1200 gave the style its gritty drums.
@@ -73,14 +70,14 @@ The name imitates the kick ("boom") and the snare ("bap"). The style's drum loop
   - `mix.saturate` 0.2–0.3 and a compressor on the drums.
   - The kick and snare loud against everything else.
 - **The loop.** In sample-based production, a loop is cut from a record and repeated (Schloss 2004). Write the loop as if it were one:
-  - one, two or four bars of soul or jazz harmony (minor ninths, dominant ninths and thirteenths, a chromatic bass step);
+  - one, two or four bars, its harmony from the brief (jazz voicings: [jazz-and-funk.md](jazz-and-funk.md));
   - on electric piano, a worn upright (`vcsl_keys` 0:3), strings (`vsco_strings`) or a horn section (`vsco` 0:61, stabs 0:62);
   - thin and dark like a sample under a bass line: `highpass` 150–250 Hz, `lowpass` 3–5 kHz, a little `wow_flutter`, and the vinyl below.
 - **Chops.** A chopped loop plays pieces of the sample out of order as short stabs: a chord on 1, the "and" of 2 and 4, each cut off by a short `gate`, with the bass and kick holding the bar together.
 - **Bass.** A short figure doubling the kick's rhythm, or the loop's own bass line.
   - `bass_darkblack` 0:33 with `lowpass` 1.5–2.5 kHz for an electric bass, or `bass_sneaky` for an upright.
-  - A filtered `sub_bass` for a modern bottom.
-- **Changes.** Rap verses run in units of 16 bars and hooks of 8 (a convention). Change something every 4 or 8 bars:
+  - Surge `sub_bass_3` or a filtered `sub_bass` for a modern bottom.
+- **Changes.** Change something at phrase edges ([development-and-groove.md](development-and-groove.md), Loops), for example every 4 or 8 bars:
   - drop the drums or the bass for a bar;
   - filter the loop down and open it again;
   - add a horn or string line for the hook.
@@ -89,10 +86,9 @@ The name imitates the kick ("boom") and the snare ("bap"). The style's drum loop
 ## Trap
 
 - **The grid.** Most trap is produced at about 140–160 BPM, with the kick and snare programmed at half that tempo (Computer Music 2016); tempos from about 100 to 176 occur, 140 being typical (Wikipedia). The half-time snare falls on beat 3 of each bar, so written at 140 the track moves at 70, while hats and claps keep the full tempo.
-- **Hi-hats.** These are conventions of the style:
+- **Hi-hats.** Trap's hats run in double- and triple-time divisions (Wikipedia, Trap music):
   - eighths or sixteenths as the base;
-  - rolls of sixteenth triplets or thirty-seconds before phrase ends, their velocities ramping through each roll;
-  - a crash or an open hat on the downbeat of each four-bar section.
+  - rolls of sixteenth triplets or thirty-seconds before phrase ends, their velocities rising as a drummer's do toward a bar's end (Dow 2010).
 
   A closed hat that changes speed is the style's trademark: keep the base at quarters or eighths and shift to triplets or dotted notes near the end of a bar (Computer Music 2016). Vary the rolls every bar or two; the same roll in every bar sounds programmed.
 - **The 808.** `bass_808` is a long sine with a pitch punch on each attack.
@@ -109,15 +105,12 @@ The name imitates the kick ("boom") and the snare ("bap"). The style's drum loop
   - The snare (38 or 40) and a bright clap (39) layered on beat 3, with extra hits as fills. A second, thinner clap on 2 and 4 can mark the full tempo against the half-time snare (Computer Music 2016).
   - Trap producers also pitch repeated snares up or down into a roll; `drum_synth` tunes only the whole kit, so do that with the snare's velocity and density instead.
   - A rim (37) or percussion as a counter-rhythm.
-- **Melody.** These are conventions of the style:
-  - minor keys, with harmonic-minor or Phrygian colour;
-  - bells (`fm_bell`), plucks, dark pads (`warm_pad`), a flute (`vsco` 0:73) or `vocal_ah`, and orchestral brass, strings and woodwinds, which Lex Luger's productions made part of the modern sound;
-  - a cell of one or two bars, repeated with small changes, in the middle register.
-- **Arrangement.**
-  - An intro of 4–8 bars: the melody alone, filtered.
-  - The drums and the 808 enter together.
-  - Cycles of an 8-bar hook and a 16-bar verse (a convention).
-  - Before a new section, drop the 808 or the drums for half a bar, with a `reverse_cymbal` or a riser into it.
+- **Melody and colour.** Trap uses synthesized strings, brass, woodwinds and keyboards for a cinematic sound, which Lex Luger's productions popularised (Wikipedia, Trap music):
+  - bells (Surge `music_box` or `fantasy_bell`; `fm_bell` is brighter), plucks, dark pads (Surge `moody_pad`, `warm_pad`), a flute (`vsco` 0:73) or `vocal_ah`, and orchestral brass, strings and woodwinds.
+- **Arrangement**, an example plan:
+  - an intro of 4–8 bars: the melody alone, filtered;
+  - the drums and the 808 entering together;
+  - before a new section, drop the 808 or the drums for half a bar, with a `reverse_cymbal` or a riser into it.
 
 ## The worn sound
 
@@ -154,6 +147,9 @@ Lo-fi hip-hop is distributed almost entirely online and plays with nostalgia for
 - Attack Magazine. [Swing in DAWs and drum machines](https://www.attackmagazine.com/technique/passing-notes/daw-drum-machine-swing/), on the MPC-style swing percentages.
 - Deruty, E. (2024). [Harmonic and transposition constraints arising from the use of the Roland TR-808 bass drum](https://arxiv.org/abs/2502.07524). *Proceedings of the 25th International Society for Music Information Retrieval Conference*, San Francisco.
 - Winston, E. and Saywood, L. (2019). [Beats to Relax/Study To: Contradiction and Paradox in Lofi Hip Hop](https://iaspmjournal.net/index.php/IASPM_Journal/article/view/949). *IASPM Journal* 9(2), 40–54.
+- Dow, R. (2010). [Programming Realistic Drum Parts](https://www.soundonsound.com/techniques/programming-realistic-drum-parts). *Sound On Sound*, September 2010.
+- Hughes, B. and Lavengood, M. [Four-Chord Schemas](https://viva.pressbooks.pub/openmusictheory/chapter/4-chord-schemas/). In Gotham, M. et al., *Open Music Theory*, version 2.
+- [Lofi hip hop](https://en.wikipedia.org/wiki/Lo-fi_hip_hop). Wikipedia, read 7 November 2026: downtempo, piano or guitar melodies, vinyl hiss, jazz roots.
 - Danielsen, A., Johansson, M., Brøvig, R., Sandvik, B. and Bøhler, K. K. (2023). [Shaping rhythm: timing and sound in five groove-based genres](https://doi.org/10.1017/S0261143023000041). *Popular Music* 42(1).
 - Friberg, A. and Sundström, A. (2002). Swing ratios and ensemble timing in jazz performance: evidence for a common rhythmic pattern. *Music Perception* 19(3), 333–349.
 - [E-mu SP-1200](https://en.wikipedia.org/wiki/E-mu_SP-1200). Wikipedia, on its 12-bit, 26.04 kHz sampling.

@@ -15,11 +15,14 @@ Surge XT (engine "surge") is installed too unless --no-surge: on Windows the pin
 alone is kept), elsewhere a Surge XT 1.3.4 you installed from https://surge-synthesizer.github.io/ (found in the usual
 VST3 folders, or given with --surge-vst3); then the pinned pedalboard wheel for this Python, checked against the
 hashes PyPI publishes, installed into the runtime folder only, and the curated factory patches from Surge's pinned
-repository commit, each checked by hash.  Both programs are GPL-3.0 and run as their own process; without them, Surge
-parts play their fallback presets on the built-in synth.
+repository commit, each checked by hash.  Then, unless --no-surge-catalog, every patch of the catalog
+(references/surge-catalog.json: 3,008 factory and third-party patches, about 217 MB) from the same commit, each checked
+by size and hash, for parts that name a catalog patch.  Both programs are GPL-3.0 and run as their own process; without
+them, Surge parts play their fallback presets on the built-in synth.
 External files keep their own licences.
 """
 import argparse
+import http.client
 import json
 import os
 from pathlib import Path,PurePosixPath
@@ -27,6 +30,8 @@ import re
 import shutil
 import tempfile
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import urllib.parse
 import urllib.request
@@ -173,6 +178,28 @@ def _install_surge(lock,runtime,cache,args,system,config):
     config['pedalboard']={'path':str(pylib),'sha256':meta['sha256'],'version':board['version'],'license':board['license'],'source':meta['url']}
     print('VERIFIED surge_xt |',len(presets['presets']),'curated patches',flush=True)
 
+def install_catalog(runtime,cache,args,config):
+    """Every patch of the Surge catalog, each checked by size and hash, into the runtime folder; a failure is reported and
+    leaves parts that name a catalog patch on their fallback presets, while the curated patches keep working."""
+    doc=json.loads((Path(__file__).resolve().parents[1]/'references'/'surge-catalog.json').read_text(encoding='utf-8'))
+    origin=doc['origin'];target=runtime/'surge_patches_all'
+    def one(e):
+        local=cache/'surge_patches_all'/e['path'];local.parent.mkdir(parents=True,exist_ok=True)
+        url=f'https://raw.githubusercontent.com/surge-synthesizer/surge/{origin["commit"]}/{origin["path"]}/'+urllib.parse.quote(e['path'])
+        for attempt in range(4):
+            try:download({'url':url,'bytes':e['bytes'],'sha256':e['sha256']},local,args.offline);break
+            except (OSError,http.client.HTTPException):
+                if attempt==3 or args.offline:raise
+                time.sleep(2**attempt)
+        if local.stat().st_size!=e['bytes'] or file_hash(local)!=e['sha256']:raise ValueError('Patch integrity failed: '+e['path'])
+        out=target/e['path'];out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(local,out)
+    try:
+        with ThreadPoolExecutor(8) as pool:list(pool.map(one,doc['presets'].values()))
+    except (ValueError,OSError,http.client.HTTPException) as err:
+        print(f'SKIPPED surge_catalog | {err}; parts that name a catalog patch use their fallback presets',flush=True);return
+    config['surge']['catalog']=str(target)
+    print('VERIFIED surge_catalog |',len(doc['presets']),'patches',flush=True)
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__,formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--runtime',type=Path,required=True);ap.add_argument('--config',type=Path,required=True);ap.add_argument('--archive-cache',type=Path);ap.add_argument('--offline',action='store_true')
@@ -180,6 +207,7 @@ def main():
     ap.add_argument('--fluidsynth',type=Path,help='with --system: this executable instead of the one on PATH');ap.add_argument('--ffmpeg',type=Path,help='with --system: this executable instead of the one on PATH')
     ap.add_argument('--no-surge',action='store_true',help='skip Surge XT and pedalboard (Surge parts then play their fallback presets)')
     ap.add_argument('--surge-vst3',type=Path,help='with --system: this Surge XT.vst3 bundle instead of the usual VST3 folders')
+    ap.add_argument('--no-surge-catalog',action='store_true',help='skip the full Surge patch set (about 217 MB): only the curated patches; parts that name a catalog patch play their fallback presets')
     args=ap.parse_args()
     system=args.system or os.name!='nt'
     if args.config.exists():raise ValueError('Configuration exists; choose a new path')
@@ -208,7 +236,9 @@ def main():
     if not has_vorbis(config['ffmpeg']['path']):
         print('NOTE ffmpeg | no libvorbis encoder: a game loop gets loop.wav but no loop.ogg. With Homebrew, brew install '
               'ffmpeg-full and set up again to a new --config with --ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"',flush=True)
-    if not args.no_surge:install_surge(lock,runtime,cache,args,system,config)
+    if not args.no_surge:
+        install_surge(lock,runtime,cache,args,system,config)
+        if config.get('surge') and not args.no_surge_catalog:install_catalog(runtime,cache,args,config)
     save_json(args.config.resolve(),config);save_json(runtime/'dependency_receipts.json',receipts)
     print('Saved',args.config.resolve())
 

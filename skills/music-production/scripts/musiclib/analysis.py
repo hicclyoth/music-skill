@@ -355,8 +355,9 @@ def analyze(render_dir, bar_spans=(), reference=None):
     if squeezed:
         worst = max(squeezed, key=squeezed.get)
         warnings.append(f'the delivery limiter took {squeezed[worst]:g} dB of level from {worst} '
-                        f'({", ".join(f"{k} {v:g}" for k, v in squeezed.items())}): past about 3 dB of limiting a dense section '
-                        'loses its transients and can measure quieter than sparser ones; have it heard, lower target_lufs, or lower that section\'s peaks '
+                        f'({", ".join(f"{k} {v:g}" for k, v in squeezed.items())}): Sound On Sound\'s guidance is 3-6 dB of '
+                        'gain reduction on loud peaks and rarely more than 6 (White 2003), and heavier limiting can flatten '
+                        'transients; have it heard, lower target_lufs, or lower that section\'s peaks '
                         '(mix.saturate on its loudest parts, ducking, less level on what it adds).')
     receipts_file = render_dir / 'stem_receipts.json'
     for r in json.loads(receipts_file.read_text(encoding='utf-8')) if receipts_file.is_file() else []:

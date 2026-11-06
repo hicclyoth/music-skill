@@ -56,7 +56,7 @@ Settle these from the request, deciding what it leaves open and saying so:
 - **Arrivals.** Mark them with a timpani roll growing into the downbeat and a suspended cymbal swell timed to peak on it ([orchestration.md](orchestration.md)).
 
 **Tempo.**
-- Emotional cues commonly sit around 60–80 BPM; this is a convention, not data.
+- Slow tempos, with soft dynamics and legato, convey sad and peaceful characters (Eerola, Friberg and Bresin 2013, in [game-music.md](game-music.md)).
 - Lean slightly forward in the build, then broaden at the harmony before the climax and through it.
 - Slow at phrase ends with `clock.rubato`, and use a long final ritardando.
 
@@ -119,8 +119,6 @@ So use **high clusters for terror** and **low clusters for dread**.
 6. **The aftermath:** the ring of the metal, and the floor again.
 
 Huron (2006) explains the jump: an unexpected event triggers a fast, defensive reaction before any appraisal.
-
-**Innocence turned eerie.** A music-box or children's tune, slow, slightly out of tune or with one wrong note, over the dread floor, is a common horror device: a convention, not a finding. Detune with `cents` on a synth bell, or play a glockenspiel line against a cluster.
 
 **In a visual novel or a game.**
 - The loop under text stays steady ([scene-music.md](scene-music.md)).

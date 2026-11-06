@@ -5,14 +5,14 @@ Read this when planning a piece's high point or a theme's return, writing a melo
 ## What goes with strong responses
 
 - **Tears and shivers.** Sloboda (1991) asked listeners to recall a physical response to music and to find its place in the score. Tears went most reliably with melodic appoggiaturas and with sequences; shivers with new or unexpected harmonies.
-- **Chills.** Grewe, Nagel, Kopiez and Altenmüller (2007) found chills varied greatly between listeners and followed no simple stimulus and response, yet they gathered at dynamic changes, at the entry of a new voice or instrument, and where loudness and sharpness (high-frequency energy) rose. Guhn, Hamm and Zentner (2007) linked chill passages to the interplay of a solo instrument and its accompaniment and, sometimes, to an expansion of the music's range into a higher or lower register.
-- **The climax causes them.** Bannister and Eerola (2018) removed the passages that listeners had named as giving chills (in one piece, a long build to a crescendo and climax) from three pieces. Chills became significantly rarer in all three, while ratings of the piece's overall emotion did not change. Where intensity was rated continuously, it followed loudness, brightness and roughness in two of the pieces. The high point itself does the work; the mood around it does not replace it.
+- **Chills.** Grewe, Nagel, Kopiez and Altenmüller (2007) found that chills followed no simple stimulus and response; the entry of a voice and changes in volume were the patterns listeners reacted to most. Guhn, Hamm and Zentner (2007) linked chill passages to the interplay of solo and accompanying instruments and, sometimes, to an expansion of the overall frequency range (both as summarised by Bannister and Eerola 2018).
+- **The passage causes them.** Bannister and Eerola (2018) removed the passages that listeners had named as giving chills from three pieces (in one, a gradual increase in loudness). Chills became significantly rarer in all three. The continuously rated intensity was higher in the chill passages, and in two of the pieces it followed loudness, brightness and roughness. Their review of earlier studies links chills most often to dynamic changes and crescendos.
 - **Adding and taking away.** Goodchild, Wild and McAdams (2019) played listeners orchestral gestures. As instruments were added gradually, rated intensity rose steadily with the texture and loudness; a sudden addition made it jump; and after a reduction, gradual or sudden, intensity stayed high for a while instead of falling with the music.
-- **Expectation.** Huron (2006) explains much of this through expectation: a listener predicts what comes next, an event that fulfils a prediction is pleasant, and a surprise triggers a fast, defensive reaction that a slower appraisal turns positive in the safety of listening, which can feel like a thrill. For slow builds, Bannister and Eerola point to a related mechanism, auditory looming: a sound that keeps growing louder seems to approach.
+- **Expectation.** Huron (2006) explains much of this through expectation: when an expectation is violated, a quick worst-case reaction produces the chill, and a slower appraisal in the safety of listening turns it into pleasure (as summarised by Bannister and Eerola 2018). For gradual increases in loudness, Bannister and Eerola suggest auditory looming may play a part: a sound that keeps growing louder seems to approach.
 
 ## Planning a high point
 
-1. **Place it.** Decide which bar it lands on and build toward it over 8–16 bars or more: a gradual build raises intensity steadily, and a sudden addition at the arrival makes it jump.
+1. **Place it.** Decide which bar it lands on and build toward it: a gradual addition of instruments raises intensity steadily, and a sudden addition at the arrival makes it jump (Goodchild, Wild and McAdams 2019, above).
 2. **Hold things back.** Keep the melody's highest sustained note, the fullest texture, the widest range and the loudest dynamic for the high point. If the music has already been there, it cannot arrive.
 3. **Combine three or four devices** from the findings above:
    - a crescendo carried by instruments entering one after another;
@@ -33,7 +33,42 @@ Check it: `analyze` should show the high point as the loudest and brightest sect
 - **Implication and realisation.** In Narmour's (1990) model a small interval implies another small one in the same direction, and a large interval implies a turn and a smaller interval. Meeting these implications most of the time makes a line easy to follow; denying one at a point of emphasis gives that point weight.
 - **Arches.** Phrases in Western folksongs most often rise and then fall (Huron 1996). Let a phrase climb to its peak and come down to rest, and let the phrases of a section build to the section's peak in the same way.
 - **Appoggiaturas and sequences.** The two devices Sloboda found most often under tears: a dissonance on a strong beat resolving by step (4–3, 9–8, 7–8 in the melody), and a motif repeated at a step or a third higher or lower, two or three times, before it breaks off.
-- **A motif first.** Write the motif in real pitches and rhythm and test it against the bass ([arrangement.md](arrangement.md)); a memorable rhythm can carry several changes of pitch.
+- **A motif first.** Write the motif in real pitches and rhythm and test it against the bass ([arrangement.md](arrangement.md)). A varied repetition that keeps the contour is heard as the same idea; a new contour is heard as a contrasting one (Open Music Theory).
+
+### Writing a melody that sounds composed
+
+The sources below describe what such a melody has: an idea that returns, phrases that breathe, and a common overall shape with a detail of its own. A line of chord tones in running eighths, new in every bar, has none of them.
+
+1. **The hook.** Write the chorus's opening idea, or the riff, first: it is the motif (A motif first, above).
+   - Perricone (2000) names what gives a melody character: its rhythm, its contour, its tonal makeup and its intervals.
+   - Jakubowski, Finkel, Stewart and Müllensiefen (2017) compared 100 songs often named as earworms with 100 matched for chart success and style. The earworms had more common overall contours, less common interval patterns (unexpected leaps, or more repeated notes than usual), and faster tempi.
+   - One of the most common contours rises in its first phrase and falls in its second (the publisher's summary of that study), as folksong phrases most often do (Huron 1996, Arches above).
+
+   Test it against the bass before writing the rest (A motif first, above).
+2. **Phrase like a singer** (Perricone 2000):
+   - a phrase usually ends by resting, holding or resolving, and in vocal music where a singer breathes;
+   - short phrases group into longer ones;
+   - most vocal melodies move by step, and it is usually their leaps that give them character and make them memorable.
+
+   He asks of a line written for the voice whether the singer has time to breathe between phrases, and whether a phrase is too long for one breath.
+3. **Build each section from restatement.** State an idea, restate it, depart, conclude: the srdc pattern (statement, restatement, departure, conclusion) that Summach (2011) traces through pop forms after Everett (1999). In classical terms this is the sentence (Caplin 1998). Its presentation is a basic idea, often two bars long, and its repetition. A continuation follows and drives to a cadence.
+   - **Restate with a change.** The repetition is often varied. One that keeps the contour is heard as a varied repetition; one with a new contour is heard as a contrasting idea (Open Music Theory). A sequence repeats the idea a step or a third higher or lower (Sloboda, above).
+   - **Depart by fragmenting.** Fragmentation means units shorter than the basic idea. A continuation often adds sequences and chords that change faster than before (Open Music Theory).
+4. **Contrast the sections.** A chorus intensifies over its verse with a denser or more active texture and/or a higher melody (Summach 2012, in Open Music Theory, Verse-Chorus Form). Summach lists register, phrasing, the length of units and harmonic rhythm among the devices that build a prechorus toward its chorus.
+5. **Tension and rest.**
+   - **Notes outside the chord** embellish chord tones (Open Music Theory):
+     - an appoggiatura, reached by leap and left by step the other way, usually falls on a strong part of the beat;
+     - a suspension, a held note resolving down by step, always does;
+     - an escape tone and an anticipation usually fall on weaker parts.
+
+     Sloboda found appoggiaturas most often under tears (above).
+   - **Pair phrases as question and answer**, the antecedent and consequent of a period (Caplin 1998; Open Music Theory):
+     - the first ends with a weaker cadence, most often a half cadence, on V;
+     - the second ends with a stronger one, most often a perfect authentic cadence, with 1 in the melody over the tonic;
+     - with 3 or 5 in the melody over the tonic, the authentic cadence is imperfect.
+   - **Anticipations.** A melody note that anticipates a downbeat is heard as belonging to that beat (Tan, Lustig and Temperley 2019, in [development-and-groove.md](development-and-groove.md)). Change the band's chord with it, or the early note sounds against the old chord (`review` lists such rubs).
+6. **Save the peak.** Keep the melody's highest note for the high point (Planning a high point, above).
+7. **Check the figures.** `profile` reports, per section, the melody's phrases and its longest run without a breath, its leaps, how many bars restate an earlier bar's rhythm and contour, and where its peak falls. `review` asks about a section of eight bars or more in which no bar restates another. The figures show what the line does, not whether it is good: listen.
 
 ## Orchestration: what blends and what stands out
 
@@ -54,4 +89,9 @@ McAdams, Goodchild and Soden (2022) classify orchestral effects by the auditory 
 - von Hippel, P. and Huron, D. (2000). Why do skips precede reversals? The effect of tessitura on melodic structure. *Music Perception* 18(1), 59–85.
 - Narmour, E. (1990). *The Analysis and Cognition of Basic Melodic Structures: The Implication-Realization Model*. University of Chicago Press.
 - Huron, D. (1996). The melodic arch in Western folksongs. *Computing in Musicology* 10, 3–23.
+- Jakubowski, K., Finkel, S., Stewart, L. and Müllensiefen, D. (2017). [Dissecting an earworm: Melodic features and song popularity predict involuntary musical imagery](https://research.gold.ac.uk/id/eprint/19405/). *Psychology of Aesthetics, Creativity, and the Arts* 11(2), 122–135. The leaps and repeated notes, and the contour that rises then falls, are from the publisher's [summary](https://www.apa.org/news/press/releases/2016/11/earworms).
+- Perricone, J. (2000). *Melody in Songwriting: Tools and Techniques for Writing Hit Songs*. Berklee Press. What gives a melody character, phrases and breathing, steps and leaps, and the questions for a line written for the voice: the [Chapter 1 excerpt](https://online.berklee.edu/takenote/conjunct-disjunct-melody-basic-definitions/).
+- Gotham, M. et al. *Open Music Theory*, version 2. VIVA Pressbooks. [Verse-Chorus Form](https://viva.pressbooks.pub/openmusictheory/chapter/verse-chorus-form/) (the chorus's intensity, quoting Summach 2012); [The Phrase, Archetypes, and Unique Forms](https://viva.pressbooks.pub/openmusictheory/chapter/phrase-archetypes-unique-forms/) (the sentence, its varied repetition and continuation; the period); [Embellishing Tones](https://viva.pressbooks.pub/openmusictheory/chapter/embellishing-tones/) (where each falls in the beat); [Introduction to Harmony, Cadences, and Phrase Endings](https://viva.pressbooks.pub/openmusictheory/chapter/intro-to-harmony/) (perfect and imperfect authentic cadences, half cadences).
+- Summach, J. (2011). [The Structure, Function, and Genesis of the Prechorus](https://mtosmt.org/issues/mto.11.17.3/mto.11.17.3.summach.html). *Music Theory Online* 17(3). The srdc pattern after Everett (1999); the prechorus's devices.
+- Caplin, W. E. (1998). *Classical Form: A Theory of Formal Functions for the Instrumental Music of Haydn, Mozart, and Beethoven*. Oxford University Press. The sentence: presentation, continuation (fragmentation, faster harmonic change), cadence; the period: an antecedent ending with a weak cadence, a consequent with a stronger one.
 - McAdams, S., Goodchild, M. and Soden, K. (2022). [A Taxonomy of Orchestral Grouping Effects Derived from Principles of Auditory Perception](https://doi.org/10.30535/mto.28.3.6). *Music Theory Online* 28(3); examples in the [Timbre and Orchestration Resource](https://timbreandorchestration.org/tor/modules/taxonomy/orchestral-grouping-effects/introduction).

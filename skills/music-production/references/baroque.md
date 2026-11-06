@@ -12,7 +12,7 @@ Related guides:
 - [orchestration.md](orchestration.md): strings, winds and early instruments in the banks;
 - [piano-and-chamber.md](piano-and-chamber.md): keyboard writing and chamber balance.
 
-Baroque music rests on a bass line and the voices above it moving independently. Its harmony comes from the bass, its momentum from sequences and steady rhythm, and its form from contrasts between textures more than between themes.
+The repertoire is too diverse for a definitive list of traits (Palisca, in Wikipedia, Baroque music). This guide covers what the sources below describe: the continuo, counterpoint, the stock patterns and the forms.
 
 ## Brief
 
@@ -24,14 +24,12 @@ Settle these from the request, deciding what it leaves open and saying so:
   - A concerto: string orchestra and continuo with one or more soloists.
 - **Form.** A binary dance, a ritornello movement, a fugue, a ground bass or a chorale setting (below).
 - **Tempo and meter.** From the dance or the movement type (below).
-- **Length.** A dance runs 1–3 minutes with its repeats, a concerto movement 2–4, a fugue 2–5.
 
 ## The continuo
 
 A basso continuo supplies the bass line and the chords of almost every baroque genre. It needs at least one instrument that plays chords (harpsichord, organ, lute, theorbo, harp) and any number in the bass register (cello, double bass, bass viol, bassoon). The usual modern pairing is harpsichord and cello for instrumental and secular works, and organ and cello for sacred music (Wikipedia, Figured bass).
 
-- Write the bass line first, as a melody of its own: stepwise runs, leaps of a fourth or fifth at cadences, sequences.
-- The keyboard's right hand realizes it in three voices in the middle register, in close position, without doubling the solo line. Its left hand doubles the bass.
+- The bass line is written out, and the keyboard player realizes the continuo by adding notes above it to complete the chords, guided by the figures and by the melody (Wikipedia, Figured bass). Stepwise bass lines take the rule of the octave below; at a cadence the bass moves 5–1 (Open Music Theory, cadences).
 - **The rule of the octave** gives a first-choice chord for each degree of a stepwise bass, different going up and coming down. In Fenaroli's version, as Open Music Theory sets it (Gotham et al. 2021):
 
   | Bass degree | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
@@ -43,16 +41,16 @@ A basso continuo supplies the bass line and the chords of almost every baroque g
 
 ## Counterpoint
 
-- **Independent voices.** Prefer contrary and oblique motion between the outer voices; never parallel fifths or octaves between any two voices.
-- **Dissonance on the weak beats**: passing and neighbour notes.
-- **Dissonance on the strong beats** as a suspension:
+- **Independent voices** (Open Music Theory, First-Species Counterpoint, after Fux 1725): parallel perfect consonances are forbidden; avoid voice crossing and overlap; approach the final interval by contrary stepwise motion.
+- **Dissonance off the beat**: passing and neighbour notes, by step (Open Music Theory, Embellishing Tones).
+- **Dissonance on the beat** as a suspension (Open Music Theory, Fourth-Species Counterpoint):
   - prepared as a consonance on the weak beat before;
   - held into the strong beat as a dissonance;
-  - resolved down by step: 4–3, 7–6 and 9–8 above the bass, 2–3 in the bass.
-- **Chains of suspensions** carry a sequence: 7–6 over a falling stepwise bass, or the 4–3 and 9–8 of a circle of fifths.
-- `review` lists sustained minor seconds and ninths; in this style each should be a prepared suspension or a passing note.
-- `review` does not look for consecutive fifths and octaves. Check them yourself between each pair of real voices (not between parts that double each other): a short script that walks two lines note by note and flags two perfect fifths or octaves in a row, both voices moving, is enough. Read a soloist's broken chords on the beat, where their real voices are.
-- A chord's seventh and the leading tone resolve one way, so give each to one voice only. A seventh doubled in an inner part either rises or moves in octaves with the voice that resolves it.
+  - resolved down by step: 7–6, 4–3 and 9–8 above the bass, 2–3 below it.
+- **Suspensions in a row.** Open Music Theory allows 7–6 and 4–3 freely, but no more than three times in a row.
+- `review` lists sustained minor seconds and ninths, and names each note outside the written chord by its embellishing tone (passing, neighbour, suspension and the rest), asking about those not resolved by step. In this style each dissonance should be a passing or neighbour note or a prepared suspension.
+- `review` lists consecutive fifths and octaves between two lines moving the same way: parts written one note at a time, a melody's top line and a bass part's bottom line. Octaves inside a line doubled at the octave are left out. Write each real voice as its own part, one note at a time, so it is checked: `review` does not split the chords of one part into voices. Read a soloist's broken chords on the beat, where their real voices are.
+- The leading tone and a chordal seventh are tendency tones and are never doubled (Open Music Theory, Chords in SATB Style).
 
 ## Patterns: sequences and schemata
 
@@ -69,14 +67,14 @@ Eighteenth-century composers built phrases from stock patterns of bass and melod
 | Meyer | 1–2, 7–1 | 1–7, 4–3 | an opening in two parts |
 | Indugio | 4 held, then ♯4–5 | 2–4–6–1–7 | a delay before a cadence |
 
-- **The circle of fifths** (vi–ii–V–I, often with sevenths, or a whole octave of falling fifths) carries the middle of most movements.
-- Sequence a motif two or three times, then break the pattern into a cadence.
+- **Sequences in the middle.** Diatonic sequences, the circle of fifths (vi–ii–V–I, often with sevenths) among them, carry the middles of movements (Open Music Theory, Diatonic Sequences in Middles).
+- Sequence a motif two or three times, then break the pattern into a cadence: Sloboda found such sequences among the devices most often under tears ([climax-and-melody.md](climax-and-melody.md)).
 
 ## Forms
 
-- **Binary dances.** Two halves, each repeated (AABB).
-  - The first modulates to the dominant (in minor, to the relative major or the dominant minor) and cadences there.
-  - The second returns through sequences and closes in the tonic.
+- **Binary dances** (Wikipedia, Binary form; Open Music Theory, Binary Form). Two reprises, each repeated, common in 17th- and 18th-century dance music.
+  - The first usually modulates: to the dominant in major, to the relative major or the dominant minor in minor.
+  - The second starts less stable (sequences, chromaticism, a dominant pedal), returns to the tonic and closes there. In a rounded binary the opening returns in the home key, often after a half cadence.
   - The dances of a suite (Wikipedia, Suite):
 
     | Dance | Meter and pace | Character |
@@ -92,31 +90,25 @@ Eighteenth-century composers built phrases from stock patterns of bass and melod
   - the opening ritornello is made of small units of two to four bars that can be separated and recombined;
   - later ritornellos are partial, and each confirms the key the music has reached;
   - the first and last are in the tonic.
-- **Fugue.** The opening, then the rest:
-  - **Subject.** One voice states a subject of one to four bars.
-  - **Answer.** The next voice answers a fifth higher (a tonal answer swaps 5 and 1 near the subject's start) while the first continues in a countersubject.
-  - **Episodes** sequence fragments of the subject between entries in related keys.
-  - **The end** brings entries close together (stretto) and a pedal point.
-- **Ground bass.** A chaconne or passacaglia varies the upper parts over a repeating bass of four to eight bars, for example a falling tetrachord (1–7–6–5, the lament bass).
-- **Chorale.** Four-part harmony in half and quarter notes, each phrase ending on a fermata and a cadence.
+- **Fugue** (Open Music Theory, High Baroque Fugal Exposition; Wikipedia, Fugue):
+  - **Subject.** One voice states a short subject.
+  - **Answer.** The next voice answers it a fifth higher (or a fourth lower) while the first continues in a countersubject. A real answer transposes exactly; a tonal answer alters it, so that a prominent dominant note in the subject becomes the tonic in the answer.
+  - **Episodes** between later entries are modulatory, usually built from material of the exposition, and lead to the next entry's key.
+  - **Stretto.** Later entries may overlap.
+- **Ground bass.** A chaconne or passacaglia varies the upper parts over a repeated bass, routinely four bars long; a descending, often chromatic ground was a common way to express pathos at the end of the 17th century (Wikipedia, Ostinato, quoting Taruskin on Purcell's Dido's Lament).
+- **Chorale.** A tune in homophonic, usually four-part harmony (Wikipedia, Chorale), each phrase closing with a cadence (Open Music Theory, The Phrase).
 
 ## Performance on the banks
 
 - **Harpsichord.** `vcsl_keys` 0:6 French, 1:6 Flemish 8′, 2:6 Flemish 8′+4′, 3:6 English lute stop. Velocity changes nothing, as on the instrument ([soundbanks.md](soundbanks.md)).
   - Shape a line by timing and articulation instead, as organists and harpsichordists do: [organ.md](organ.md) gives the measured means, from Gingras et al.
-  - Change registration for contrast, for example 8′+4′ for the tutti and the lute stop for a soft echo.
-  - Roll (arpeggiate) long chords from the bottom.
+  - Change registration for contrast: the bank has 8′, 8′+4′ and lute-stop presets.
 - **Ornaments.** Write them as notes.
   - A trill on the penultimate note of a cadence. In the Baroque it starts on the upper note and may start slow and speed up; on a short note at a fast tempo it shrinks to three notes, close to a mordent (Wikipedia, Trill).
-  - Appoggiaturas on strong beats, falling by step.
-- **Articulation.** Detached notes in fast passages (`gate` 0.6–0.8) and slurred pairs on sighing figures. Strings play short and light in allegros; a sarabande sustains.
-- **Section strings in an allegro.** The `vsco_strings` sustained samples take about 400 ms to speak, a bowed swell ([soundbanks.md](soundbanks.md)). At allegro tempos, give notes under about a beat and a half to the spiccato presets (bank 1, `offset_ms` −35 to −40) and keep the sustained presets (`offset_ms` −90) for held notes and suspensions. Tied over the bar line, a suspension's swell lands on its dissonance. A note struck again on the strong beat is a rearticulated suspension, also common in fast movements.
+  - Appoggiaturas, reached by leap and left by step the other way, usually on a strong part of the beat (Open Music Theory, Embellishing Tones).
+- **Section strings in an allegro.** The `vsco_strings` sustained samples take about 400 ms to speak, a bowed swell ([soundbanks.md](soundbanks.md)). At allegro tempos, give notes under about a beat and a half to the spiccato presets (bank 1, `offset_ms` −35 to −40) and keep the sustained presets (`offset_ms` −90) for held notes and suspensions. Tied over the bar line, a suspension's swell lands on its dissonance. A note struck again on the strong beat is a rearticulated suspension.
 - **The continuo cello.** The solo cello (`cello_bigcat` 0:42) speaks in 5–14 ms. Let it play the bass line throughout, as the continuo cellist does; the cello section and the double bass join it in the tutti.
-- **Inner parts in a tutti.**
-  - Second violins: in unison with the firsts in a ritornello's head, in thirds or sixths under scales, the chord in another position under broken chords.
-  - Violas: chord tones in the bass's rhythm, or the bass an octave up.
-  - The harpsichord's right hand: three close voices above the bass note, never on its key.
-- **Dynamics.** Contrast comes mostly from texture: tutti against solo, an echo repeated softer, one voice dropping out. Keep a steady pulse, with a broadening only at the final cadence.
+- **Contrast.** The harpsichord's velocity changes nothing, so its contrasts come from registration and texture; a concerto alternates tutti and solo (Ritornello form, above).
 - **The ensemble.**
 
   | Role | Bank and preset |
@@ -126,21 +118,24 @@ Eighteenth-century composers built phrases from stock patterns of bass and melod
   | Winds | recorders `vcsl_winds` program 74 (soprano 0:74, alto 3:74, tenor 6:74, bass 9:74); flute `vsco` 0:73; oboe `vsco` 0:68; bassoon `vsco` 0:70 |
   | Brass and drums | trumpet `vsco` 0:56 in the high register; timpani `vcsl` 0:47 on tonic and dominant |
 
-- **The room.** A hall or church space with a moderate tail (`space: "hall"`; `"church"` for organ), `mix.dynamics: "wide"`, `target_lufs` −18 to −16.
+- **The room.** A hall or church space with a moderate tail (`space: "hall"`; `"church"` for organ), `mix.dynamics: "wide"`; the skill's orchestral reference measured −17 LUFS ([performance-and-mix.md](performance-and-mix.md)).
 
 ## Symptoms and causes
+
+Sources for the table: the counterpoint and the suspension from Open Music Theory, the sequences from Open Music Theory's Diatonic Sequences, the harpsichord's touch from [organ.md](organ.md) (Gingras et al.).
 
 | Symptom | Likely causes | What to check or change |
 |---|---|---|
 | Sounds like a film score in costume | sustained pads, added-ninth chords, a melody over block chords | independent lines over a moving bass, the continuo, sequences |
 | Parallel fifths or octaves | voices moving in the same direction into a perfect interval | contrary motion; a third or sixth instead |
 | Dissonance that does not resolve | a strong-beat dissonance without preparation, or resolving up | the suspension pattern: prepare, hold, resolve down by step |
-| A mechanical harpsichord | every note the same length, strictly on the grid | articulation, rolled chords, a slight lengthening of the downbeat |
+| A mechanical harpsichord | every note the same length, strictly on the grid | timing and articulation as organists and harpsichordists shape a line ([organ.md](organ.md)) |
 | A shapeless middle | no modulation, no sequence | the circle of fifths, a Fonte or a Monte, a cadence in a related key |
 
 ## Sources
 
 - Gjerdingen, R. O. (2007). *Music in the Galant Style*. Oxford University Press.
 - Gotham, M., Gullings, K., Hamm, C., Hughes, B., Jarvis, B., Lavengood, M. and Peterson, J. (2021). *Open Music Theory*, 2nd ed., chapter 2: [Galant schemas](https://human.libretexts.org/Bookshelves/Music/Music_Theory/Open_Music_Theory_2e_(Gotham_et_al.)/02%3A_Counterpoint_and_Galant_Schemas/2.12%3A_Galant_Schemas__Summary) and [The Rule of the Octave](https://human.libretexts.org/Bookshelves/Music/Music_Theory/Open_Music_Theory_2e_(Gotham_et_al.)/02%3A_Counterpoint_and_Galant_Schemas/2.13%3A_Galant_schemas__The_Rule_of_the_Octave_and_Harmonizing_the_Scale_with_Sequences), after Fenaroli (Naples, 1775). VIVA Open Publishing.
+- Gotham, M. et al. *Open Music Theory*, version 2: [Introduction to Species Counterpoint](https://viva.pressbooks.pub/openmusictheory/chapter/species-counterpoint/), [First-Species](https://viva.pressbooks.pub/openmusictheory/chapter/first-species-counterpoint/) and [Fourth-Species Counterpoint](https://viva.pressbooks.pub/openmusictheory/chapter/fourth-species-counterpoint/), [Embellishing Tones](https://viva.pressbooks.pub/openmusictheory/chapter/embellishing-tones/), [Chords in SATB Style](https://viva.pressbooks.pub/openmusictheory/chapter/chords-in-satb-style/), [Diatonic Sequences in Middles](https://viva.pressbooks.pub/openmusictheory/chapter/diatonic-sequences/), [Binary Form](https://viva.pressbooks.pub/openmusictheory/chapter/binary-form/), [High Baroque Fugal Exposition](https://viva.pressbooks.pub/openmusictheory/chapter/high-baroque-fugal-exposition/), [Introduction to Harmony, Cadences, and Phrase Endings](https://viva.pressbooks.pub/openmusictheory/chapter/intro-to-harmony/) and [The Phrase](https://viva.pressbooks.pub/openmusictheory/chapter/phrase-archetypes-unique-forms/).
 - Fux, J. J. (1725). *Gradus ad Parnassum*. Vienna. The species counterpoint behind the rules above.
-- Wikipedia, read 6 November 2026: [Figured bass](https://en.wikipedia.org/wiki/Figured_bass) (the continuo group), [Ritornello](https://en.wikipedia.org/wiki/Ritornello) (Vivaldi's conventions), [Suite](https://en.wikipedia.org/wiki/Suite_(music)) (the dances), [Trill](https://en.wikipedia.org/wiki/Trill_(music)) (baroque trills), [Rule of the octave](https://en.wikipedia.org/wiki/Rule_of_the_octave), with the sources they cite.
+- Wikipedia, read 6 November 2026: [Figured bass](https://en.wikipedia.org/wiki/Figured_bass) (the continuo group), [Ritornello](https://en.wikipedia.org/wiki/Ritornello) (Vivaldi's conventions), [Suite](https://en.wikipedia.org/wiki/Suite_(music)) (the dances), [Trill](https://en.wikipedia.org/wiki/Trill_(music)) (baroque trills), [Rule of the octave](https://en.wikipedia.org/wiki/Rule_of_the_octave); read 7 November 2026: [Baroque music](https://en.wikipedia.org/wiki/Baroque_music) (Palisca on the period's diversity), [Binary form](https://en.wikipedia.org/wiki/Binary_form), [Fugue](https://en.wikipedia.org/wiki/Fugue), [Ostinato](https://en.wikipedia.org/wiki/Ostinato) (ground bass), [Chorale](https://en.wikipedia.org/wiki/Chorale); with the sources they cite.

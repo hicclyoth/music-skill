@@ -37,6 +37,18 @@ def main():
     cmp.add_argument('--differences',type=Path,metavar='FOLDER',help='a new folder for every changed file as after minus before, level-matched: the change alone')
     cmp.add_argument('--clip',type=Path,metavar='MP3',help='an old-then-new MP3 of 8 seconds around the first change in the master, both at the same loudness (needs --config)')
     cmp.add_argument('--config',type=Path,help='needed with --clip: FFmpeg measures and encodes it')
+    aud=sub.add_parser('audition',help="Play one part's passage on several sounds in turn: the same notes in the same mix, at one loudness, with each sound's measured brightness")
+    aud.add_argument('project',type=Path);aud.add_argument('--track',required=True)
+    aud.add_argument('--sounds',required=True,help='comma-separated: surge:<preset>, synth:<preset>, soundfont:<bank>:<bank number>:<program>; the part as written plays first')
+    aud.add_argument('--bars',required=True,metavar='FIRST-LAST',help='the passage, 1-based, at most 16 bars')
+    aud.add_argument('--output',type=Path,required=True);aud.add_argument('--config',type=Path,required=True);aud.add_argument('--cache',type=Path)
+    aud.add_argument('--solo',action='store_true',help='the part alone instead of in its passage with the others')
+    snd=sub.add_parser('sounds',help='Search the Surge XT catalog: every factory and third-party patch, by role, measured character, name and source, for a shortlist to audition')
+    snd.add_argument('--role',help='lead, brass, pad, chords, keys, pluck, bass, sequence, fx or percussion')
+    snd.add_argument('--character',default='',help='comma-separated words the measured character must contain: dark, warm, mid, bright; fast, soft, slow; dry, short, long; mono, narrow, wide')
+    snd.add_argument('--name',help='text in the patch name or category');snd.add_argument('--source',help='"factory" or a designer')
+    snd.add_argument('--limit',type=int,default=25);snd.add_argument('--all',action='store_true',help='also patches flagged silent, MPE, microtonal or off pitch')
+    snd.add_argument('--id',help='one catalog patch in full: its measurement and what its mod wheel and macros move')
     prof=sub.add_parser('profile',help='Describe the written score per part and section: density, register, intervals, rhythm, repetition')
     prof.add_argument('project',type=Path);prof.add_argument('--output',type=Path,help='full JSON (without it, the full profile is printed)')
     configure=sub.add_parser('configure')
@@ -105,6 +117,9 @@ def main():
             except (ValueError,OSError,RuntimeError) as e:r['clip']={'error':str(e)}
         save_json(out,r)
         print(json.dumps({'output':str(out),'warnings':r['warnings'],**r['summary'],'clip':r.get('clip')},ensure_ascii=False));return
+    if args.command=='sounds':
+        from musiclib.sounds import describe,search
+        print(json.dumps(describe(args.id) if args.id else search(args.role,[w for w in args.character.split(',') if w.strip()],args.name,args.source,args.limit,args.all),ensure_ascii=False,indent=1));return
     p=load_project(args.project)
     if args.command=='validate':print(json.dumps(validate(p)));return
     if args.command=='profile':
@@ -121,6 +136,12 @@ def main():
     if args.command=='export-midi':
         if args.output.exists():raise ValueError('Output already exists')
         args.output.parent.mkdir(parents=True,exist_ok=True);midi.write(p,args.output);print(str(args.output));return
+    if args.command=='audition':
+        from musiclib.audition import audition,parse_sound
+        bars=args.bars.split('-')
+        if len(bars)!=2 or not all(b.isdigit() for b in bars):raise ValueError('--bars is FIRST-LAST, for example 21-24')
+        r=audition(args.project,args.track,[parse_sound(x) for x in args.sounds.split(',') if x.strip()],int(bars[0]),int(bars[1]),args.output,args.config,args.cache,args.solo)
+        print(json.dumps({'output':str(args.output/'audition.mp3'),'versions':[{k:v for k,v in x.items() if k!='surge_controls'} for x in r['versions']]},ensure_ascii=False));return
     if args.command=='render':
         from musiclib.render import render
         if args.jobs is not None and args.jobs<1:raise ValueError('--jobs is 1 or more')

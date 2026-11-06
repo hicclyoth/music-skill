@@ -11,23 +11,23 @@ Related guides:
 - [pop-and-ballad.md](pop-and-ballad.md): the power ballad;
 - [performance-and-mix.md](performance-and-mix.md): bends, legato and strumming.
 
-Rock rests on a riff, a backbeat and guitars that play together. Metal adds weight: distortion, low strings, and guitars, bass and kick that hit in unison.
+Each piece of guidance below names its source. Parameter values (`gate`, `lowpass`, `reverb_db` and the like) are this skill's starting points, and the arrangement table is an example plan.
 
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:
 
-- **Style and tempo.** These are conventional ranges, not data:
+- **Style.** The traits below are from the Wikipedia articles on each style and the sources they cite (Sources); take the tempo from the brief and a reference of the style:
 
-  | Style | Tempo (BPM) | Drums | Guitars | Lowest string |
-  |---|---|---|---|---|
-  | Classic and hard rock | 100–140 | backbeat; eighths on the hi-hat or ride | power chords and open chords; minor-pentatonic riffs; a lead with bends | E2 |
-  | Alternative, indie | 100–160 | backbeat; toms in the verse | clean arpeggios in the verse, distorted chords in the chorus | E2 |
-  | Punk, pop-punk | 160–200 | driving eighths; the snare on every beat for a lift | eighth-note power chords, downstrokes | E2 or E♭2 |
-  | Traditional heavy metal | 60–170: slow in the early style, faster from the late 1970s | a rock backbeat; eighths on the hi-hat or ride; the kick doubling the gallop; the double kick in places, not throughout | Aeolian and Phrygian riffs, palm-muted and open power chords, pedal points; the gallop; twin leads in thirds | E2 or E♭2; early Black Sabbath tuned down to C♯2 |
-  | Thrash metal | 160–220 | the thrash beat (kick and snare alternating on eighths, the ride on every eighth); bursts of double kick | fast, palm-muted riffs on the low string with quick chord changes; chromatic steps, tritones and diminished intervals | E2, or D2 in drop D |
-  | Power and melodic metal | 120–200 | power metal: a constant stream of sixteenths on the double kick, or thrash-style bursts; melodic death metal: fast double kick and occasional blast beats | power metal: rapid streams of notes over chords that change once a bar or slower, keyboards or an orchestra, fast solos; melodic death metal: harmonised guitar riffs as the melody | E2 or lower |
-  | Metalcore | 120–160, breakdowns in half time | double kick in the heavy parts; in breakdowns a half-time snare, the kick in unison with the chugs, the china | low-tuned, percussive open-string chugs; a melodic chorus; often no guitar solo | drop D down to A (the banks stop at B1) |
+  | Style | Drums | Guitars | Lowest string |
+  |---|---|---|---|
+  | Classic and hard rock | backbeat; eighths on the hi-hat or ride | power chords and open chords; minor-pentatonic riffs; a lead with bends | E2 |
+  | Alternative, indie | backbeat; toms in the verse | clean arpeggios in the verse, distorted chords in the chorus | E2 |
+  | Punk, pop-punk | driving eighths; the snare on every beat for a lift | eighth-note power chords, downstrokes | E2 or E♭2 |
+  | Traditional heavy metal (slow in the early style, faster from the late 1970s) | a rock backbeat; eighths on the hi-hat or ride; the kick doubling the gallop; the double kick in places, not throughout | Aeolian and Phrygian riffs, palm-muted and open power chords, pedal points; the gallop; twin leads in thirds | E2 or E♭2; early Black Sabbath tuned down to C♯2 |
+  | Thrash metal | the thrash beat (kick and snare alternating on eighths, the ride on every eighth); bursts of double kick | fast, palm-muted riffs on the low string with quick chord changes; chromatic steps, tritones and diminished intervals | E2, or D2 in drop D |
+  | Power and melodic metal | power metal: a constant stream of sixteenths on the double kick, or thrash-style bursts; melodic death metal: fast double kick and occasional blast beats | power metal: rapid streams of notes over chords that change once a bar or slower, keyboards or an orchestra, fast solos; melodic death metal: harmonised guitar riffs as the melody | E2 or lower |
+  | Metalcore (breakdowns in half time) | double kick in the heavy parts; in breakdowns a half-time snare, the kick in unison with the chugs, the china | low-tuned, percussive open-string chugs; a melodic chorus; often no guitar solo | drop D down to A (the banks stop at B1) |
 
 - **Tuning.** The distorted guitar banks reach down to B1 (MIDI 35). So standard tuning (E2, MIDI 40), drop D (D2, 38), drop C (C2, 36) and a seven-string's low B (B1, 35) all play on recorded samples; nothing lower does. The bass plays an octave below: D1 is MIDI 26.
 - **Weight.** A clean or a distorted verse; one distorted guitar or a wall of four.
@@ -40,13 +40,9 @@ Settle these from the request, deciding what it leaves open and saying so:
 ## Form
 
 - **Verse, chorus, solo.** The usual frame is verse–chorus form. A pre-chorus builds toward the chorus (Summach 2011), and a guitar solo often takes the bridge's place, over the verse's chords or new ones.
-- **The riff.** A figure of one or two bars, repeated. In instrumental rock it is the hook:
-  - state it in the intro;
-  - return to it between sections;
-  - let it and the lead melody take turns in front.
+- **The riff.** A short figure, repeated. In an instrumental it can carry the hook; plan where it and the lead melody take turns in front.
 - **Quiet and loud.** A clean, thin verse against a distorted chorus: the "loud-quiet-loud" dynamic the Pixies were known for, which Nirvana took from them, and a staple of alternative rock since.
-- **Metal: a chain of riffs.** A metal song often moves through several riffs, each repeated two to four times and grouped by tempo and feel (a convention). Metalcore songs often run in a straight line instead, a heavy verse into a melodic chorus.
-  - The **breakdown** is a slower or half-time passage of chugs in unison with the kick. In twenty-first-century metal, metalcore especially, it works as a section of its own, like a verse or a chorus (Gamble 2019).
+- **Metal sections.** The **breakdown** is a slower or half-time passage of chugs in unison with the kick. In twenty-first-century metal, metalcore especially, it works as a section of its own, like a verse or a chorus (Gamble 2019).
 - **Odd groupings over a steady pulse.** Pieslak (2007) explains Meshuggah's rhythm through odd time signatures, mixed meter and superimposition. To write a superimposed riff, let the guitars and kick cycle in groups of 5 or 7 sixteenths while the hi-hat and snare keep 4/4, until the two meet again at a phrase end.
 
 ## Harmony and riffs
@@ -78,18 +74,17 @@ Settle these from the request, deciding what it leaves open and saying so:
 ## Rhythm and drums
 
 - **The backbeat.**
-  - Snare on 2 and 4; kick on 1 and 3, with syncopations around them.
-  - Eighths on the hi-hat in the verse; the ride or a loose hi-hat in the chorus.
-  - A crash on each section's downbeat, and a fill in the last one or two beats before it.
-- **Tight, not loose.** Small timing deviations did not make a simple drum pattern groove better (Frühauf, Kopiez and Platz 2013). Heavy music is tighter still: the guitars, bass and kick hit together. `musiclib.expression` keeps the drums' deviation small; keep the rhythm guitars' `feel` within a few milliseconds of the drums.
-- **Punk.** Fast eighths on the hats or ride and the snare on 2 and 4, or on every beat for a lift. Punk syncopates much less than other rock; its songs are short, in verse–chorus form, with basic guitar breaks rather than long solos, and its drums sound heavy and dry.
-- **Metal figures.** These are conventions, each tied to its style:
+  - The snare on 2 and 4; the kick is often syncopated; the cymbals keep a regular pulse (Open Music Theory, Drumbeats).
+  - Patterns change from section to section, for example from hi-hat in the verse to ride in the chorus, and a small fill at the end of a section leads into the next (Dow 2010).
+- **Tight, not loose.** Small timing deviations did not make a simple drum pattern groove better (Frühauf, Kopiez and Platz 2013). `musiclib.expression` keeps the drums' deviation small; keep the rhythm guitars' `feel` within a few milliseconds of the drums.
+- **Punk** (Wikipedia, Punk rock). Fast eighths on the hats or ride and the snare on 2 and 4, or on every beat for a lift. Punk syncopates much less than other rock; its songs are short, in verse–chorus form, with basic guitar breaks rather than long solos, and its drums sound heavy and dry.
+- **Metal figures**, each tied to its style (the Wikipedia articles in Sources):
   - **traditional heavy metal: the gallop**, an eighth and two sixteenths, in the guitars and the bass, often doubled by the kick, over a rock backbeat; the double kick in places, not throughout;
-  - **thrash: the thrash beat**, also called the skank or "Slayer" beat: a sped-up 2/4 rock or polka beat, kick and snare alternating on eighths with the ride on every eighth, at 160 BPM and up; bursts of double kick;
+  - **thrash: the thrash beat**, also called the skank or "Slayer" beat: a sped-up 2/4 rock or polka beat, kick and snare alternating on eighths with the ride on every eighth; bursts of double kick;
   - **power and melodic metal: the double kick**, a constant stream of sixteenths under the snare's accents, or bursts of three to six beats in the thrash manner;
   - **metalcore: the half-time breakdown**, the snare on beat 3 of each bar, the kick in unison with the chugs, and the china or a crash on the accents;
   - **death and black metal: the blast beat**, from hardcore punk and grindcore: a very fast figure shared among kick, snare and a cymbal. The traditional blast alternates snare and kick in a single-stroke roll, the ride with the kick; the hammer blast plays kick and snare together on eighths. This guide does not cover these styles further.
-- **Velocities.** The `rusty` kit has up to 14 velocity layers and 4 round robins. A double kick at one velocity still sounds like a machine gun, so:
+- **Velocities.** The `rusty` kit has up to 14 velocity layers and 4 round robins. Drummers hit harder with the stronger hand, so alternate hits differ in velocity (Dow 2010):
   - alternate two values a few steps apart, for example 112 and 104;
   - accent the beat.
 
@@ -120,19 +115,19 @@ They have no palm-muted, harmonic or slide samples. The points below write those
   - `performance.legato`, so connected notes slur as hammer-ons and pull-offs do;
   - bends into long notes, vibrato on held notes and slides between positions (`bend_range` 12; [performance-and-mix.md](performance-and-mix.md));
   - a `delay` of a dotted eighth (0.75 beats) about 18 dB down, and the plate.
-- **Twin leads.** For a twin-guitar harmony, write a second lead a diatonic third or sixth from the first and pan the two apart (a convention of traditional heavy metal and melodic metal).
-- **Scales.** These are conventions:
+- **Twin leads.** Traditional heavy metal harmonises its guitars, and melodic death metal makes harmonised riffs its melody (Wikipedia, Iron Maiden; Melodic death metal). Write the second lead a diatonic third or sixth from the first and pan the two apart.
+- **Scales**, from the style articles (Wikipedia, in Sources):
   - minor pentatonic and the blues scale for rock leads, and in traditional heavy metal solos over Aeolian and Phrygian riffs;
   - chromatic, tritone-heavy lines for thrash;
   - natural and harmonic minor, with neoclassical arpeggios, for power and melodic metal, whose fast and technical solos are close to a rule.
 
 ## Bass
 
-- **Lock to the kick and the riff.** The bass doubles the riff an octave below the guitars, or plays roots in the kick's rhythm. In metal it plays the chugs and gallops with the guitars.
+- **With the riff.** The gallop sits in the guitars and the bass, often doubled by the kick (Wikipedia, Iron Maiden; Heavy metal music). Write the bass with the riff an octave below the guitars, or on roots in the kick's rhythm.
 - **Banks.**
   - `bass_pick`: a picked Yamaha RBX, D1–B♭2, one velocity layer. Set `performance.round_robin`, so repeated notes do not replay one sample.
-  - `bass_darkblack` 0:33: fingers, five strings down to B0, four dynamics and round robins. `mix.saturate` 0.2–0.4 adds the grit a metal bass needs under the guitars.
-- **Registers.** Keep the bass mostly below C3 and high-pass the guitars above it.
+  - `bass_darkblack` 0:33: fingers, five strings down to B0, four dynamics and round robins. `mix.saturate` 0.2–0.4 adds grit (a starting value of this skill).
+- **Registers.** Keep the bass mostly below C3, and high-pass the guitars above it (The mix, below).
 
 ## Arrangement
 
@@ -143,21 +138,19 @@ They have no palm-muted, harmonic or slide samples. The points below write those
 | Rhythm guitars | one guitar, muted or clean | the second guitar enters | both sides, open power chords | held chords | open-string chugs on both sides |
 | Lead | the melody low, or the riff | rising | the hook, high | the solo | silent, or one held high note |
 
-Build by addition toward the chorus. Thin out once before the last chorus: a bar of drums alone, a quieter pre-chorus, or a breakdown.
+The table is an example plan. Build by addition toward the chorus (McAdams, Goodchild and Soden 2022 describe such gradual addition), and hold layers back so the last chorus has somewhere to go (Senior 2024).
 
 ## The mix
 
-- **The low end has three owners.** The kick, the bass and the guitars' low strings share 60–200 Hz.
+- **The low end.** The kick, the bass and the guitars' low strings overlap there.
   - High-pass the rhythm guitars: start about 80 Hz and sweep up, to about 100–120 Hz in standard tuning and closer to 80–100 Hz for drop tunings and seven-strings, higher where the bass carries the low end (Nail The Mix). Set the octave-up part higher still. `review` notes that this takes several dB off a low string's fundamental (D2 is 73 Hz); that is intended when the bass doubles the riff an octave below.
-  - Keep the bass below them.
-  - Let the kick's attack sit above both.
 - **Kick definition.** A fast double kick loses its separate hits without its click, the beater's attack. Metal mixers lift it somewhere in 2–8 kHz: 2–4 kHz for a punchy thwack, 5–8 kHz for a modern click (Nail The Mix).
-- **Guitars wide, the rest centred.** The rhythm guitars sit hard left and right; the kick, snare, bass and lead in the centre.
+- **Guitars wide, the rest centred.** Double-tracked rhythm guitars sit apart, left and right (Mynett 2017); the kick, snare, bass and lead are conventionally centred (Flint 2005).
 - **Fizz.** Distortion's harsh fizz sits in the highest octaves. A `lowpass` on the rhythm guitars tames it: start at 10–12 kHz and roll it down until the fizz goes (Nail The Mix).
-- **Dry rhythm guitars.** The rhythm guitars stay dry or in a short room (`reverb_db` −24 or lower); the lead takes the plate and the delay.
+- **Reverb.** This skill's starting point: the rhythm guitars dry or in a short room (`reverb_db` −24 or lower), the lead on the plate and the delay. Parts at the back of a mix are more reverberant than parts in front (White 2009).
 - **Brightness.** Cymbals and distorted guitars put far more energy above 2.5 kHz than strings or piano do. `analyze` should show it ([anime-opening.md](anime-opening.md)).
-- **Loudness.** Use the bus chain with `glue` at −14 LUFS.
-- **The lead's level.** Check `lead_minus_accompaniment` in `analyze`. Against four distorted guitars the lead needs more level than in a sparse mix.
+- **Loudness.** Use the bus chain with `glue` at −14 LUFS, Spotify's playback level ([pop-and-ballad.md](pop-and-ballad.md)).
+- **The lead's level.** Check `lead_minus_accompaniment` in `analyze`, and find what masks the lead by muting the other parts one at a time (Senior 2018).
 
 ## Instruments
 
@@ -197,5 +190,12 @@ Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)).
 - Pieslak, J. (2007). Re-casting metal: rhythm and meter in the music of Meshuggah. *Music Theory Spectrum* 29(2), 219–245.
 - Wikipedia, read 6 November 2026, for the documented traits of each style and the sources they cite: [Hard rock](https://en.wikipedia.org/wiki/Hard_rock), [Punk rock](https://en.wikipedia.org/wiki/Punk_rock), [Pixies](https://en.wikipedia.org/wiki/Pixies_(band)) (loud-quiet-loud), [Heavy metal music](https://en.wikipedia.org/wiki/Heavy_metal_music) (rhythm and tempo, harmony; Weinstein 2000, Walser 1993), [Thrash metal](https://en.wikipedia.org/wiki/Thrash_metal), [Power metal](https://en.wikipedia.org/wiki/Power_metal), [Melodic death metal](https://en.wikipedia.org/wiki/Melodic_death_metal), [Metalcore](https://en.wikipedia.org/wiki/Metalcore), [Blast beat](https://en.wikipedia.org/wiki/Blast_beat) (the skank beat), [Iron Maiden](https://en.wikipedia.org/wiki/Iron_Maiden) (the gallop, harmonised guitars), [Tony Iommi](https://en.wikipedia.org/wiki/Tony_Iommi) (the down-tuning).
 - Nail The Mix, practitioner guidance on metal mixing: [High-pass filter](https://www.nailthemix.com/high-pass-filter), [Guitar mixing FAQs](https://www.nailthemix.com/guitar-mixing-faqs), [Kick drum EQ for modern metal mixes](https://www.nailthemix.com/kick-drum-eq).
+- Dow, R. (2010). [Programming Realistic Drum Parts](https://www.soundonsound.com/techniques/programming-realistic-drum-parts). *Sound On Sound*, September 2010.
+- Flint, T. (2005). [Q. Should I always pan my vocals to the centre of the mix?](https://www.soundonsound.com/sound-advice/q-should-always-pan-my-vocals-centre-mix) *Sound On Sound*, February 2005.
+- Hanenberg, S. [Drumbeats](https://viva.pressbooks.pub/openmusictheory/chapter/drumbeats/). In Gotham, M. et al., *Open Music Theory*, version 2.
+- McAdams, S., Goodchild, M. and Soden, K. (2022). [A Taxonomy of Orchestral Grouping Effects Derived from Principles of Auditory Perception](https://doi.org/10.30535/mto.28.3.6). *Music Theory Online* 28(3).
+- Senior, M. (2018). [Q. How can I locate the masking problems in my mix?](https://www.soundonsound.com/sound-advice/q-how-can-locate-masking-problems-my-mix) *Sound On Sound*, March 2018.
+- Senior, M. (2024). [Mix Rescue: Strong Arrangements](https://www.soundonsound.com/techniques/mix-rescue-strong-arrangements). *Sound On Sound*, May 2024.
+- White, P. (2009). [Creating A Sense Of Depth In Your Mix](https://www.soundonsound.com/techniques/creating-sense-depth-your-mix). *Sound On Sound*, February 2009.
 - Summach, J. (2011). [The Structure, Function, and Genesis of the Prechorus](https://mtosmt.org/issues/mto.11.17.3/mto.11.17.3.summach.html). *Music Theory Online* 17(3).
 - Frühauf, J., Kopiez, R. and Platz, F. (2013). Music on the timing grid: the influence of microtiming on the perceived groove quality of a simple drum pattern performance. *Musicae Scientiae* 17(2), 246–260.

@@ -2,8 +2,9 @@
 
 Human timing and loudness fluctuations are long-range correlated, not independent random numbers, and
 listeners prefer them to white-noise "humanize" (Hennig et al. 2011, PLoS ONE 6: e26457; Raesaenen et al.
-2015, PLoS ONE 10: e0127902).  Groove-oriented styles also reward tight drums (Fruehauf et al. 2013), so
-deviations stay small and structured:
+2015, PLoS ONE 10: e0127902).  Listeners rated a simple rock pattern best quantized (Fruehauf et al. 2013), and
+swing and funk performances as grooving equally quantized or with the players' own timing, worse exaggerated (Senn et
+al. 2016), so deviations stay small and structured.  Sizes and weights below are this module's starting values:
 
 - a slowly wandering 1/f component per player plus a short-range correction (anticorrelated, lag-1 -0.5);
 - a fixed feel per part (laid-back bass, the two rhythm guitars apart);
@@ -12,9 +13,9 @@ deviations stay small and structured:
 - strummed guitar chords (opt-in `strum`, ms per string): the pick reaches the strings in order, low to high on a
   downstroke and high to low on an upstroke, and the hand alternates on the `strum_grid` steps, down on the even
   steps and up on the odd ones (with the default 0.5, down on the beat and up on the "and"), the usual rhythm-guitar
-  motion; a chord off the grid is a downstroke.  Upstrokes are a little faster and lighter.  No measurement of string-to-string
-  timing was found; sampler strum scripts use 15-20 ms steps, which suits a slow strum, and 4-8 ms suits a driving one;
-- a two-bar periodic accent pattern on hi-hat/ride;
+  motion; a chord off the grid is a downstroke.  Upstrokes are a little faster and lighter.  No measurement of
+  string-to-string timing was read, so the step sizes are choices;
+- a two-bar periodic accent pattern on hi-hat/ride, as Raesaenen et al. (2015) found in a recorded hi-hat part;
 - a bow-like expression arc (CC11) inside held chords of sustained parts.
 
 apply(project, overrides, seed) changes performance.notes (timing_ms, velocity, gate) of the authored

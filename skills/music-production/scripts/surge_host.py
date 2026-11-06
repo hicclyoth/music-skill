@@ -10,6 +10,15 @@ into the plugin's saved state.  Surge loads that patch on its first audio block 
 so a silent block is played first; the part's macros and bend range (both scenes, up and down, in semitones) are set
 after it, then the events play.
 
+Speed: pedalboard describes every parameter of a plugin it loads by asking for its text at 1001 points (twice when the
+first answers look wrong), and goes through that description again whenever a plugin attribute such as `raw_state`
+is set.  Surge XT has 2855 parameters, so loading took one to five minutes and setting the patch as long again, while
+the synthesis itself runs about a hundred times faster than real time.  The host needs a few parameters, so it skips
+that description (pedalboard 0.9.26, pinned): it sets the state through the plugin class's own property and the
+parameters it needs through the plugin's parameter objects, found by name before the patch loads (a patch's macro
+labels rename its macros).  Measured: loading 0.3 s, the patch
+0.07 s.  Where pedalboard lacks these internals, the host falls back to its public interface.
+
 The licence text is in ../LICENSES/GPL-3.0-or-later.txt.
 
 Usage: python surge_host.py <job.json>
@@ -35,15 +44,36 @@ def main(job_file):
     import numpy as np
     import pedalboard
     from musiclib.surge import with_patch
+    try:  # no description of all parameters at load (no initial values are given here)
+        from pedalboard import _pedalboard as pb
+        describe = pb._PythonExternalPluginMixin.__set_initial_parameter_values__
+        pb._PythonExternalPluginMixin.__set_initial_parameter_values__ = (
+            lambda self, values: describe(self, values) if values else None)
+        name_of = pb.to_python_parameter_name
+    except AttributeError:
+        name_of = None
     rate = job['rate']
     synth = pedalboard.load_plugin(job['plugin'])
-    synth.raw_state = with_patch(synth.raw_state, Path(job['patch']).read_bytes())
+    # Found by name before the patch loads: a patch's macro labels rename its macros ("M1" becomes "M1: Cutoff").
+    try:
+        named = {name_of(p): p for p in synth._parameters} if name_of else None
+    except AttributeError:
+        named = None
+    state = next((k.__dict__['raw_state'] for k in type(synth).__mro__ if 'raw_state' in k.__dict__), None)
+    patch = Path(job['patch']).read_bytes()
+    if state is not None:
+        state.__set__(synth, with_patch(state.__get__(synth), patch))
+    else:
+        synth.raw_state = with_patch(synth.raw_state, patch)
     synth([], duration=512 / rate, sample_rate=rate, num_channels=2, buffer_size=512, reset=True)
+
+    def set_raw(name, value):
+        (named[name] if named else synth.parameters[name]).raw_value = value
     for k, v in job['macros'].items():
-        synth.parameters[f'm{k}'].raw_value = float(v)
+        set_raw(f'm{k}', float(v))
     for scene in 'ab':
         for way in ('up', 'down'):
-            synth.parameters[f'{scene}_pitch_bend_{way}_range'].raw_value = job['bend_range'] / 24
+            set_raw(f'{scene}_pitch_bend_{way}_range', job['bend_range'] / 24)
     events = [(bytes.fromhex(data), seconds) for data, seconds in job['events']]
     out = synth(events, duration=job['duration'], sample_rate=rate, num_channels=2, buffer_size=512, reset=False)
     x = np.asarray(out, dtype=np.float32).T[job['trim']:]

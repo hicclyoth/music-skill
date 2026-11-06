@@ -27,6 +27,11 @@ from collections import Counter
 from pathlib import Path
 
 PRESETS_FILE = Path(__file__).resolve().parents[2] / 'references' / 'surge-presets.json'
+CATALOG_FILE = Path(__file__).resolve().parents[2] / 'references' / 'surge-catalog.json'
+# The built-in preset a catalog patch falls back to where Surge or the patch is missing, by the patch's role.
+FALLBACK_BY_ROLE = {'lead': 'supersaw_lead', 'brass': 'brass_stab', 'pad': 'warm_pad', 'chords': 'future_bass_chord',
+                    'keys': 'fm_epiano', 'pluck': 'pluck', 'bass': 'synthwave_bass', 'sequence': 'pluck',
+                    'percussion': 'pluck'}
 SCRIPTS = Path(__file__).resolve().parents[1]
 TABLE = '.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+'
 VALUE = {c: i for i, c in enumerate(TABLE)}
@@ -34,6 +39,7 @@ LEAD_S = .1
 TAIL_S = 4.0
 RATE = 48000
 _presets = None
+_catalog = None
 
 
 class Unavailable(Exception):
@@ -47,14 +53,40 @@ def presets():
     return _presets
 
 
+def catalog():
+    """Every Surge XT 1.3.4 patch, measured (references/surge-catalog.json), by id; empty where the file is absent."""
+    global _catalog
+    if _catalog is None:
+        _catalog = json.loads(CATALOG_FILE.read_text(encoding='utf-8'))['presets'] if CATALOG_FILE.is_file() else {}
+    return _catalog
+
+
+def entry(name):
+    """A patch by curated name or catalog id: its file (relative to the curated or the full patch folder), SHA-256,
+    transposition and built-in fallback; None for neither."""
+    curated = presets()['presets'].get(name)
+    if curated:
+        return {**curated, 'folder': 'patches'}
+    found = catalog().get(name)
+    if not found:
+        return None
+    measured = found.get('measured') or {}
+    fallback = FALLBACK_BY_ROLE.get(found['role'], 'warm_pad')
+    if found['role'] == 'bass' and measured.get('centroid_hz', 999) < 120:
+        fallback = 'sub_bass'
+    return {'patch': found['path'], 'sha256': found['sha256'], 'transpose': found.get('transpose', 0),
+            'fallback': fallback, 'role': found['role'], 'folder': 'catalog'}
+
+
 def validate(track):
     from .model import number
     from . import synth
     spec = track.get('surge')
     if not isinstance(spec, dict) or set(spec) - {'preset', 'macros', 'fallback'}:
         raise ValueError(f'{track["id"]}: a surge part needs a "surge" object: preset, and optionally macros and fallback')
-    if spec.get('preset') not in presets()['presets']:
-        raise ValueError(f'{track["id"]}: surge preset must be one of references/surge-presets.json')
+    if entry(spec.get('preset')) is None:
+        raise ValueError(f'{track["id"]}: surge preset must be a curated patch (references/surge-presets.json) or a '
+                         'catalog id (references/surge-catalog.json; studio.py sounds searches it)')
     macros = spec.get('macros', {})
     if not isinstance(macros, dict) or not all(re.fullmatch(r'[1-8]', str(k)) for k in macros):
         raise ValueError(f'{track["id"]}: surge macros map "1"-"8" to 0-1')
@@ -64,20 +96,63 @@ def validate(track):
         raise ValueError(f'{track["id"]}: surge fallback must name a built-in synth preset')
 
 
+def installed(cfg):
+    """Surge XT and pedalboard are configured and present (their hashes are checked when a part renders)."""
+    surge, board = (cfg or {}).get('surge'), (cfg or {}).get('pedalboard')
+    return bool(surge and board and Path(surge.get('binary', surge['path'])).is_file() and Path(board['path']).is_dir())
+
+
+# The role a built-in preset plays, where a curated Surge patch plays the same role.  The 808's pitch punch and glide, the
+# 303's resonant sweep, a reese, a wobble, the chip waves and the noise transitions have none: the built-in synth stays
+# the instrument for them.
+BUILTIN_ROLES = {'supersaw_lead': 'lead', 'trance_pad': 'pad', 'warm_pad': 'pad', 'pwm_strings': 'pad', 'pluck': 'pluck',
+                 'fm_bell': 'pluck', 'future_bass_chord': 'chords', 'brass_stab': 'brass', 'fm_epiano': 'keys',
+                 'lofi_keys': 'keys', 'sub_bass': 'bass', 'synthwave_bass': 'bass'}
+
+
+# Built-in presets no curated patch covers, with the role and the words the catalog's designers put in the names of
+# patches for the same sound (matched at the start of a word).  A name is the designer's label, not a measurement: the
+# patches so named that the measurement leaves unflagged (sounds.search) are candidates to hear on the part.
+CATALOG_NAMES = {'bass_808': ('bass', ('808',)), 'acid_bass': ('bass', ('acid', '303')), 'reese_bass': ('bass', ('reese',)),
+                 'wobble_bass': ('bass', ('wobble', 'dubstep')), 'noise_riser': ('fx', ('uplift', 'riser')),
+                 'reverse_cymbal': ('percussion', ('reverse',)),
+                 **{name: ('lead', ('chip', 'gameboy')) for name in ('chip_square', 'chip_pulse12', 'chip_pulse25', 'chip_arp')}}
+
+
+def catalog_counterparts(builtin):
+    """Catalog patches named for a built-in preset's sound (CATALOG_NAMES), dark to bright; none where it has no entry."""
+    role, words = CATALOG_NAMES.get(builtin, (None, ()))
+    if not words:
+        return []
+    from . import sounds
+    named = re.compile(r'\b(?:' + '|'.join(map(re.escape, words)) + ')', re.I)
+    return [row['id'] for row in sounds.search(role=role, limit=len(catalog()))['shown'] if named.search(catalog()[row['id']]['name'])]
+
+
+def counterparts(builtin):
+    """The curated Surge patches for a built-in preset's role: of that role, those that fall back to it first (the
+    closest measured), in the list's order; none for a role no curated patch plays."""
+    role = BUILTIN_ROLES.get(builtin)
+    if role is None:
+        return []
+    same = [name for name, entry in presets()['presets'].items() if entry['role'] == role]
+    return sorted(same, key=lambda name: presets()['presets'][name].get('fallback') != builtin)
+
+
 def fallback_track(track):
     """The part as a built-in synth part on its fallback preset."""
     spec = track['surge']
-    name = spec.get('fallback') or presets()['presets'][spec['preset']]['fallback']
+    name = spec.get('fallback') or entry(spec['preset'])['fallback']
     t = {k: v for k, v in track.items() if k != 'surge'}
     return {**t, 'engine': 'synth', 'synth': {'preset': name}}
 
 
 def dependencies(cfg, track):
     """What a Surge part's sound depends on, for the render cache."""
-    entry = presets()['presets'][track['surge']['preset']]
+    found = entry(track['surge']['preset'])
     from .model import file_hash
     return {'surge': (cfg.get('surge') or {}).get('sha256'), 'pedalboard': (cfg.get('pedalboard') or {}).get('sha256'),
-            'patch': entry['sha256'], 'fallback': fallback_track(track)['synth']['preset'], 'host': file_hash(SCRIPTS / 'surge_host.py')}
+            'patch': found['sha256'], 'fallback': fallback_track(track)['synth']['preset'], 'host': file_hash(SCRIPTS / 'surge_host.py')}
 
 
 def _decode(text):
@@ -167,7 +242,7 @@ def at_tempo(fxp, bpm):
 def locate(cfg, track):
     """The plugin, pedalboard and patch file for a part, checked by hash; Unavailable with the reason otherwise."""
     from .model import file_hash
-    entry = presets()['presets'][track['surge']['preset']]
+    found = entry(track['surge']['preset'])
     surge, board = cfg.get('surge'), cfg.get('pedalboard')
     if not surge or not board:
         raise Unavailable('Surge XT is not installed (bootstrap.py installs it unless --no-surge)')
@@ -176,8 +251,10 @@ def locate(cfg, track):
         raise Unavailable(f'Surge XT plugin missing or changed: {binary}')
     if not (pylib / 'pedalboard').is_dir():
         raise Unavailable(f'pedalboard missing: {pylib}')
-    patch = Path(surge['patches']) / entry['patch']
-    if not patch.is_file() or file_hash(patch) != entry['sha256']:
+    if found['folder'] == 'catalog' and not surge.get('catalog'):
+        raise Unavailable('the full Surge XT patch set is not installed (bootstrap.py installs it unless --no-surge-catalog)')
+    patch = Path(surge['catalog'] if found['folder'] == 'catalog' else surge['patches']) / found['patch']
+    if not patch.is_file() or file_hash(patch) != found['sha256']:
         raise Unavailable(f'Surge patch missing or changed: {patch}')
     return plugin, pylib, patch
 
@@ -205,7 +282,7 @@ def render(project, track, raw, folder, cfg):
         patch.write_bytes(fxp)
     part_midi, job = Path(folder) / 'surge.mid', Path(folder) / 'surge_job.json'
     # A patch built to sound an octave below the key it is played on plays an octave up, so the written pitch sounds.
-    shift = presets()['presets'][track['surge']['preset']].get('transpose', 0)
+    shift = entry(track['surge']['preset']).get('transpose', 0)
     played = {**track, 'notes': [{**n, 'pitch': max(0, min(127, n['pitch'] + shift))} for n in track['notes']]} if shift else track
     midi.write(project, part_midi, [played], single_stem=True, render=True)
     # Notes, pitch bend, mod wheel and sustain go to the plugin, timed in seconds; the bend range goes as a setting.

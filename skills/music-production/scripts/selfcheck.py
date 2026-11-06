@@ -149,6 +149,176 @@ def checks(work,config=None):
         assert not any(x['pitches'] in ([55,67],[54,67]) for x in vertical(p,Clock(p))['examples'])
         return {'minor_ninth_flagged':True,'octave_not_flagged':True}
     check('review_flags_sustained_minor_ninth',review_vertical)
+    def review_smoothness():
+        # Notes outside the chord named as Open Music Theory's embellishing tones, the ones not resolved by step asked
+        # about; parallel fifths and octaves between independent lines, a doubled line left out; close intervals under
+        # their low interval limits, a power chord left out.
+        from musiclib.review import outside_chord,parallels,low_intervals,embellishment,review as run_review
+        base=example()
+        def part(tid,role,notes):
+            t=copy.deepcopy(base['tracks'][2]);t.update(id=tid,role=role,engine='additive');t.pop('drums',None)
+            t['notes']=[{'id':f'{tid}_{i}','pitch':pc,'on':on,'duration':d} for i,(on,pc,d) in enumerate(notes)]
+            t['performance']={'notes':{n['id']:{'velocity':80} for n in t['notes']}}
+            return t
+        def song(tracks,chords=(),bars=8):
+            q=copy.deepcopy(base);q['clock']={'bars':bars,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':2};q['tracks']=tracks
+            q['sections']=[{'id':'a','start_bar':0,'bars':bars}];q['harmony']=[c if isinstance(c,dict) else {'bar':i+1,'symbol':c} for i,c in enumerate(chords)]
+            return q
+        cases=((1,1),(1,-1),(2,-1),(-1,2),(0,-1),(0,1),(0,None,True),(1,None,True,True),(1,None,True),(2,-2),(2,1),(None,1),(1,None))
+        assert [embellishment(*x) for x in cases]==['passing','neighbour','appoggiatura','escape tone','suspension','retardation','pedal','anticipation',None,None,'left by step','left by step',None]
+        melody=[(0,64,1),(1,65,1),(2,67,1),(3,72,1),(4,72,1),(5,71,1),(6,69,1),(7,74,1),(8,77,1),(9,76,1),(10,81,1),(11,72,1),
+                (12,72,2),(14,70,1),(15,69,1),(16,67,3),(19,74,5),(24,72,4),(28,72,4)]
+        bass=[(0,48,4),(4,48,4),(8,48,4),(12,41,4),(16,36,4),(20,41,4),(24,36,4),(28,36,4)]
+        pad=[(0,60,4),(0,64,4),(0,67,4),(4,59,4),(4,62,4),(4,67,4),(8,60,4),(8,64,6),(8,67,4),(12,60,4),(12,69,4),(14,65,2),
+             (16,60,6),(16,64,4),(16,67,4),(20,62,4),(20,67,4),(22,55,2),(24,60,4),(24,64,4),(24,67,4),(28,60,4),(28,64,4),(28,67,4)]
+        q=song([part('lead','melody',melody),part('bass','bass',bass),part('pad','harmony',pad)],['C','G','C','F','C','G','C','C'])
+        q['tracks'][2].update(engine='synth',synth={'preset':'warm_pad'});r=outside_chord(q,Clock(q))
+        # Melody: F and B-flat passing, C held into G and falling to B, A between B and D, F leapt to and falling to E,
+        # D struck a beat before G and held into it; A5 leapt to and from over C.  Bass: C held under G into C, F2 leapt
+        # to and from under G.  Pad: E held into F and rising to F, C held into G and leaving by a leap.
+        assert r['tracks']['lead']['outside_chord']=={'passing':2,'suspension':1,'escape tone':1,'appoggiatura':1,'anticipation':1,'not resolved by step':1},r['tracks']
+        assert r['tracks']['bass']['outside_chord']=={'pedal':1,'not resolved by step':1} and r['tracks']['pad']['outside_chord']=={'retardation':1,'not resolved by step':1},r['tracks']
+        assert [(x['track'],x['note'],x['chord'],x['approach'],x['departure']) for x in r['examples']]==[('lead','A5','C','leap up','leap down'),('bass','F2','G','leap up','leap down'),('pad','C4','G','held','leap down')],r['examples']
+        prompts=run_review(q,work/'review_smoothness')['prompts']
+        assert sum('melody note on strong positions sits outside the written chord and is not resolved by step' in x for x in prompts)==1,prompts
+        assert sum('neither resolved by step nor held as a pedal' in x for x in prompts)==2,prompts
+        # A chord restated is not a change: F between G and E stays a passing note under C, C.
+        q=song([part('lead','melody',[(0,67,2),(2,65,2),(4,64,4)])],['C',{'bar':1,'beat':3,'symbol':'C'},{'bar':2,'symbol':'Am'}],bars=2)
+        assert outside_chord(q,Clock(q))['tracks']=={'lead':{'role':'melody','outside_chord':{'passing':1}}}
+        sop=[72,74,76,77,79,77,76,74];alto=[65,67,69,69,72,72,69,65];bass=[48,50,45,41,40,41,43,43]
+        s=song([part('sop','melody',[(i,x,1) for i,x in enumerate(sop)]),part('alto','harmony',[(i,x,1) for i,x in enumerate(alto)]),
+                part('ten','harmony',[(i,x-12,1) for i,x in enumerate(sop)]),part('bass','bass',[(i,x,1) for i,x in enumerate(bass)])],bars=2)
+        par=parallels(s,Clock(s))
+        assert par['by_pair']=={'alto / sop':2,'bass / sop':1,'bass / ten':1} and par['octaves_in_doublings']=={'sop / ten':7},par
+        l=song([part('pad','harmony',[(0,45,4),(0,49,4),(0,52,4),(8,40,4)]),part('gtr','rhythm',[(4,38,4),(4,45,4),(4,50,4)]),
+                part('gtr2','rhythm',[(4,45,4)]),part('bass','bass',[(8,36,4)])],bars=3)
+        low=low_intervals(l,Clock(l))
+        assert [(x['parts'],x['interval'],x['notes']) for x in low['examples']]==[(['pad'],'major third',['A2','C#3']),(['bass','pad'],'major third',['C2','E2'])],low
+        return {'melody_kinds':r['tracks']['lead']['outside_chord'],'parallels':par['by_pair'],'low_intervals':low['count']}
+    check('review_names_embellishing_tones_parallels_and_low_intervals',review_smoothness)
+    def review_development():
+        # Two hand-made 40-bar songs. A: every part loops, the second chorus repeats the first, the chorus is thinner
+        # than its pre-chorus, the pad strikes block chords and nothing pushes: each is asked about. B: the same music
+        # with the pad holding a tone over the change, an inner voice moving, drum fills every 8 bars, the melody and
+        # bass varied, a fuller chorus and pushes: nothing is asked about.
+        from musiclib.review import repetition,stiffness
+        base=example()
+        def part(tid,role,notes,drums=False):
+            t=copy.deepcopy(base['tracks'][2]);t.update(id=tid,role=role,engine='additive');t.pop('drums',None)
+            if drums:t['drums']=True
+            t['notes']=[{'id':f'{tid}_{i}','pitch':pc,'on':on,'duration':d} for i,(on,pc,d) in enumerate(notes)]
+            t['performance']={'notes':{n['id']:{'velocity':80} for n in t['notes']}}
+            return t
+        def song(tracks):
+            q=copy.deepcopy(base);q['clock']={'bars':40,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':2};q['tracks']=tracks
+            q['sections']=[{'id':i,'start_bar':s,'bars':8} for i,s in (('intro',0),('verse',8),('pre',16),('chorus',24),('chorus2',32))]
+            return q
+        bars=range(40);chorus=lambda b:24<=b<40
+        mel_a=[(b*4+x,72+((b+x)%2)*2,1) for b in bars if 8<=b for x in (0,1,2,3) if not chorus(b) or x in (0,2)]
+        flat=song([part('pad','harmony',[(b*4,p,4) for b in bars for p in (60,64,67)]),part('bass','bass',[(b*4+x,36,1) for b in bars for x in (0,2)]),
+                   part('kit','drums',[(b*4+x,36,.5) for b in bars for x in (0,1,2,3)],True),part('lead','melody',mel_a),
+                   part('strings','harmony',[(b*4,55,4) for b in range(16,24)])])
+        c=Clock(flat);r,s=repetition(flat,c),stiffness(flat,c)
+        assert r['static_spans'] and r['static_spans'][-1]['to_bar']==40,r['static_spans']
+        assert any({'pad','bass','kit'}<=set(l['tracks']) for l in r['part_loops']),r['part_loops']
+        assert {'section':'chorus2','repeats':'chorus'} in r['literal_returns'],r['literal_returns']
+        assert [w['section'] for w in r['arrivals_thinner_than_before']]==['chorus'],r['arrivals_thinner_than_before']
+        assert [b['track'] for b in s['block_chord_parts']]==['pad'] and s['no_pushes_anywhere'],s
+        pad=[]
+        for b in bars:
+            top=64 if b%2 else 67
+            pad+=[(b*4,60,4),(b*4,top,2),(b*4+2,top-(1 if b%4<2 else 3),2)] if b%2==0 else [(b*4,60,2),(b*4,top,4),(b*4+2,62+b%3,2)]
+        mel_b=[(b*4+x,72+(b*3+x*5)%7,1 if x<3 else 1.5) for b in bars if 8<=b for x in (0,1,2,3.5)
+               if (x<3.5 or b%4==3) and not (x==0 and b%4==0 and b>8)]  # every fourth bar pushes its last note over the bar line
+        varied=song([part('pad','harmony',pad),part('bass','bass',[(b*4+x,36+(b//8)*2+(x==2.5),1) for b in bars for x in (0,2.5)]),
+                     part('kit','drums',[(b*4+x,36 if (b+1)%8 else 38,.5) for b in bars for x in ((0,1,2,3) if (b+1)%8 else (0,1,2,2.5,3,3.5))],True),
+                     part('lead','melody',mel_b),part('strings','harmony',[(b*4,55+b%3,4) for b in range(16,40)]),
+                     part('counter','countermelody',[(b*4+x,79-(b+x*2)%5,.5 if b>=32 else 2) for b in range(24,40) for x in ((0,.5,1,1.5,2,2.5,3,3.5) if b>=32 else (0,2))])])
+        c=Clock(varied);r,s=repetition(varied,c),stiffness(varied,c)
+        assert not (r['static_spans'] or r['part_loops'] or r['literal_returns'] or r['arrivals_thinner_than_before'] or r['sections_alike']),r
+        assert not s['block_chord_parts'] and not s['no_pushes_anywhere'] and s['parts']['lead']['downbeat_pushes_pct']>0,s['parts']
+        # Stabs struck and released together but short and of varied lengths are a rhythm; one length throughout is asked about.
+        stabs=[(b*4+on,p,d) for b in bars for on,d in ((0,.5),(1.5,.75),(2.5,1.5)) for p in (60,64,67)]
+        even=[(b*4+on,p,.5) for b in bars for on in (0,1.5,2.5) for p in (60,64,67)]
+        for notes,asked in ((stabs,False),(even,True)):
+            q=song([part('stab','harmony',notes)]);assert bool(stiffness(q,Clock(q))['block_chord_parts'])==asked,notes[:6]
+        # A synth part whose oscillators are all noise sets a sweep, not a pitch, like a drum part.
+        from musiclib.review import unpitched
+        fx=part('riser','effect',[(0,60,4)]);fx.update(engine='synth',synth={'preset':'noise_riser'})
+        saw=part('lead','melody',[(0,60,4)]);saw.update(engine='synth',synth={'preset':'supersaw_lead'})
+        assert unpitched(fx) and not unpitched(saw) and unpitched(part('kit','drums',[(0,36,1)],True))
+        # A melody new in every bar, in running eighths, is asked about and never breathes; a motif stated, restated with
+        # a new ending, sequenced and fragmented, with rests, is not asked about.
+        from musiclib.profile import melody_in,top_line
+        from musiclib.review import review as run_review
+        # Eight bars of running eighths whose shapes (the Hamming(7,4) codewords of weight 0 and 3, as steps up and down)
+        # differ pairwise in three directions or more: nothing comes back.
+        codes=['0000000']+[('1101000'*2)[i:i+7] for i in range(7)]
+        wander=[(b*4+k*.5,64+sum(2 if c=='1' else -2 for c in codes[b-8][:k]),.5) for b in range(8,16) for k in range(8)]
+        motif=[(0,67,.5),(.5,69,.5),(1,72,1.5),(3,71,.5)]
+        theme=[(b*4+on,p+(0,0,2,2,5,5,7,0)[b-8],d) for b in range(8,16) for on,p,d in (motif if b<15 else [(0,72,3)])]
+        for notes,asked in ((wander,True),(theme,False)):
+            q=song([part('lead','melody',notes)]);m=melody_in(top_line(q['tracks'][0]['notes']),32,64,Clock(q))
+            prompts=run_review(q,work/f'review_melody_{asked}')['prompts']
+            assert any('restates the rhythm and shape' in x for x in prompts)==asked,(m,prompts)
+            assert (m['longest_without_breath_beats']==32)==asked and (m['bars_restated']>=5)!=asked,m
+        # With Surge XT installed, a built-in preset that a curated patch covers is asked about; the 808 is not.
+        from musiclib import surge
+        assert surge.counterparts('warm_pad')[0]=='bell_pad' and 'moody_pad' in surge.counterparts('warm_pad') and not surge.counterparts('bass_808')
+        fake=work/'fake_surge';(fake/'pylib').mkdir(parents=True,exist_ok=True);(fake/'Surge XT.vst3').write_bytes(b'')
+        cfg={'surge':{'path':str(fake/'Surge XT.vst3')},'pedalboard':{'path':str(fake/'pylib')}}
+        assert surge.installed(cfg) and not surge.installed({}) and not surge.installed(None)
+        for preset,asked in (('warm_pad',True),('bass_808',False)):
+            pad=part('pad','harmony',[(b*4,x,4) for b in range(8) for x in (48,55,60)]);pad.update(engine='synth',synth={'preset':preset})
+            prompts=run_review(song([pad]),work/f'review_surge_{preset}',cfg)['prompts']
+            assert any(f'plays the built-in {preset}; Surge XT is installed' in x for x in prompts)==asked,prompts
+            assert not any('Surge XT is installed' in x for x in run_review(song([pad]),work/f'review_nosurge_{preset}')['prompts'])
+        # With the full patch set installed, a built-in preset no curated patch covers is asked about with the catalog
+        # patches named for its sound; one that no patch is named for is not.
+        assert surge.catalog_counterparts('bass_808')==['a_liv/basses/bonsai_808','vospi/basses/808_builder_a'] and not surge.catalog_counterparts('chip_triangle')
+        full={**cfg,'surge':{**cfg['surge'],'catalog':str(fake/'catalog')}}
+        for preset,asked in (('bass_808',True),('chip_triangle',False)):
+            low=part('bass','bass',[(b*4,36,2) for b in range(8)]);low.update(engine='synth',synth={'preset':preset})
+            prompts=run_review(song([low]),work/f'review_catalog_{preset}',full)['prompts']
+            assert any(f'plays the built-in {preset}; Surge XT is installed, and its full patch set has patches named for this sound' in x for x in prompts)==asked,prompts
+        return {'flat':{k:len(v) for k,v in repetition(flat,Clock(flat)).items() if k!='energy'},'pushes_pct':s['parts']['lead']['downbeat_pushes_pct']}
+    check('review_asks_about_loops_returns_arrivals_and_blocks',review_development)
+    def surge_catalog():
+        # Any patch of the measured catalog is a Surge preset by its id: found by role and measured character (flagged
+        # patches left out, dark to bright), falling back by its role, and played only from the full patch set, which
+        # bootstrap installs (offline with nothing cached it reports the skip and leaves the configuration without it).
+        import contextlib,io,types
+        import bootstrap
+        from musiclib import surge
+        from musiclib.audition import label
+        from musiclib.sounds import describe,search
+        cat=surge.catalog();assert len(cat)>=3000
+        assert surge.entry('smooth_lead')['folder']=='patches' and surge.entry('no/such/patch') is None
+        pads=search('pad',['warm','slow'],limit=1000);rows=pads['shown']
+        assert pads['count']==len(rows)>10 and all(r['role']=='pad' and 'warm' in r['character'] and 'slow' in r['character'] for r in rows)
+        assert [r['centroid_hz'] for r in rows]==sorted(r['centroid_hz'] for r in rows)
+        assert not any(set(r['flags'])&{'silent on a plain note','did not render','MPE','microtonal','off its written pitch'} for r in rows)
+        assert search('pad',limit=1,everything=True)['count']>search('pad',limit=1)['count']
+        key=rows[0]['id'];found=surge.entry(key)
+        assert found['folder']=='catalog' and found['fallback']=='warm_pad' and describe(key)['measured']['centroid_hz']==rows[0]['centroid_hz']
+        dark=next(k for k,v in cat.items() if v['role']=='bass' and v.get('measured',{}).get('centroid_hz',999)<120)
+        assert surge.entry(dark)['fallback']=='sub_bass' and rejects(lambda:describe('no/such/patch'))
+        t={'id':'pad','surge':{'preset':key}};surge.validate(t)
+        assert rejects(lambda:surge.validate({'id':'pad','surge':{'preset':'no/such/patch'}}))
+        assert label(('surge',key))=='surge_'+key.replace('/','.') and '/' not in label(('surge',key))
+        fake=work/'fake_surge_catalog';(fake/'pylib'/'pedalboard').mkdir(parents=True,exist_ok=True)
+        binary=fake/'Surge XT.vst3';binary.write_bytes(b'surge')
+        cfg={'surge':{'path':str(binary),'sha256':file_hash(binary),'patches':str(fake)},'pedalboard':{'path':str(fake/'pylib')}}
+        for where,reason in ((None,'full Surge XT patch set'),(fake/'all','missing or changed')):
+            if where:cfg['surge']['catalog']=str(where)
+            try:surge.locate(cfg,t);raise AssertionError('located '+key)
+            except surge.Unavailable as why:assert reason in str(why),why
+        config={'surge':{}};said=io.StringIO()
+        with contextlib.redirect_stdout(said):
+            bootstrap.install_catalog(work/'catalog_runtime',work/'catalog_cache',types.SimpleNamespace(offline=True),config)
+        assert 'catalog' not in config['surge'] and 'SKIPPED surge_catalog' in said.getvalue(),said.getvalue()
+        return {'patches':len(cat),'warm_slow_pads':pads['count']}
+    check('surge_catalog_patch_by_id_search_and_install',surge_catalog)
     def sf2_roundtrip():
         from musiclib import sf2
         tone=(0.4*np.sin(2*np.pi*440*np.arange(4800)/48000)).astype(np.float32)
@@ -266,6 +436,11 @@ def checks(work,config=None):
         assert row['ioi_beats']=={'1/2':100.0} and row['velocity']=={'mean':85.0,'sd':5.0,'range':[80,90]}
         sec={s['section']:s for s in r['sections']}
         assert sec['question']['notes_per_bar']['lead']==8.0 and sec['question']['melody_median']=='E4' and sec['answer']['melody_median'] is None
+        # Sixteen eighths in two bars at 108 BPM, the other pitched parts silent and the drums not counted: 16 / 4.44 s.
+        q=copy.deepcopy(p)
+        for t in q['tracks']:
+            if t['id'] not in ('lead','drums'):t['notes']=[]
+        assert profile(q)['sections'][0]['onsets_per_second']==3.6,profile(q)['sections'][0]
         return {'lead':{k:row[k] for k in ('notes_per_bar','offbeat_onsets_pct','rhythm_repeat_pct')},'top_line':tl}
     check('score_profile_matches_a_hand_counted_line',score_profile)
     def soundbank_lock():
@@ -927,6 +1102,55 @@ def checks(work,config=None):
         assert phrasing.near([[0,20],[4,110]],64,12)==[[0,52],[4,76]]
         return {'arch':v,'curve':d}
     check('phrasing_helpers_arch_swell_and_hold',phrasing_helpers)
+    def voicing_helper():
+        # ii-V-I moves by the textbook steps (common tones held), a pop loop moves far less than root-position blocks,
+        # parallels go when asked, a melody ceiling holds, tones drop and double in order, and the spacing keeps to the
+        # octave and the low interval limits, the same each run.
+        from musiclib.voicing import voice_lead,chord_tones,LOW_INTERVAL_LIMITS
+        motion=lambda vs:[sum(abs(b-a) for a,b in zip(x,y)) for x,y in zip(vs,vs[1:])]
+        jazz=voice_lead(['Dm7','G7','Cmaj7'],voices=4,low=52,high=76)
+        assert motion(jazz)==[3,3],jazz
+        assert all(any((p-r)%12 in (3,4) for p in v) and any((p-r)%12 in (10,11) for p in v) for v,r in zip(jazz,[2,7,0])),jazz
+        pop=['C','G','Am','F']*2;smooth=voice_lead(pop,voices=4)
+        naive=[[48+r,48+r+(3 if 'm' in s else 4),48+r+7,60+r] for s,r in zip(pop,[0,7,9,5]*2)]
+        assert sum(motion(smooth))*2<sum(motion(naive)) and smooth==voice_lead(pop,voices=4),(motion(smooth),motion(naive))
+        def parallels(vs):
+            n=0
+            for a,b in zip(vs,vs[1:]):
+                for i in range(len(a)):
+                    for j in range(i+1,len(a)):
+                        di,dj=b[i]-a[i],b[j]-a[j]
+                        n+=(a[j]-a[i])%12==(b[j]-b[i])%12 and (a[j]-a[i])%12 in (0,7) and di and dj and (di>0)==(dj>0)
+            return n
+        free,strict=voice_lead(['C','D','G','C'],voices=4),voice_lead(['C','D','G','C'],voices=4,avoid_parallels=True)
+        assert parallels(free)>0 and parallels(strict)==0,(free,strict)
+        caps=[64,62,64,60];capped=voice_lead(['F','G','Em','Am'],voices=3,ceilings=caps)
+        assert all(v[-1]<=c for v,c in zip(capped,caps)),capped
+        assert sorted(chord_tones('Cmaj13',3))==[4,9,11] and sorted(chord_tones('G7',5))==[2,5,7,7,11] and sorted(chord_tones('C/E',3))==[0,4,7]
+        # Under a major seventh the root goes first and is not doubled against it; with one G-flat in range the fifth is
+        # doubled instead of the root.
+        assert sorted(chord_tones('Cmaj7',3))==[4,7,11] and sorted(chord_tones('Cmaj7',5))==[0,4,7,7,11]
+        gb=voice_lead(['Gb'],voices=4,low=55,high=76)
+        assert sorted(p%12 for p in gb[0])==[1,1,6,10],gb
+        # Against a left hand, the right hand leaves its keys and their minor seconds and ninths alone.
+        rub=lambda a,b:abs(a-b) in (1,13)
+        lh=[[48,55],[57,64],[53,60],[55,62]];alone=voice_lead(['C','Am','F','G'],voices=4,low=55,high=79)
+        apart=voice_lead(['C','Am','F','G'],voices=4,low=55,high=79,against=lh)
+        clash=lambda vs:[p for v,l in zip(vs,lh) for p in v if p in l or any(rub(p,q) for q in l)]
+        assert clash(alone) and not clash(apart),(alone,apart)
+        # A melody on the root of a major-seventh chord: the seventh would rub against it wherever it went in the range,
+        # so the chord becomes a triad; the third stays.
+        tri=voice_lead(['Abmaj7'],voices=3,low=48,high=72,against=[[68,80]])
+        assert sorted({p%12 for p in tri[0]})==[0,3,8] and not any(rub(p,q) for p in tri[0] for q in (68,80)),tri
+        # With no bass part the root stays: a rootless A-flat major seventh in three voices would be C minor.
+        alone=voice_lead(['Abmaj7','Bb7','Gm7','Cm7'],voices=3,low=48,high=67,keep_root=True)
+        assert all(r in {p%12 for p in v} for v,r in zip(alone,(8,10,7,0))) and 8 not in chord_tones('Abmaj7',3),alone
+        low=voice_lead(['C','F','G','C'],voices=4,low=36,high=60)
+        for v in jazz+smooth+strict+low+gb+apart:
+            assert v==sorted(v) and all(0<b-a<=12 for a,b in zip(v,v[1:])) and all(a>=LOW_INTERVAL_LIMITS.get(b-a,0) for a,b in zip(v,v[1:])),v
+            assert not any(rub(a,b) for i,a in enumerate(v) for b in v[i+1:]),v
+        return {'ii_V_I':jazz,'pop_motion':motion(smooth),'root_position_motion':motion(naive),'parallels':[parallels(free),parallels(strict)]}
+    check('voicing_moves_smoothly_and_spaces_chords',voicing_helper)
     def synth_engine():
         from musiclib import synth
         rate=synth.RATE*synth.OVER;n=rate//2
@@ -1850,6 +2074,24 @@ def checks(work,config=None):
                 out['with_surge']='Surge XT, take kept by the cache'
             return out
         check('surge_part_plays_the_patch_or_its_fallback',surge_part)
+        def audition_part():
+            # One part's passage played as written (a soft pluck) and on a bright FM bell, alone: two versions in the MP3
+            # at one loudness, the bell measured brighter, the order kept.
+            from musiclib.audition import audition,parse_sound
+            q=copy.deepcopy(p);q['clock']={'bars':2,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':2}
+            q['sections']=[{'id':'a','start_bar':0,'bars':2,'intent':'a line'}]
+            t=copy.deepcopy(p['tracks'][0]);[t.pop(k,None) for k in ('soundfont','patch','key_map')]
+            t.update(id='line',engine='synth',role='melody',range=[60,84],synth={'preset':'pluck'})
+            t['notes']=[{'id':f'line_{k}','on':k*.5,'duration':.5,'pitch':(67,69,71,72,74,72,71,69)[k%8]} for k in range(16)]
+            t['performance']={'notes':{n['id']:{'velocity':90,'gate':.9} for n in t['notes']}}
+            q['tracks']=[t];save_json(work/'audition.json',q)
+            r=audition(work/'audition.json','line',[parse_sound('synth:fm_bell')],1,2,work/'audition_out',config,work/'cache_audition',solo=True)
+            v=r['versions']
+            assert [x['sound'] for x in v]==['as_written','synth_fm_bell'] and (work/'audition_out'/'audition.mp3').is_file()
+            assert v[1]['part_brightness']['centroid_hz']>v[0]['part_brightness']['centroid_hz'],v
+            assert rejects(lambda:parse_sound('surge:no_such_patch')) and rejects(lambda:parse_sound('synth'))
+            return {x['sound']:x['part_brightness'] for x in v}
+        check('audition_plays_one_part_on_several_sounds',audition_part)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
     save_json(work/'selfcheck_report.json',report);return report
 

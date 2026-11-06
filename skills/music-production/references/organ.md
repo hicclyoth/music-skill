@@ -12,7 +12,7 @@ Read this when a part is for pipe organ: a chorale or hymn, a prelude, a solemn 
 | Pipe Organ Soft (1:19) | A soft stopped flute at 8′ pitch | G2–C7 |
 | Organ Pedal (2:19) | The pedal division, its fundamental at 16′ pitch | C1–G3 |
 
-**Footage.** It names the pitch of a stop by the length of its lowest pipe. An 8′ stop sounds at the written pitch, a 4′ an octave higher, a 16′ an octave lower. A full registration stacks such ranks into a bright, dense chorus, and a soft flute stop is close to a pure tone.
+**Footage.** It names the pitch of a stop by the approximate length of its longest open pipe: an 8′ stop sounds at the pitch of the keys, a 4′ an octave higher, a 16′ an octave lower (Wikipedia, Organ stop). A full registration stacks such ranks into a bright, dense chorus, and a soft flute stop is close to a pure tone.
 
 **Fixed registrations.** The bank has no single stops to draw, no reeds and no couplers, only these three. A registration change is a move to another track: change at a phrase or section boundary, or layer the soft stop under the full one to thicken a passage.
 
@@ -23,16 +23,15 @@ Read this when a part is for pipe organ: a chorale or hymn, a prelude, a solemn 
 ## Hands and feet
 
 - **Manuals.** Each hand holds up to about five notes within the span of a hand. Write the manual parts as voices: a melody, inner voices, and a tenor that the left hand can reach.
-- **Pedal.** The pedal plays the bass line, at most two notes at once, usually slower than the manuals. Write it at the pitch it sounds (C1–G3): with its 16′ fundamental it sounds an octave below the manuals' bass, which is the organ's natural weight. It also sustains pedal points under changing harmony.
+- **Pedal.** The feet play the bass line, at most two notes at once. Write it at the pitch it sounds (C1–G3): with its 16′ fundamental it sounds an octave below the manuals' bass. It can also sustain a pedal point under changing harmony.
 - **Range.** Keep the full registration's bass above C2. Below that the pedal takes over.
 
 ## Phrasing without dynamics
 
 Like the harpsichord, the organ offers almost no dynamic or timbral nuance from the keys, apart from registration changes. What players shape instead is mostly timing: articulation, onset asynchrony and tempo (Gingras, Asselin and McAdams 2013). Sixteen professional organists playing Bach's "Dorian" fugue on an organ with a MIDI console made their largest tempo changes at the boundaries they named as the work's main sections (Gingras, McAdams and Schubert 2010). In practice:
 
-- **Articulation as accent.** Detach the note before a stressed note (`gate` about 0.8 on it) rather than raising its velocity. Separate repeated notes, or they merge into one (`gate` 0.7–0.85).
-- **Legato.** Join stepwise lines in slow, legato passages (`gate` 1.0 and slight overlaps). In fast or contrapuntal passages the ordinary touch is slightly detached.
-- **Timing at boundaries.** Slow into the main cadences and section ends with the tempo map, and breathe before a new section. Keep the tempo steady inside a phrase.
+- **Articulation.** Separate repeated notes, or a held key cannot sound again and they merge into one (`gate` 0.7–0.85, this skill's starting values). Mark stresses by articulation rather than velocity, which changes nothing; `gate` 1.0 with slight overlaps joins a legato line.
+- **Timing at boundaries.** Slow into the main section boundaries with the tempo map, as the organists Gingras, McAdams and Schubert (2010) measured did.
 - **Registration as dynamics.** Soft stop, then full manual, then full manual with the pedal: that is the organ's crescendo. Changes of texture (more voices, the pedal entering) add to it.
 
 ## The church
@@ -41,8 +40,8 @@ Organs speak into large, reverberant rooms. Mapp (2019) measured mid-frequency r
 
 The mix's `church` space decays in about 4.2 s at 1 kHz, longer in the bass and shorter in the treble. That is a large church, between those churches and the cathedrals.
 
-- Send every organ track to it: `mix.space: "church"`, with a strong send (`reverb_db` around −6 to −3), since an organ is heard through the room.
-- Let harmony change slowly enough for the room to clear: in a 4 s room, a fast chord change smears.
+- Send every organ track to it: `mix.space: "church"`, with a strong send (`reverb_db` around −6 to −3, this skill's starting values).
+- In a room that decays over about 4 s, a chord still sounds when a fast change brings the next one: let the harmony change slowly enough for the room.
 - Leave a rest after a final chord, and set `tail_seconds` to at least 6 for the reverb to die away.
 - For organ with orchestra, send the orchestra to the same church, or keep the organ in the hall with the orchestra.
 - Organ chords sustain at a constant level, so the loudness hardly varies. Use `mix.dynamics: "wide"` ([orchestration.md](orchestration.md)) so nothing compresses the registration changes.
@@ -53,4 +52,5 @@ The mix's `church` space decays in about 4.2 s at 1 kHz, longer in the bass and 
 - Gingras, B., McAdams, S. and Schubert, P. (2010). [The Performer as Analyst: A Case Study of J. S. Bach's "Dorian" Fugue BWV 538](https://gmth.de/proceedings/artikel/78.aspx). In *Musiktheorie als interdisziplinäres Fach* (GMTH Proceedings 2008), 305–318. doi:10.31751/p.78
 - Mapp, P. (2019). [An acoustic and audio survey of some English churches](https://www.ioa.org.uk/system/files/proceedings/p_mapp_an_acoustic_and_audio_survey_of_some_english_churches.pdf). *Proceedings of the Institute of Acoustics* 41(3), Reproduced Sound 2019. doi:10.25144/15316
 - Girón, S., Galindo, M. and Gómez-Gómez, T. (2020). Assessment of the subjective perception of reverberation in Spanish cathedrals. *Building and Environment* 171, 106656. doi:10.1016/j.buildenv.2020.106656
+- [Organ stop](https://en.wikipedia.org/wiki/Organ_stop). Wikipedia, read 7 November 2026: footage and pitch.
 - Girón, S., Álvarez-Morales, L. and Zamarreño, T. (2017). Church acoustics: A state-of-the-art review after several decades of research. *Journal of Sound and Vibration* 411, 378–408. doi:10.1016/j.jsv.2017.09.015

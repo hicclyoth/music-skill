@@ -1,4 +1,5 @@
 """Score diagnostics are questions for a musical review, never aesthetic scores."""
+import bisect
 from collections import Counter, defaultdict
 import csv
 import json
@@ -30,12 +31,24 @@ def highpass_cut(t):
 def where(clock,beat):
     return f'bar {int(beat//clock.beats_per_bar)+1} beat {beat%clock.beats_per_bar+1:g}'
 
+def unpitched(t):
+    """Drum and noise parts, and synth parts whose oscillators are all noise (a riser, a reverse cymbal, a fall): their
+    notes set a sweep or a hit, not a pitch heard against chords."""
+    if t.get('drums') or t['engine'] in ('noise','drum_synth'):return True
+    if t['engine']=='synth':
+        from .synth import patch_of
+        try:oscillators=patch_of(t).get('oscillators') or []
+        except (KeyError,ValueError):return False
+        return bool(oscillators) and all(o.get('wave')=='noise' for o in oscillators)
+    return False
+
 def vertical(p,clock,limit=40):
     """Minor seconds/ninths between a sustained note (>=0.75 beat) and any note of another pitched
-    part (or inside one part's chord) overlapping >=0.5 beat.  Major sevenths are not flagged."""
+    part (or inside one part's chord) overlapping >=0.5 beat.  Major sevenths are not flagged.  Unpitched parts
+    (unpitched()) are left out."""
     notes=[];by_bar=defaultdict(list)
     for t in p['tracks']:
-        if t.get('drums') or t['engine'] in ('noise','drum_synth'):continue
+        if unpitched(t):continue
         for n in t['notes']:
             item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],t.get('role') in FOREGROUND)
             notes.append(item)
@@ -54,24 +67,306 @@ def vertical(p,clock,limit=40):
     pairs=Counter(' / '.join(x['parts']) for x in found)
     return {'count':len(found),'foreground_count':sum(x['involves_foreground'] for x in found),'by_parts':dict(pairs.most_common()),'examples':found[:limit]}
 
-def chord_tones(p,clock,limit=40):
-    """Foreground notes on beats or lasting >=1 beat that are outside the written chord, unless they
-    anticipate the next chord (start in the last half beat before it and belong to it)."""
+def note_name(pitch):
+    return f'{NAMES[pitch%12]}{pitch//12-1}'
+
+STEP=2  # semitones: a half or a whole step; anything wider is a leap
+MOTION={None:'a rest',0:'held',1:'step up',-1:'step down',2:'leap up',-2:'leap down'}
+
+def _outer(notes,top):
+    """The highest (top) or lowest note at each onset: the line a listener follows through a melody part, or the line
+    a bass part gives the harmony."""
+    best={}
+    for n in notes:
+        k=round(n['on'],4)
+        if k not in best or (n['pitch']>best[k]['pitch'] if top else n['pitch']<best[k]['pitch']):best[k]=n
+    return [best[k] for k in sorted(best)]
+
+def line_of(t):
+    """A part as one line: the top line of a melody or countermelody, the bottom line of a bass part, a part written
+    one note at a time (overlapping the next by a quarter beat at most) as it stands; None for a chordal part."""
+    if t.get('role') in FOREGROUND:return _outer(t['notes'],True)
+    if t.get('role')=='bass':return _outer(t['notes'],False)
+    s=sorted(t['notes'],key=lambda n:(n['on'],n['pitch']))
+    if all(b['on']-a['on']>1e-6 and a['on']+a['duration']-b['on']<=.25+1e-9 for a,b in zip(s,s[1:])):return s
+    return None
+
+def _merge(notes):
+    """[pitch, start, end] events in onset order: a pitch repeated or held on across rests of a beat or less is one."""
+    out=[]
+    for n in notes:
+        e=n['on']+n['duration']
+        if out and out[-1][0]==n['pitch'] and n['on']-out[-1][2]<=1+1e-9:out[-1][2]=max(out[-1][2],e)
+        else:out.append([n['pitch'],n['on'],e])
+    return out
+
+def voices(t):
+    """A part's events (_merge), each with the event before and after it in its voice, None across a rest of more than
+    a beat: in a line (line_of) its neighbours; in a chordal part the nearest pitch that ends as it starts and the
+    nearest that starts as it ends, since successive tones close in pitch are heard as one stream and a separation in
+    frequency splits them (Wikipedia, Auditory scene analysis; Huron 2001)."""
+    line=line_of(t)
+    if line is not None:
+        ev=_merge(line)
+        return [(x,ev[k-1] if k and x[1]-ev[k-1][2]<=1+1e-9 else None,ev[k+1] if k+1<len(ev) and ev[k+1][1]-x[2]<=1+1e-9 else None) for k,x in enumerate(ev)]
+    by=defaultdict(list)
+    for n in sorted(t['notes'],key=lambda n:n['on']):by[n['pitch']].append(n)
+    ev=sorted((x for v in by.values() for x in _merge(v)),key=lambda x:(x[1],x[0]))
+    ends=sorted(ev,key=lambda x:x[2]);end_at=[x[2] for x in ends];start_at=[x[1] for x in ev];out=[]
+    for x in ev:
+        before=[y for y in ends[bisect.bisect_left(end_at,x[1]-1-1e-9):bisect.bisect_right(end_at,x[1]+.125+1e-9)] if y[1]<x[1]-1e-9]
+        after=[y for y in ev[bisect.bisect_left(start_at,x[2]-.125-1e-9):bisect.bisect_right(start_at,x[2]+1+1e-9)] if y[1]>x[1]+1e-9]
+        out.append((x,min(before,key=lambda y:(abs(y[0]-x[0]),-y[2]),default=None),min(after,key=lambda y:(abs(y[0]-x[0]),y[1]),default=None)))
+    return out
+
+def _motion(a,b):
+    """0 held or repeated, +-1 a step up or down, +-2 a leap, None across a rest (no note)."""
+    if a is None or b is None:return None
+    d=b-a
+    return 0 if d==0 else (1 if d>0 else -1)*(1 if abs(d)<=STEP else 2)
+
+def embellishment(approach,departure,continues=False,anticipates=False):
+    """The embellishing tone a note outside the chord makes, from its approach and departure (_motion), after Open
+    Music Theory's table (Peterson, Embellishing Tones): passing (a step in, a step on), neighbour (a step in, a step
+    back), appoggiatura (a leap in, a step back), escape tone (a step in, a leap back), suspension or retardation
+    (held in, a step down or up), pedal (held in and held on into the next chord), anticipation (struck at most a beat
+    before the chord it belongs to and held into it); 'left by step' for the other notes that move on by step; None
+    for a note not resolved by step."""
+    if approach==0:
+        return 'pedal' if continues else {-1:'suspension',1:'retardation'}.get(departure)
+    if continues:return 'anticipation' if anticipates else None
+    if departure in (1,-1):
+        if approach in (1,-1):return 'passing' if approach==departure else 'neighbour'
+        return 'appoggiatura' if approach in (2,-2) and approach*departure<0 else 'left by step'
+    return 'escape tone' if departure in (2,-2) and approach in (1,-1) and approach*departure<0 else None
+
+def outside_chord(p,clock,limit=40):
+    """Notes outside the written chord in every pitched part, named as embellishing tones (embellishment()).  A note
+    is checked where it is struck on a beat or sounds a beat or more in the chord, or is held a beat or more into a
+    chord (all of a shorter chord, if that is half a beat or more); a pitch repeated or held on across rests of a beat
+    or less is one note, and a longer rest ends its gesture.  Lines and voices are found as in voices().  Notes not
+    resolved by step are listed: in common practice nearly every embellishing tone lies between notes consonant with
+    the bass (Open Music Theory), while rock melodies leave such notes unresolved, mostly in pentatonic verses
+    (Temperley 2007)."""
     line=harmony.timeline(p,clock.beats_per_bar)
     if not line:return None
-    starts=[b for b,_ in line];unknown=sorted({h['symbol'] for h in p['harmony'] if harmony.parse(h['symbol'])is None})
-    out=[]
+    end=p['clock']['bars']*clock.beats_per_bar
+    spans=[]
+    for k,(s,c) in enumerate(line):  # a chord restated (the same pitch classes) continues its span
+        e=line[k+1][0] if k+1<len(line) else max(end,s)
+        if e<=s+1e-9:continue
+        if spans and c is not None and spans[-1][2] is not None and spans[-1][2]['pcs']==c['pcs'] and abs(spans[-1][1]-s)<1e-9:spans[-1]=(spans[-1][0],e,spans[-1][2])
+        else:spans.append((s,e,c))
+    starts=[x[0] for x in spans];unknown=sorted({h['symbol'] for h in p['harmony'] if harmony.parse(h['symbol']) is None})
+    tracks={};found=[]
     for t in p['tracks']:
-        if t.get('role') not in FOREGROUND:continue
+        if not t['notes'] or unpitched(t):continue
+        kinds=Counter()
+        for (pitch,s0,e0),before,after in voices(t):
+            k=max(bisect.bisect_right(starts,s0+1e-9)-1,0)
+            while k<len(spans) and spans[k][0]<e0-1e-9:
+                cs,ce,ch=spans[k];k+=1
+                if ch is None or ce<=s0+1e-9 or pitch%12 in ch['pcs']:continue
+                held=s0<cs-1e-9;over=min(e0,ce)-max(s0,cs)
+                if not (over>=min(1,ce-cs)-1e-9 and over>=.5-1e-9 if held else abs(s0-round(s0))<1e-6 or over>=1-1e-9):continue
+                nxt=spans[k][2] if k<len(spans) and abs(spans[k][0]-ce)<1e-9 else None
+                continues=nxt is not None and e0-ce>=.5-1e-9
+                approach=0 if held else _motion(before[0] if before else None,pitch)
+                departure=None if continues else _motion(pitch,after[0] if after else None)
+                kind=embellishment(approach,departure,continues,continues and pitch%12 in nxt['pcs'] and ce-s0<=1+1e-9)
+                kinds[kind or 'not resolved by step']+=1
+                if kind is None:
+                    found.append({'track':t['id'],'role':t.get('role'),'at':where(clock,max(s0,cs)),'beat':round(max(s0,cs),4),'pitch':pitch,'note':note_name(pitch),'chord':ch['symbol'],'held_into_chord':held,'approach':MOTION[approach],'departure':'held on' if continues else MOTION[departure]})
+        if kinds:tracks[t['id']]={'role':t.get('role'),'outside_chord':dict(kinds)}
+    found.sort(key=lambda x:x['beat']);groups={}
+    for g,test in (('melody',lambda r:r in FOREGROUND),('bass',lambda r:r=='bass'),('accompaniment',lambda r:r not in FOREGROUND and r!='bass')):
+        xs=[x for x in found if test(x['role'])]
+        if xs:groups[g]={'count':len(xs),'most_in':Counter(x['track'] for x in xs).most_common(1)[0][0],'first':xs[0]}
+    return {'count':len(found),'not_resolved_by_step':groups,'tracks':tracks,'examples':found[:limit],'unparsed_symbols':unknown}
+
+def parallels(p,clock,window=8,doubled_share=.75,limit=40):
+    """Two perfect consonances of the same size in a row, fifths or octaves (with unisons), between two lines
+    (line_of) moving the same way: both voices go from one note to their next at the same moment, with no rest of
+    more than half a beat.  Open Music Theory forbids them in counterpoint, as they fuse the two voices
+    (First-Species Counterpoint).  Octaves where the two lines meet at the octave or unison in at least
+    `doubled_share` of the `window` attacks they share around them are one line doubled to blend, not two voices
+    (climax-and-melody.md, Blend), and are counted apart; a window and share of our choosing."""
+    lines={t['id']:ln for t in p['tracks'] if t['notes'] and not unpitched(t) for ln in [line_of(t)] if ln and len(ln)>1}
+    ids=sorted(lines);found=[];doubled=Counter()
+    for i,a in enumerate(ids):
+        for b in ids[i+1:]:
+            A,B=lines[a],lines[b];at={round(n['on'],3):j for j,n in enumerate(B)}
+            shared=[(k,at[round(n['on'],3)]) for k,n in enumerate(A) if round(n['on'],3) in at]
+            size=[{7:'fifths',0:'octaves'}.get(abs(A[k]['pitch']-B[j]['pitch'])%12) for k,j in shared]
+            joined=lambda L,u:L[u]['on']+L[u]['duration']>=L[u+1]['on']-.5-1e-9
+            for m in range(1,len(shared)):
+                (k1,j1),(k2,j2)=shared[m-1],shared[m]
+                if size[m] is None or size[m]!=size[m-1] or (k2,j2)!=(k1+1,j1+1) or not (joined(A,k1) and joined(B,j1)):continue
+                if (A[k2]['pitch']-A[k1]['pitch'])*(B[j2]['pitch']-B[j1]['pitch'])<=0:continue
+                around=size[max(0,m-window//2):m+window//2]
+                if size[m]=='octaves' and len(around)>=4 and around.count('octaves')>=doubled_share*len(around):
+                    doubled[' / '.join((a,b))]+=1;continue
+                found.append({'parts':[a,b],'at':where(clock,A[k2]['on']),'beat':round(A[k2]['on'],4),'interval':size[m],'pitches':[[A[k1]['pitch'],B[j1]['pitch']],[A[k2]['pitch'],B[j2]['pitch']]]})
+    found.sort(key=lambda x:x['beat'])
+    return {'count':len(found),'by_pair':dict(Counter(' / '.join(x['parts']) for x in found).most_common()),'examples':found[:limit],'octaves_in_doublings':dict(doubled.most_common())}
+
+INTERVAL_NAMES={1:'minor second',2:'major second',3:'minor third',4:'major third',5:'perfect fourth',6:'tritone',7:'perfect fifth',8:'minor sixth',9:'major sixth',10:'minor seventh',11:'major seventh',13:'minor ninth',14:'major ninth',15:'minor tenth',16:'major tenth'}
+
+def low_intervals(p,clock,limit=40):
+    """Two notes sounding together for half a beat or more, up to a major tenth apart (octaves are not charted), whose
+    lower note lies under that interval's low interval limit, where voicings turn muddy (Hoffmann's chart,
+    voicing.LOW_INTERVAL_LIMITS); one finding per interval sounding at a moment, whichever parts play it.  The fourth
+    or fifth of a power chord (a part's root and fifth, with octaves) is left out, also where another part doubles
+    it: rock and metal voice it low (rock-and-metal.md)."""
+    from .voicing import LOW_INTERVAL_LIMITS
+    bpb=clock.beats_per_bar;by_bar=defaultdict(list);notes=[];top=max(LOW_INTERVAL_LIMITS.values())
+    for t in p['tracks']:
+        if unpitched(t):continue
+        pcs=defaultdict(set)
+        for n in t['notes']:pcs[round(n['on'],4)].add(n['pitch']%12)
         for n in t['notes']:
-            if not(n['on']%1==0 or n['duration']>=1):continue
-            ch=harmony.chord_at(line,n['on'])
-            if ch is None or n['pitch']%12 in ch['pcs']:continue
-            nxt=[s for s in starts if n['on']<s<=n['on']+.5+1e-9]
-            upcoming=harmony.chord_at(line,nxt[0]) if nxt else None
-            if upcoming and n['pitch']%12 in upcoming['pcs']:continue
-            out.append({'track':t['id'],'at':where(clock,n['on']),'pitch':n['pitch'],'duration':n['duration'],'chord':ch['symbol']})
-    return {'count':len(out),'unparsed_symbols':unknown,'examples':out[:limit]}
+            c=frozenset(pcs[round(n['on'],4)]);item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],c if len(c)==2 and max(c)-min(c) in (5,7) else None)
+            notes.append(item)
+            for b in range(int(n['on']//bpb),int((item[1]-1e-9)//bpb)+1):by_bar[b].append(item)
+    found={}
+    for a in notes:
+        if a[2]>=top:continue
+        for b in {x for bar in range(int(a[0]//bpb),int((a[1]-1e-9)//bpb)+1) for x in by_bar[bar]}:
+            d=b[2]-a[2]
+            if d<=0 or a[2]>=LOW_INTERVAL_LIMITS.get(d,0) or min(a[1],b[1])-max(a[0],b[0])<.5-1e-9:continue
+            if d in (5,7) and any(x[4] and {a[2]%12,b[2]%12}<=x[4] for x in (a,b)):continue
+            at=round(max(a[0],b[0]),4)
+            f=found.setdefault((at,a[2],b[2]),{'parts':set(),'at':where(clock,at),'beat':at,'interval':INTERVAL_NAMES[d],'notes':[note_name(a[2]),note_name(b[2])],'limit':note_name(LOW_INTERVAL_LIMITS[d]),'below_limit':LOW_INTERVAL_LIMITS[d]-a[2]})
+            f['parts']|={a[3],b[3]}
+    found=[{**f,'parts':sorted(f['parts'])} for _,f in sorted(found.items())]
+    worst=max(found,key=lambda x:(x['below_limit'],-x['beat']),default=None)
+    return {'count':len(found),'by_parts':dict(Counter(' / '.join(x['parts']) for x in found).most_common()),'furthest_below':worst,'examples':found[:limit]}
+
+ARRIVALS=('chorus','hook','drop','climax','peak','summit','final','refrain')
+
+def _bar_contents(t,bpb):
+    """{bar: the part's written notes in it as (position, pitch, length)}; performance (velocity, timing) left out, so
+    a bar changes only when its notes do."""
+    out=defaultdict(list)
+    for n in t['notes']:
+        b=int(n['on']//bpb+1e-9);out[b].append((round(n['on']-b*bpb,3),n['pitch'],round(n['duration'],3)))
+    return {b:tuple(sorted(v)) for b,v in out.items()}
+
+def _energy(p,clock):
+    """Per section: written notes per bar, the parts that play, the mean performed velocity."""
+    rows=[]
+    for s in p['sections']:
+        lo,hi=s['start_bar']*clock.beats_per_bar,(s['start_bar']+s['bars'])*clock.beats_per_bar;parts=[];count=0;vel=[]
+        for t in p['tracks']:
+            notes=[n for n in t['notes'] if lo<=n['on']<hi]
+            if notes:
+                parts.append(t['id']);count+=len(notes);vel+=[t['performance']['notes'][n['id']]['velocity'] for n in notes]
+        rows.append({'section':s['id'],'bars':s['bars'],'notes_per_bar':round(count/max(s['bars'],1),2),'parts':parts,'mean_velocity':round(statistics.mean(vel),1) if vel else 0})
+    return rows
+
+def repetition(p,clock,static_bars=16,pitched_loop_bars=24,percussion_loop_bars=33):
+    """Where nothing changes: (1) spans of at least `static_bars` bars in which every part repeats the same block of
+    1, 2, 4 or 8 bars note for note; (2) parts that repeat a 1-, 2- or 4-bar cycle unchanged for at least
+    `pitched_loop_bars` bars (a pitched part) or `percussion_loop_bars` (a percussion part): dance music is phrased in
+    multiples of two bars at several levels, new sounds entering at the downbeats of those phrases (Smith 2021, after
+    Snoman 2019), so a loop held past one or two 16-bar phrases is a question; (3) sections that return note for note in every part; (4) arrival sections (named chorus,
+    hook, drop, climax, peak, summit, final or refrain) thinner than the section before them in at least two of notes
+    per bar, parts and velocity; (5) neighbouring sections with the same parts, notes per bar within 10% and velocity
+    within 3.  Moderate novelty is liked best (Chmiel and Schubert 2017): questions, not faults."""
+    bpb=clock.beats_per_bar;bars=p['clock']['bars']
+    contents={t['id']:_bar_contents(t,bpb) for t in p['tracks'] if t['notes']}
+    found=[]
+    for t in p['tracks']:
+        if not t['notes']:continue
+        bc=contents[t['id']];best=(0,0,0)
+        for b in range(bars):
+            if b not in bc:continue
+            for period in (1,2,4):
+                e=b+period
+                while e<bars and e in bc and bc[e]==bc.get(e-period):e+=1
+                if e-b>best[0]:best=(e-b,b,period)
+        perc=unpitched(t)
+        if best[0]>=(percussion_loop_bars if perc else pitched_loop_bars):
+            found.append({'track':t['id'],'start':best[1],'end':best[1]+best[0],'cycle_bars':best[2],'percussion':perc})
+    part_loops=[]  # parts whose loops cover mostly the same bars are asked about together
+    for f in sorted(found,key=lambda x:(x['start'],x['end'])):
+        g=next((g for g in part_loops if min(g['end'],f['end'])-max(g['start'],f['start'])>=.75*min(g['end']-g['start'],f['end']-f['start'])),None)
+        if g is None:
+            part_loops.append({'start':f['start'],'end':f['end'],'tracks':[f['track']],'cycle_bars':{f['cycle_bars']},'percussion':f['percussion']})
+        else:
+            g['start'],g['end']=min(g['start'],f['start']),max(g['end'],f['end']);g['tracks'].append(f['track']);g['cycle_bars'].add(f['cycle_bars']);g['percussion']=g['percussion'] and f['percussion']
+    part_loops=[{'from_bar':g['start']+1,'to_bar':g['end'],'bars':g['end']-g['start'],'tracks':g['tracks'],'cycle_bars':sorted(g['cycle_bars']),'percussion':g['percussion']} for g in part_loops]
+    sig=[tuple(contents[k].get(b,()) for k in sorted(contents)) for b in range(bars)]
+    static=[];b=0
+    while b<bars:
+        best=None
+        for period in (1,2,4,8):
+            if b+period>=bars or not any(sig[b]):continue
+            e=b+period
+            while e<bars and sig[e]==sig[e-period]:e+=1
+            if e-b>=static_bars and (best is None or e-b>best[1]-best[0]):best=(b,e,period)
+        if best:
+            static.append({'from_bar':best[0]+1,'to_bar':best[1],'bars':best[1]-best[0],'block_bars':best[2]});b=best[1]
+        else:b+=1
+    returns=[]
+    secs=p['sections']
+    def section_notes(s):
+        lo=s['start_bar'];return {k:tuple((b-lo,c) for b,c in sorted(v.items()) if lo<=b<lo+s['bars']) for k,v in contents.items()}
+    for i,s in enumerate(secs):
+        for e in secs[:i]:
+            if e['bars']==s['bars'] and any(section_notes(s).values()) and section_notes(s)==section_notes(e):
+                returns.append({'section':s['id'],'repeats':e['id']});break
+    energy=_energy(p,clock);flat=[];weak=[]
+    for a,b in zip(energy,energy[1:]):
+        lower=(b['notes_per_bar']<a['notes_per_bar'])+(len(b['parts'])<len(a['parts']))+(b['mean_velocity']<a['mean_velocity'])
+        if any(w in b['section'].lower() for w in ARRIVALS) and not any(w in a['section'].lower() for w in ARRIVALS) and lower>=2:
+            weak.append({'section':b['section'],'after':a['section'],'notes_per_bar':[a['notes_per_bar'],b['notes_per_bar']],'parts':[len(a['parts']),len(b['parts'])],'mean_velocity':[a['mean_velocity'],b['mean_velocity']]})
+        if a['notes_per_bar'] and set(a['parts'])==set(b['parts']) and abs(b['notes_per_bar']/a['notes_per_bar']-1)<.1 and abs(b['mean_velocity']-a['mean_velocity'])<3:
+            flat.append({'sections':[a['section'],b['section']],'notes_per_bar':[a['notes_per_bar'],b['notes_per_bar']],'mean_velocity':[a['mean_velocity'],b['mean_velocity']]})
+    return {'static_spans':static,'part_loops':part_loops,'literal_returns':returns,'arrivals_thinner_than_before':weak,'sections_alike':flat,'energy':energy}
+
+def _metric_weight(pos,bpb):
+    """Metric strength of a position in beats within the bar: the downbeat, a half-bar in an even meter, a beat, an
+    eighth, a sixteenth, finer (after Longuet-Higgins and Lee 1984)."""
+    if abs(pos)<1e-6:return 5
+    if bpb%2==0 and abs(pos-bpb/2)<1e-6:return 4
+    for w,step in ((3,1),(2,.5),(1,.25)):
+        if abs(pos/step-round(pos/step))<1e-6:return w
+    return 0
+
+def stiffness(p,clock,block_share=.9,min_chords=8):
+    """Where the parts move as blocks: chord parts (three or more pitch classes, power chords left out) that strike and
+    release at least `block_share` of their chords together, the voices never moving apart, when the chords are held
+    (a median of two beats or more) or keep one length (at least three in four alike); syncopated stabs and comping of
+    varied lengths are a rhythm, not stiffness.  Also, per pitched part, the
+    share of its attacks that are syncopated (the last attack before a stronger position that is itself left without an
+    attack, held over or rested: Longuet-Higgins and Lee 1984) and of those that anticipate a downbeat or half-bar by
+    an eighth or less, the push of pop, rock and J-pop (Tan, Lustig and Temperley 2019).  Medium syncopation is the most
+    groove-inducing (Witek et al. 2014); none at all in melody and accompaniment is asked about, as a question of style."""
+    bpb=clock.beats_per_bar;blocks=[];parts={};end=p['clock']['bars']*bpb
+    grids=(.25,.5,1,bpb/2 if bpb%2==0 else bpb,bpb)
+    for t in p['tracks']:
+        if not t['notes'] or unpitched(t):continue
+        by_on=defaultdict(list)
+        for n in t['notes']:by_on[round(n['on'],4)].append(n)
+        chords=[g for _,g in sorted(by_on.items()) if len({n['pitch']%12 for n in g})>=3]
+        if len(chords)>=min_chords:
+            share=sum(len({round(n['duration'],3) for n in g})==1 for g in chords)/len(chords)
+            lengths=[max(n['duration'] for n in g) for g in chords];median=statistics.median(lengths)
+            alike=Counter(round(x,3) for x in lengths).most_common(1)[0][1]/len(lengths)
+            if share>=block_share and (median>=2 or alike>=.75):
+                blocks.append({'track':t['id'],'role':t.get('role'),'chords':len(chords),'block_share':round(share,3),'median_beats':round(median,3),'one_length_share':round(alike,3)})
+        onsets=sorted(by_on);sync=push=0
+        for k,on in enumerate(onsets):
+            w=_metric_weight(on%bpb,bpb);nxt=onsets[k+1] if k+1<len(onsets) else end
+            stronger=next((q for q in (math.floor(on/s+1e-9)*s+s for s in grids) if _metric_weight(q%bpb,bpb)>w),None)
+            if stronger is not None and stronger<end and nxt>stronger+1e-6:
+                sync+=1
+                if _metric_weight(stronger%bpb,bpb)>=4 and stronger-on<=.5+1e-9:push+=1
+        parts[t['id']]={'role':t.get('role'),'attacks':len(onsets),'syncopated_pct':round(100*sync/len(onsets),1),'downbeat_pushes_pct':round(100*push/len(onsets),1)}
+    lines=[v for v in parts.values() if v['role'] in ('melody','countermelody','harmony','rhythm','bass','texture')]
+    no_push=bool(lines) and all(v['downbeat_pushes_pct']==0 for v in lines)
+    return {'block_chord_parts':blocks,'parts':parts,'no_pushes_anywhere':no_push}
 
 def transposition(bank,bank_no,program):
     """Key -> semitones between the key and the recorded pitch of the sample that plays it in a preset (the smallest
@@ -155,12 +450,62 @@ def review(p,out,config=None):
     summary['vertical_minor_seconds_ninths']=v=vertical(p,clock)
     if v['count']:
         summary['prompts'].append(f'{v["count"]} sustained minor-second/ninth collisions ({v["foreground_count"]} touch the foreground); most between {next(iter(v["by_parts"]))}. Check whether each is a prepared tension or an accidental voicing.')
-    ct=chord_tones(p,clock)
-    if ct is not None:
-        summary['foreground_outside_chord']=ct
-        if ct['count']:summary['prompts'].append(f'{ct["count"]} strong-position foreground notes sit outside the written chord (anticipations excluded); confirm each is a deliberate tension or appoggiatura.')
-        if ct['unparsed_symbols']:summary['prompts'].append('Chord symbols not checked: '+', '.join(ct['unparsed_symbols']))
+    oc=outside_chord(p,clock)
+    if oc is not None:
+        summary['outside_chord']=oc;g=oc['not_resolved_by_step']
+        def first(x):
+            f=x['first'];return f'most in {x["most_in"]}; first {f["note"]} {"held into" if f["held_into_chord"] else "on"} {f["chord"]} at {f["at"]}'
+        def notes(x,who):
+            n=x['count'];return f'{n} {who} {"note" if n==1 else "notes"} on strong positions {"sits" if n==1 else "sit"} outside the written chord and {"is" if n==1 else "are"}'
+        if 'melody' in g:summary['prompts'].append(f'{notes(g["melody"],"melody")} not resolved by step ({first(g["melody"])}). The others outside it are named in outside_chord as passing, neighbour, appoggiatura, escape, suspension, retardation, pedal or anticipation notes (Open Music Theory, Embellishing Tones). In rock, melodies leave such notes unresolved, mostly in pentatonic verses (Temperley 2007; rock-and-metal.md); elsewhere resolve each by step, change the chord under it, or write a colour tone that is meant to stay into the symbol (Cadd9, C6, Csus4).')
+        if 'bass' in g:summary['prompts'].append(f'{notes(g["bass"],"bass")} neither resolved by step nor held as a pedal ({first(g["bass"])}). Where the bass is meant there, write a slash chord (C/D); otherwise move it to a chord tone.')
+        if 'accompaniment' in g:summary['prompts'].append(f'{notes(g["accompaniment"],"accompaniment")} neither resolved by step nor held as a pedal ({first(g["accompaniment"])}). Write a tension that is meant into the symbol (Cmaj7, Csus4, Cadd9); many together can mean the part and the chord symbols are out of step.')
+        if oc['unparsed_symbols']:summary['prompts'].append('Chord symbols not checked: '+', '.join(oc['unparsed_symbols']))
+    par=summary['parallel_fifths_octaves']=parallels(p,clock)
+    if par['count']:
+        f=par['examples'][0]
+        summary['prompts'].append(f'{par["count"]} {"time" if par["count"]==1 else "times"} two parts move in parallel fifths or octaves (most between {next(iter(par["by_pair"]))}; first {f["interval"]} at {f["at"]}). Where the parts are independent voices (baroque, classical, chorale and chamber writing), two perfect consonances of the same size in a row fuse the voices and are avoided (Open Music Theory, First-Species Counterpoint): move one voice the other way or to a third or sixth. Power chords and lines doubled on purpose move in parallel; octaves inside a line doubled at the octave are left out (baroque.md).')
+    low=summary['low_intervals']=low_intervals(p,clock)
+    if low['count']:
+        w=low['furthest_below']
+        summary['prompts'].append(f'{low["count"]} close {"interval sounds under its" if low["count"]==1 else "intervals sound under their"} low interval limit, where voicings turn muddy (most between {next(iter(low["by_parts"]))}; furthest under, a {w["interval"]} {w["notes"][0]}-{w["notes"][1]} at {w["at"]}, whose limit is {w["limit"]}). Spread the voicing or move the upper note an octave up, leaving the low register to the bass. The limits are guides: soft, dark sounds bear more than loud, bright ones, and a low rumble can be meant (Hoffmann; arrangement.md, Spacing).')
+    rep=summary['repetition']=repetition(p,clock)
+    for s in rep['static_spans']:
+        summary['prompts'].append(f'Bars {s["from_bar"]}-{s["to_bar"]}: every part repeats the same {s["block_bars"]}-bar block note for note ({s["bars"]} bars). Change a layer, add a fill or a break, or vary the block (development-and-groove.md).')
+    for l in rep['part_loops']:
+        who=', '.join(l['tracks']);cyc='/'.join(map(str,l['cycle_bars']))
+        summary['prompts'].append(f'Bars {l["from_bar"]}-{l["to_bar"]}: {who} {"repeat" if len(l["tracks"])>1 else "repeats"} a {cyc}-bar pattern unchanged for {l["bars"]} bars. Dance music brings new sounds in at the downbeats of its phrases (Smith 2021): at an 8- or 16-bar edge try a fill, a dropout and return, or a variation of the pattern (development-and-groove.md).')
+    for r in rep['literal_returns']:
+        summary['prompts'].append(f'{r["section"]} repeats {r["repeats"]} note for note in every part; if the return should develop, change one thing: the melody, the harmony under it, the texture or the register (development-and-groove.md).')
+    for w in rep['arrivals_thinner_than_before']:
+        summary['prompts'].append(f'{w["section"]} arrives thinner than {w["after"]} (notes per bar {w["notes_per_bar"][0]:g} -> {w["notes_per_bar"][1]:g}, parts {w["parts"][0]} -> {w["parts"][1]}, velocity {w["mean_velocity"][0]:g} -> {w["mean_velocity"][1]:g}); confirm the drop in energy is meant.')
+    for f in rep['sections_alike']:
+        summary['prompts'].append(f'{f["sections"][0]} and {f["sections"][1]} have the same parts and nearly the same density and dynamics; decide what changes between them.')
+    stiff=summary['stiffness']=stiffness(p,clock)
+    for b in stiff['block_chord_parts']:
+        summary['prompts'].append(f'{b["track"]}: {b["block_share"]:.0%} of its {b["chords"]} chords are struck and released as one block. Hold a common tone over the change, move an inner voice, break the chord or vary its rhythm (development-and-groove.md; musiclib.voicing voices chords to move smoothly).')
+    from .profile import melody_in, top_line
+    line=top_line([n for t in p['tracks'] if t.get('role')=='melody' for n in t['notes']])
+    summary['melody_sections']=[]
+    for s in p['sections']:
+        m=melody_in(line,s['start_bar']*clock.beats_per_bar,(s['start_bar']+s['bars'])*clock.beats_per_bar,clock)
+        summary['melody_sections'].append({'section':s['id'],**(m or {})})
+        if m and m['bars_compared']>=8 and m['bars_restated']==0:
+            summary['prompts'].append(f'{s["id"]}: none of its {m["bars_compared"]} melody bars restates the rhythm and shape of an earlier one. Pop sections often state an idea and restate it before departing (Summach 2011), as a classical sentence repeats its basic idea (Caplin 1998); if this section should have such an idea, state it and restate it, varied or sequenced (climax-and-melody.md).')
+    if stiff['no_pushes_anywhere']:
+        summary['prompts'].append('No melody or accompaniment attack anticipates a downbeat or half-bar. Rock and pop melodies anticipate strong beats (Tan, Lustig and Temperley 2019), and moderate syncopation goes with the most groove (Witek et al. 2014; development-and-groove.md); if the style calls for drive, try a few pushes.')
     if config is not None:
+        from . import surge
+        if surge.installed(config):
+            # Surge XT is the default synth where it is installed: a built-in preset it covers is asked about.
+            full=bool((config.get('surge') or {}).get('catalog'))
+            for t in p['tracks']:
+                preset=(t.get('synth') or {}).get('preset') if t['engine']=='synth' else None
+                options=surge.counterparts(preset) if preset else []
+                named=surge.catalog_counterparts(preset) if preset and full and not options else []
+                if (options or named) and t['notes']:
+                    which=f'its patches for this role include {", ".join(options[:4])}' if options else f'its full patch set has patches named for this sound: {", ".join(named[:4])}'
+                    summary['prompts'].append(f'{t["id"]}: plays the built-in {preset}; Surge XT is installed, and {which}. Hear them on the part: studio.py audition --track {t["id"]} --sounds {",".join("surge:"+x for x in (options or named)[:3])} --bars FIRST-LAST (electronic.md, Sound design). Keep the built-in preset where a render must repeat exactly or the sound needs fields of its own.')
         st=summary['transposed_samples']=stretched(p,clock,sample_maps(p,config))
         if st['count']:
             worst=next(iter(st['by_track']))

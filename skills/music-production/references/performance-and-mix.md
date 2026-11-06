@@ -10,19 +10,19 @@ FluidSynth runs in MMA bank-select mode, so a project `bank` below 128 selects t
 
 ## Touch and timing
 
-- Shape performance by phrase, accompaniment role and metric accent. A melodic arrival can be stronger, but phrase endings often relax. Different velocities on chords can expose the top voice without making every note equally loud.
+- Shape performance by phrase, accompaniment role and metric accent. The KTH rules arch a phrase, growing toward it and relaxing at its end (Friberg et al. 2006), and pianists sound a chord's melody note louder and slightly ahead of the others (Goebl 2001, in [piano-and-chamber.md](piano-and-chamber.md)).
 - Use shared tempo changes for rubato; let individual parts have small deliberate placements around that common clock. Preserve the groove's large pulses. Do not read every deviation from a sixteenth grid as expressive jitter: swing, tuplets and offsets from the click are mixed together.
-- Use short gates for deliberate detached notes, suitable connection for singing lines, and an explicit breath between phrases. Same-key overlapping MIDI retriggers are trimmed by the compiler and reported. This is note hygiene, not phrasing.
-- Piano pedal changes should follow harmony and clarity. Export the pedal release at the ending. String and wind long notes need envelopes but cannot gain absent sample articulations through arbitrary CC messages.
+- Use short gates for deliberate detached notes, suitable connection for singing lines, and a breath between phrases, as a singer takes one (Perricone 2000). Same-key overlapping MIDI retriggers are trimmed by the compiler and reported. This is note hygiene, not phrasing.
+- Change the piano pedal with the harmony: held down, it works until the harmony changes or new notes clash with the sustaining ones, and then a quick lift and press clears it (Yamaha, How to Use Keyboard Pedals). Export the pedal release at the ending. String and wind long notes need envelopes but cannot gain absent sample articulations through arbitrary CC messages.
 - Controller ramps: SoundFont tracks step between `cc` points unless `performance.cc_mode` is `linear`. Write a crescendo as two or three breakpoints with `linear`, not as a single jump.
 - Sampled attacks: start slow-speaking parts early with `performance.offset_ms` (measured, e.g. −90 ms for sustained section strings) instead of shifting every note's `timing_ms`.
-- Lead guitar with `performance.bend` (set `bend_range` to 12 so slides fit): a bend up into a long target note (start a whole step below, reach pitch in 80–150 ms), a short slide into detached notes (1–2 semitones below over 30–60 ms), vibrato only on held notes after about a quarter of a second and above the pitch (0 to +30–50 cents at 5–7 Hz, as a string is pushed), and an occasional release down at a phrase end. Keep bends off notes that move by step inside fast runs.
-- Strummed guitar chords: pass `{"strum": 6}` (ms between strings) for the guitar track in `musiclib.expression.apply`'s overrides. The hand alternates on the `strum_grid` steps (0.5 beats by default): chords on the beat are struck low to high and chords on the "and" high to low, a little faster and lighter, as the hand moves down and up; a chord off the grid is a downstroke, and `strum_grid` 0.25 alternates on sixteenths. Use 4–8 ms for driving rhythm parts and about 15 for slow, open strums; no measurement of string-to-string timing was found, so these are choices, not data.
+- Lead guitar with `performance.bend` (set `bend_range` to 12 so slides fit). Bending a string always raises its pitch, and rock and pop vibrato bends the string up and down, so it never falls below the note; players' vibrato differs widely in width and rate (Grimes 2014). The starting values in the guides are this skill's choices, not measurements: a bend up into a long target note from a whole step below, reaching pitch in 80–150 ms; a short slide into detached notes, 1–2 semitones below over 30–60 ms; vibrato only on held notes, after about a quarter of a second, from 0 to +30–50 cents at 5–7 Hz; an occasional release down at a phrase end.
+- Strummed guitar chords: pass `{"strum": 6}` (ms between strings) for the guitar track in `musiclib.expression.apply`'s overrides. The hand alternates on the `strum_grid` steps (0.5 beats by default): chords on the beat are struck low to high and chords on the "and" high to low, a little faster and lighter, as the hand moves down and up; a chord off the grid is a downstroke, and `strum_grid` 0.25 alternates on sixteenths. The guides use 4–8 ms for driving rhythm parts and about 15 for slow, open strums: choices of this skill, not data, as no measurement of string-to-string timing was read.
 - A melody on a sustaining sample (lead guitar, winds, solo strings) re-attacks every note, because each note-on restarts the recording's attack: set `performance.legato` so connected steps are slurred (hammer-ons and pull-offs on a guitar, tongue-less slurs on winds) and only phrase starts, repeated notes and wide leaps are re-attacked. A piano melody is struck by nature; there the line comes from overlap (connected notes held about min(45 ms, 15% of the interval) into the next, repeated notes about 60% of their interval; Bresin & Battel 2000, Repp 1995), the melody voiced above its octave and inner notes and a little early, and the pedal changing with the harmony.
 - Sustained orchestral parts on a bank with dynamic layers (`vsco`, `vsco_extra`, `cello_bigcat`) have two better tools ([orchestration.md](orchestration.md), [schema.md](schema.md)):
   - `performance.dynamics` moves a part through its recorded dynamics along a curve (one take per note by default, or crossfaded renders), so a crescendo brightens as it grows. In a selfcheck instrument with a soft sine take and a bright take, a crescendo from 40 to 127 took the spectral centroid from about 490 to 1550 Hz.
   - crossfade legato enters each slurred note past its recording's attack. On takes that swell in over 300 ms, the level at a slurred note change dipped at most 3–4 dB, against 11–16 dB when every note was attacked.
-- Strummed or block chords sound more like a player with a few milliseconds between strings (low to high on a downstroke) than with every note on one sample.
+- A strum sounds the strings one after another, low to high on a downstroke; `strum` writes that order instead of every note on one sample.
 - The built-in additive voice is intentionally synthetic. Its spectrum, glide, delayed vibrato and envelopes are editable in `instrument`. It is not an acoustic emulator, and its MIDI export carries the notes, not the timbre.
 
 ## Player-like deviation: `musiclib.expression`
@@ -35,19 +35,48 @@ Human timing and loudness fluctuations are long-range correlated, and listeners 
 - chord notes that are neither struck nor released together: the top note leads on keyboards, section players spread;
 - a two-bar accent cycle on hi-hat and ride, and CC11 swells inside held chords of sustained parts.
 
-Profiles come from the track role; `overrides` maps track ids to changed profile values (for example `{"bass": {"feel": 4}, "lead": {"lead": 18, "spread": 4}}`) or `None` to leave a part as written. Results are deterministic for a seed. Keep deviations small on tight drum grooves, and keep chord spread: a chord whose notes start and stop on one sample reads as programmed.
+Profiles come from the track role; `overrides` maps track ids to changed profile values (for example `{"bass": {"feel": 4}, "lead": {"lead": 18, "spread": 4}}`) or `None` to leave a part as written. Results are deterministic for a seed. Keep deviations small on tight drum grooves: listeners rated exaggerated microtiming worse than an expert's or a quantized version (Senn et al. 2016, in [development-and-groove.md](development-and-groove.md)). Keep chord spread: pianists do not sound a chord's notes together (Goebl 2001).
 
 ## Mix from musical roles
 
 Each part has a chosen reference level (`level_dbfs`). `active_rms` measures the 70th percentile of non-silent half-second blocks; `peak` suits drum accents. This makes setup reproducible but is not a balance oracle: a rare accent should not become as loud as the melody just because both were normalized.
 
-Build balance with melody, bass and rhythmic anchor first, then support, answers and accents. Check sustained background notes as well as attacks: they may mask a melodic change despite modest note counts. Keep the bass clear by controlling overlapping low material before raising the lead.
+Build the balance from the most important part down. Senior (2009) starts a mix with its most important track and adds less important ones in turn, cutting a newly added part where it masks a more important one; rock and dance mixes often start from the rhythm section, pop mixes from the lead. Check sustained background notes as well as attacks: to find what masks the lead, mute the other parts one at a time (Senior 2018). Keep the bass clear by controlling overlapping low material, such as a pad's energy below about 200 Hz (Senior 2010), before raising the lead.
 
 Check the low end against the bass recording, not only the mix: when a bass sample carries little fundamental (MS Basic picked bass at D2: about 2%), EQ cannot restore it. In one test piece a near-sine additive sub (three harmonics, low-pass 120 Hz, following the bass line, folded into E1–D♯2) raised the chorus share below 60 Hz from about 1% to 12–15% of the power, where a mix-only revision had moved it by less than one point.
 
 A part's `highpass` falls 12 dB per octave: an octave under the part's lowest note keeps that note's fundamental within 0.3 dB, while a cutoff a major third under it takes 1.5 dB, and `review` names such a part. When noise or hiss is heard, find the part and what the noise is before treating it ([noise.md](noise.md)): most of it belongs to the instruments, and the banks' recordings carry little.
 
-Use pan to separate parts while keeping a stable centre; the mix must stay intelligible in mono. Spaced-microphone samples can measure near-zero left/right correlation, so a lead built on them sits diffuse: `mix.width` around 0.3–0.5 puts it in front.
+Use pan to separate parts while keeping a stable centre: the most prominent parts and the bass are conventionally centred so the core of the song survives on most systems, and other parts spread for width (Flint 2005). Wide important parts lose balance and tone in mono (Senior 2010), so check the mix in mono. Spaced-microphone samples can measure near-zero left/right correlation, so a lead built on them sits diffuse: `mix.width` around 0.3–0.5 puts it in front.
+
+## A bright pop piano
+
+Measured here: the same figure (a C5–E5–G5 chord and eighths up to C6) on every piano in the banks, with its spectral
+centroid and the share of its energy above 2 kHz. The recording chosen and the touch changed the brightness more than EQ
+did.
+
+| Piano | Centroid at velocity 110 | Above 2 kHz | Velocity 50 → 110 |
+|---|---|---|---|
+| FM piano (`vcsl_keys` 0:4, an electric piano) | 2253 Hz | 36% | 993 → 2253 Hz |
+| Upright (`vsco_colors` 0:0) | 959 Hz | 7.6% | 709 → 959 Hz |
+| Upright Yamaha (`vcsl_keys` 0:3) | 936 Hz | 6.7% | 713 → 936 Hz |
+| Grand Kawai (`vcsl_keys` 0:1) | 820 Hz | 2.7% | 676 → 820 Hz |
+| GM Bright Acoustic, Acoustic Grand (default 0:1, 0:0) | 762, 721 Hz | 0.8%, 0.3% | small |
+| Grand Steinway B (`vcsl` 0:0) | 747 Hz | 1.1% | 707 → 747 Hz |
+| Osiris, dampers down or pedal (`piano_osiris`) | 627–643 Hz | 0% | small |
+
+- **The recording.** The Kawai is the brightest grand and grows brighter with velocity across its four dynamics; the
+  uprights are brighter still; Osiris is the darkest.
+- **The touch.** The banks' brighter layers sound at higher velocities: from velocity 80 to 110 the Kawai's centroid
+  rose 51 Hz.
+- **EQ.** On the Kawai at velocity 110, −2 dB at 300 Hz (the boxy, muddy region) with +1.5 dB at 1.6 kHz and +2.5 dB
+  at 4 kHz (`mix.eq` [[300, -2], [1600, 1.5], [4000, 2.5]]) raised the centroid 77 Hz, about 9%. A further +3 dB at
+  12 kHz added 5 Hz: a piano has little energy that high (0.1% above 5 kHz), and Mike Senior found such a boost
+  brought out the hammers' hardness. His pop-piano treatment in Sound On Sound used two broad 1 dB moves, a cut at
+  255 Hz and a lift at 1.6 kHz, and a cut of a couple of dB in the 200–400 Hz "danger zone".
+- **Compression** evens the part (4:1 gave his melodic hook a "more chiming" quality) but lowered the centroid a
+  little here: set it for evenness, not brightness.
+- The master chain adds its own presence and air (3.2 kHz, 10 kHz shelf) to the whole mix.
 
 ## The bus chain (`mix.chain: "bus"`)
 
@@ -130,7 +159,7 @@ Sources for this section:
 
 ## Compare and judge
 
-For a revision, compare the same passage at similar loudness and keep an unchanged full version. Review the full form after local edits: a better eight-bar phrase can still damage an arrival later. If no reliable audio audition happened, say exactly that and do not invent a listening impression.
+For a revision, compare the same passage at matched loudness, so a louder version does not fool the ear (Robjohns 2014), and keep an unchanged full version. Review the full form after local edits: a better eight-bar phrase can still damage an arrival later. If no reliable audio audition happened, say exactly that and do not invent a listening impression.
 
 Official references: [FluidSynth features](https://www.fluidsynth.org/wiki/FluidFeatures/), [FFmpeg audio filters](https://ffmpeg.org/ffmpeg-filters.html), [ITU-R BS.1770](https://www.itu.int/rec/R-REC-BS.1770), [Yamaha keyboard pedals](https://hub.yamaha.com/keyboards/k-how-to/how-to-use-keyboard-pedals/). Runtime claims are tied to the tested versions and receipts, not inferred from those pages.
 
@@ -138,8 +167,18 @@ Official references: [FluidSynth features](https://www.fluidsynth.org/wiki/Fluid
 
 - Bresin, R. and Battel, G. U. (2000). Articulation strategies in expressive piano performance: analysis of legato, staccato, and repeated notes in performances of the Andante movement of Mozart's Sonata in G major (K 545). *Journal of New Music Research* 29(3), 211–224.
 - Fabiani, M. and Friberg, A. (2011). Influence of pitch, loudness, and timbre on the perception of instrument dynamics. *Journal of the Acoustical Society of America* 130(4), EL193–EL199.
+- Flint, T. (2005). [Q. Should I always pan my vocals to the centre of the mix?](https://www.soundonsound.com/sound-advice/q-should-always-pan-my-vocals-centre-mix) *Sound On Sound*, February 2005.
 - Friberg, A., Bresin, R. and Sundberg, J. (2006). Overview of the KTH rule system for musical performance. *Advances in Cognitive Psychology* 2(2–3), 145–161.
 - Frühauf, J., Kopiez, R. and Platz, F. (2013). Music on the timing grid: the influence of microtiming on the perceived groove quality of a simple drum pattern performance. *Musicae Scientiae* 17(2), 246–260.
+- Goebl, W. (2001). Melody lead in piano performance: expressive device or artifact? *Journal of the Acoustical Society of America* 110(1), 563–572.
+- Grimes, D. R. (2014). [String Theory: The Physics of String-Bending and Other Electric Guitar Techniques](https://doi.org/10.1371/journal.pone.0102088). *PLoS ONE* 9(7), e102088.
 - Hennig, H., Fleischmann, R., Fredebohm, A., Hagmayer, Y., Nagler, J., Witt, A., Theis, F. J. and Geisel, T. (2011). [The nature and perception of fluctuations in human musical rhythms](https://doi.org/10.1371/journal.pone.0026457). *PLoS ONE* 6(10), e26457.
+- Perricone, J. (2000). *Melody in Songwriting*. Berklee Press. The [Chapter 1 excerpt](https://online.berklee.edu/takenote/conjunct-disjunct-melody-basic-definitions/).
 - Räsänen, E., Pulkkinen, O., Virtanen, T., Zollner, M. and Hennig, H. (2015). [Fluctuations of hi-hat timing and dynamics in a virtuoso drum track of a popular music recording](https://doi.org/10.1371/journal.pone.0127902). *PLoS ONE* 10(6), e0127902.
 - Repp, B. H. (1995). Acoustics, perception, and production of legato articulation on a digital piano. *Journal of the Acoustical Society of America* 97(6), 3862–3874.
+- Robjohns, H. (2014). [MeterPlugs Perception](https://www.soundonsound.com/reviews/meterplugs-perception). *Sound On Sound*, July 2014. Loudness-matched comparison of processed and unprocessed audio.
+- Senior, M. (2009). [Q. What's the best order for mixing?](https://www.soundonsound.com/sound-advice/q-whats-best-order-mixing) *Sound On Sound*, June 2009.
+- Senior, M. (2010). [Creating & Using Synth Pad Sounds](https://www.soundonsound.com/techniques/creating-using-synth-pad-sounds). *Sound On Sound*, May 2010.
+- Senior, M. (2018). [Q. How can I locate the masking problems in my mix?](https://www.soundonsound.com/sound-advice/q-how-can-locate-masking-problems-my-mix) *Sound On Sound*, March 2018.
+- Senior, M. [Mix Rescue: The Mountaineering Club](https://www.soundonsound.com/techniques/mix-rescue-mountaineering-club). *Sound On Sound*. A pop production's piano: the broad cut at 255 Hz and lift at 1.6 kHz, the 200–400 Hz "danger zone", the 12 kHz boost and its hammer hardness, 4:1 compression on the hook.
+- Yamaha. [How to Use Keyboard Pedals](https://hub.yamaha.com/keyboards/k-how-to/how-to-use-keyboard-pedals/). Yamaha Hub.

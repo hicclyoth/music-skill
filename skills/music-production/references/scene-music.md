@@ -35,29 +35,35 @@ A leitmotif is a short theme tied to a character, a place or an idea, which come
 To transform a theme, keep what makes it recognizable, its contour and rhythm, and change the cues that carry character. Eerola, Friberg and Bresin (2013) found these cues (mode, tempo, register, dynamics, articulation, timbre) to act additively on perceived emotion ([game-music.md](game-music.md)). One motif can therefore serve:
 
 - the daily-life cue, in major, with light staccato;
-- the sad cue, slowed, in minor or over borrowed chords, legato on a solo instrument;
-- the tension cue, as a fragment in a low register over an ostinato;
+- the sad cue, slowed, in minor, legato and soft;
+- the tension cue, as a fragment in a low register;
 - the climax, in full orchestration.
 
 Write the main theme first, then derive the set from it. Keeping the set in related keys and shared tempos makes the switches between cues smoother (the switch rule in [game-music.md](game-music.md)).
 
 ## Scene starting points
 
-These are conventions of the genre, not findings, and the brief overrides any of them. Tension, horror and emotional climaxes are written in more depth in [film-score.md](film-score.md). Each row also follows the cue levels above: soft and steady where text is read.
+Each row maps a scene to the character it conveys and that character's cue levels (Eerola, Friberg and Bresin 2013, in [game-music.md](game-music.md)); the brief overrides any of them. Under text, keep the cue soft and steady (the cue levels above). Tension, horror and emotional climaxes are written in more depth in [film-score.md](film-score.md); choose the instruments for each part's job ([sound-selection.md](sound-selection.md)) and for the character (below).
 
-| Scene | Starting point | Instruments to consider |
+| Scene | Character | Cue levels, or where it is written |
 |---|---|---|
-| Daily life, school, home | 90–120 BPM, major, short phrases, light rhythm, a lead that does not insist | piano, nylon guitar, pizzicato strings, clarinet, flute, glockenspiel |
-| Comedy | 110–140 BPM, major, staccato, leaps and grace notes, clear stops between gags | bassoon and clarinet staccato, pizzicato, xylophone, marimba |
-| Tender, romance | 60–80 BPM, major with added ninths and major sevenths, legato | piano with pedal, solo cello or violin, harp, soft strings |
-| Sad, loss | 50–70 BPM, minor, or major with borrowed iv and ♭VI, legato and soft, sparse | piano with pedal, solo cello, sustained strings, oboe |
-| Tension, suspense | static harmony, low register, an ostinato or pulse at 80–110 BPM, minor or chromatic | tremolo strings, low piano, timpani, bassoon |
-| Mystery, investigation | moderate, modal or whole-tone colour, sparse, with space between figures | vibraphone, pizzicato, low clarinet, bells |
-| Horror | very slow or unmetered, low and soft with rare sudden events, clusters | tremolo strings, gong, organ pedal, low piano |
-| Memory, flashback | slow, simple, often the main theme alone, more reverb | solo piano, glockenspiel, harp |
-| Solemn, sacred | slow chorale texture, plagal cadences | pipe organ, sustained strings |
-| Climax, confession | the main theme at full strength, building over the cue | full strings, horn, piano, timpani |
-| Ending, credits | the main theme, through-composed, ending on a cadence | the whole set's instruments |
+| Daily life, school, home | happy or peaceful | major and a high register; soft and steady under text |
+| Comedy | happy | major, fast, high register, staccato |
+| Tender, romance | peaceful | slow, soft, legato, high register, a darker timbre |
+| Sad, loss | sad | minor, slow, legato, soft, a darker timbre |
+| Tension, suspense, horror | scary | minor, low register, loud at its peaks, a brighter timbre; [film-score.md](film-score.md) |
+| Memory, flashback | the main theme recalled | the theme with its cue levels changed (A set of cues, above) |
+| Climax, confession | the high point | [climax-and-melody.md](climax-and-melody.md) |
+| Ending, credits | the main theme | ending on an authentic cadence ([climax-and-melody.md](climax-and-melody.md)) |
+
+## Instruments and a scene's character
+
+The instrument alone changes the emotion heard. Hailstone et al. (2009) recorded melodies written to sound happy, sad, fearful or angry on a synthesizer, a piano, a violin and a trumpet, at the same tempo and loudness, and the instrument changed which emotion listeners chose. What is known about which sounds suit which character:
+
+- **Darker or brighter.** In Eerola, Friberg and Bresin (2013), a darker melody instrument made a passage more peaceful, nearly as strongly as a slower tempo or softer dynamics, and a little sadder; a brighter one made it a little scarier, and happiness did not depend on it ([game-music.md](game-music.md)). Brightness there was the energy below 1.5 kHz, which also followed how positive listeners rated 110 isolated instrument sounds (Eerola, Ferrer and Alluri 2012, as reported in the 2013 paper).
+- **Sad.** Musicians judged the relative sadness of 44 familiar Western instruments, and another group rated the instruments' acoustic properties. The properties that make speech sound sad predicted the judgements, best of all the ability to make small pitch movements; the others studied were a dark timbre, low notes, playing quietly and the capacity to "mumble" (Huron, Anderson and Shanahan 2014). For a sad cue, choose an instrument that can glide, bend and play low and softly: a bowed string, the erhu, a lead with legato and bends (`performance.legato`, `performance.bend`).
+- **Happy and comic.** An instrument limited to short, bright, high notes cannot imitate those cues. In recital repertoire, 6% of the xylophone pieces surveyed were in minor against 60% for the marimba, and the minor-key xylophone pieces were usually played on the marimba (Schutz et al. 2008). Keep the xylophone for the happy and comic cues (major, fast, high, staccato) and give a sad cue to an instrument that can sustain.
+- **Hear the candidates.** Since the instrument changes the emotion, play the cue's melody on two or three sounds before choosing (`studio.py audition`, [sound-selection.md](sound-selection.md)).
 
 ## Form for a scene cue
 
@@ -92,4 +98,8 @@ These are conventions of the genre, not findings, and the brief overrides any of
 - ANSI S3.5-1997. Methods for Calculation of the Speech Intelligibility Index. Octave-band importance as tabulated in the [R `SII` package](https://rdrr.io/cran/SII/man/sii.html).
 - Summers, T. (2014). [From Parsifal to the PlayStation: Wagner and Video Game Music](https://pure.royalholloway.ac.uk/en/publications/from-parsifal-to-the-playstation-wagner-and-video-game-music). In K. J. Donnelly, W. Gibbons and N. Lerner (eds.), *Music in Video Games: Studying Play*, 199–216. Routledge.
 - Eerola, T., Friberg, A. and Bresin, R. (2013). [Emotional expression in music: contribution, linearity, and additivity of primary musical cues](https://pmc.ncbi.nlm.nih.gov/articles/PMC3726864/). *Frontiers in Psychology* 4:487.
+- Eerola, T., Ferrer, R. and Alluri, V. (2012). Timbre and affect dimensions: evidence from affect and similarity ratings and acoustic correlates of isolated instrument sounds. *Music Perception* 30(1), 49–70. doi:10.1525/mp.2012.30.1.49
+- Hailstone, J. C., Omar, R., Henley, S. M. D., Frost, C., Kenward, M. G. and Warren, J. D. (2009). It's not what you play, it's how you play it: timbre affects perception of emotion in music. *Quarterly Journal of Experimental Psychology* 62(11), 2141–2155. doi:10.1080/17470210902765957
+- Huron, D., Anderson, N. and Shanahan, D. (2014). "You can't play a sad song on the banjo": acoustic factors in the judgment of instrument capacity to convey sadness. *Empirical Musicology Review* 9(1), 29–41. doi:10.18061/emr.v9i1.4085
+- Schutz, M., Huron, D., Keeton, K. and Loewer, G. (2008). [The happy xylophone: acoustics affordances restrict an emotional palate](https://doi.org/10.18061/1811/34103). *Empirical Musicology Review* 3(3), 126–135.
 - Ren'Py. [Audio](https://www.renpy.org/doc/html/audio.html): partial playback and sync; [Configuration variables](https://www.renpy.org/doc/html/config.html): `config.emphasize_audio_channels`, `config.emphasize_audio_volume`, `config.emphasize_audio_time`.

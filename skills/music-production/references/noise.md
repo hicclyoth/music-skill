@@ -54,8 +54,9 @@ their recorded level.
 - Write the dynamic you want to hear. A soft recorded dynamic pushed up with `level_dbfs` brings its floor with it; a
   louder one set lower does not, though it also sounds brighter.
 - Thin a soft pad: fewer notes or sections on a quiet chord (N notes, 10·log10 N dB of floor).
-- Give a quiet cue a quieter master: a cue under dialogue or in a quiet scene can sit at a `target_lufs` of −18 to −23
-  rather than −14, and `range_lu` lifts quiet passages with their floor.
+- Give a quiet cue a quieter master: a `target_lufs` under −14 (Spotify's playback level) keeps its floor lower, and
+  for a game Sony's audio standards group recommended an average of −23 LUFS for the whole output
+  ([game-music.md](game-music.md)). `range_lu` lifts quiet passages with their floor.
 
 ### 2. A high-pass under the part's lowest note
 
@@ -74,8 +75,8 @@ their own noise run up the whole spectrum (Senior, Sound On Sound Q&A).
 
 ### 3. EQ on an instrument's own noise
 
-When bow scratch, breath or key noise reads as too much, a gentle bell cut (1–3 dB, Q about 1) where it sits, usually
-2–6 kHz, judged against the whole mix rather than solo, softens it. It also changes the instrument's character: a
+When bow scratch, breath or key noise reads as too much, a gentle bell cut where it sits (measured here, the section
+strings' bow noise is strongest at 1–5 kHz), judged against the whole mix rather than solo, softens it. It also changes the instrument's character: a
 balance decision, not a repair.
 
 ### 4. Reverb
@@ -158,8 +159,8 @@ playback level.
 
 ## Listening tests
 
-Compare versions level-matched, on the same passage, with a short clip of each (about 8 s). Small differences are judged
-reliably only blind, against a hidden reference (ITU-R BS.1116-3). Listen at the intended playback level and once louder,
+Compare versions level-matched, on the same passage, with a short clip of each. Small differences are judged reliably
+only blind, against a hidden reference (ITU-R BS.1116-3). Listen at the intended playback level and once louder,
 where low frequencies gain the most loudness (ISO 226:2023).
 
 ## Sources

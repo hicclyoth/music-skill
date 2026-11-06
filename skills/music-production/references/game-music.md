@@ -41,27 +41,25 @@ Players hear a loop many times. In interviews, players tolerated repetition but 
 
 ## Mood and scene
 
-Eerola, Friberg and Bresin (2013) varied six cues in a factorial design and asked listeners which character they heard. The cues ranked mode, then tempo, register, dynamics, articulation and timbre, and they combined additively, with no meaningful interactions. Mode mattered most for happy against sad and little for peaceful or scary. Dynamics mattered for peaceful and scary and little for happy or sad.
+Eerola, Friberg and Bresin (2013) varied six cues in a factorial design and asked listeners which character they heard. The cues ranked mode, then tempo, register, dynamics, articulation and timbre, and they combined additively, with no meaningful interactions. Mode mattered most for happy against sad and little for peaceful or scary. Dynamics mattered for peaceful and scary and little for happy or sad. The melody was played on a flute, a horn or a trumpet, from darkest to brightest: the darker sound raised the peaceful ratings almost as much as tempo or dynamics did, and the sad ratings a little, the brighter one raised the scary ratings a little, and happiness did not depend on it. Their tempo was the number of distinct onsets per second in all voices together, from 1.2 to 6, about the medians that musicians chose for these emotions in a production study (Bresin and Friberg 2011, as reported there); faster raised the happy ratings and lowered the sad and peaceful ones. Their passages were a melody over a piano accompaniment. `profile` reports the same count per section (`onsets_per_second`, the pitched parts together).
 
 | Character | Cue levels that conveyed it |
 |---|---|
 | Happy | major, fast, high register, staccato |
 | Sad | roughly the reverse of happy (minor, slow, legato), plus softer dynamics and a darker timbre |
-| Peaceful | slow, soft, legato, high register |
-| Scary | minor, low register, loud |
+| Peaceful | slow, soft, legato, high register, a darker timbre |
+| Scary | minor, low register, loud, a brighter timbre |
 
-Common starting points for scenes follow from those cues. Tempos are conventions, not data, and the brief overrides any of them.
+A scene's music starts from the character it should convey; the cue levels follow from the table above, and the brief overrides any of them. Choose the instruments for each part's job ([sound-selection.md](sound-selection.md)) and for the character ([scene-music.md](scene-music.md), Instruments and a scene's character).
 
-| Scene | Starting point | Instruments to consider |
+| Scene | Character | Cue levels |
 |---|---|---|
-| Town, village | warm, 80–110 BPM, major or mixolydian, light texture with a singable tune | harp or nylon guitar patterns, pizzicato strings, flute, clarinet, accordion, marimba, vibraphone |
-| Field, overworld | open and moving, 100–140 BPM, major or lydian, a broad tune over steady motion | horn, strings, flute, oboe, harp |
-| Dungeon, cave | slow or static, low register, minor, modal or chromatic, little melody; soft for eerie, loud for threat | tremolo strings, bassoon, low piano, tubular bells, sparse mallets |
-| Battle | fast, 140–180 BPM, minor or modal, ostinato, strong downbeats | kit, spiccato strings, brass stabs, distorted guitars |
-| Boss | battle with more weight: lower, louder, more chromatic | add tubular bells, low brass, tremolo strings |
-| Shop, inn, menu | short loop, light and unobtrusive | marimba, vibraphone, xylophone, pizzicato, guitar |
-| Sad scene | slow, minor, legato, soft | piano, oboe, clarinet, sustained strings |
-| Victory, level-up | a one-shot fanfare in major that ends on a cadence | brass, low tom hits, glockenspiel |
+| Town, village, shop | happy or peaceful | major and a high register; faster with staccato for happy, slow, soft and legato for peaceful |
+| Field, overworld | happy | major, fast, high register, staccato |
+| Dungeon, cave | scary | minor, low register; loud for a threat |
+| Battle, boss | scary | minor, low register, loud; a boss lower and louder still |
+| Sad scene | sad | minor, slow, legato, soft, a darker timbre |
+| Victory, level-up | happy | major, fast, high register; a one-shot ending on an authentic cadence |
 
 The orchestral instruments are in the `vsco`, `vsco_extra` and `vcsl` banks ([soundbanks.md](soundbanks.md)); [orchestration.md](orchestration.md) covers writing for them. Music under the text and voices of a visual novel or an RPG scene has its own needs: see [scene-music.md](scene-music.md).
 

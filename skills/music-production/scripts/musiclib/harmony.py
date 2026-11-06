@@ -23,13 +23,15 @@ def _pc(name):
     return v % 12
 
 def parse(symbol, transpose=0):
-    """'F#m7/A' -> {'root': 6, 'bass': 9, 'pcs': {...}}; None when the quality is unknown."""
+    """'F#m7/A' -> {'root': 6, 'bass': 9, 'pcs': {...}, 'quality': 'm7'}; None when the quality is unknown.  `pcs`
+    includes a slash bass; QUALITIES[quality] gives the chord's own intervals above the root."""
     m = re.fullmatch(r'([A-Ga-g][#b♯♭]?)([^/]*)(?:/([A-Ga-g][#b♯♭]?))?', symbol.strip().replace('Δ', 'maj'))
     if not m or m.group(2) not in QUALITIES:
         return None
     root = (_pc(m.group(1)) + transpose) % 12
     bass = (_pc(m.group(3)) + transpose) % 12 if m.group(3) else root
-    return {'symbol': symbol, 'root': root, 'bass': bass, 'pcs': {(root + i) % 12 for i in QUALITIES[m.group(2)]} | {bass}}
+    return {'symbol': symbol, 'root': root, 'bass': bass, 'quality': m.group(2),
+            'pcs': {(root + i) % 12 for i in QUALITIES[m.group(2)]} | {bass}}
 
 def timeline(project, beats_per_bar):
     """Sorted [(beat, chord or None)] from project['harmony'] entries {bar, beat?, symbol}."""

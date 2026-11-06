@@ -75,7 +75,7 @@ If Claude or another agent is already cutting your video or building your game, 
 ## How it works
 
 1. **Write.** The agent plans the form and a theme, then writes a project file. Every note's pitch and length go in the score; how it is played (velocity, timing, release) is kept separately. A longer piece is usually written by a short Python script the agent creates, so voicings, bass lines and drum patterns stay readable.
-2. **Check the score.** `review` lists sustained minor seconds and ninths between parts, and melody notes outside the written chords. Each one becomes a decision instead of an accident.
+2. **Check the score.** `review` lists sustained minor seconds and ninths between parts; names every note outside the written chords as a passing note, a suspension or another embellishing tone, asking about those not resolved by step; and lists parallel fifths and octaves between independent parts and close intervals too low in the register. Each one becomes a decision instead of an accident.
 3. **Perform.** A performance model adds the kind of deviation players produce: a slow wander in timing and loudness for each player, a laid-back bass, phrase arches, chords whose notes are not struck or released together. Sampled leads can slur and bend.
 4. **Render.** FluidSynth plays each sampled part on its own instrument from licensed SoundFont banks. Electronic parts play on built-in synthesizers and drum machines, or on presets of the Surge XT synthesizer.
 5. **Mix and master.** Parts go through drum, bass, rhythm, ensemble and lead buses and four generated reverbs, then a master chain to the project's loudness target (−16 LUFS by default, −14 for streaming) with the true peak at or below −1 dBTP. Orchestral and organ music can skip the compressors and keep their full dynamics; electronic music can add sidechain ducking, tempo-synced delays, filter sweeps and a loud club master.
@@ -111,7 +111,7 @@ python3 -m venv .venv && . .venv/bin/activate        # Windows: py -m venv .venv
 python -m pip install -r skills/music-production/requirements.txt
 ```
 
-Windows x64 downloads pinned portable builds of FluidSynth and FFmpeg, and the Surge XT synthesizer with the plugin host that runs it (about 55 MB; leave it out with `--no-surge`):
+Windows x64 downloads pinned portable builds of FluidSynth and FFmpeg, and the Surge XT synthesizer with the plugin host that runs it (about 55 MB) and its 3,008 patches (about 217 MB); leave the patches out with `--no-surge-catalog`, or all of Surge with `--no-surge`:
 
 ```
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
@@ -166,14 +166,14 @@ Ask your agent in plain words:
 | Orchestra | Strings (also by section, tremolo and pizzicato), brass, trombone, tuba, double bass, woodwinds, piccolo and glockenspiel from VSCO 2 Community Edition, by Versilian Studios; harp, mallets, tubular bells, timpani and orchestral percussion from VCSL; horn, bass trombone, clarinets, flutes, solo strings and percussion from the University of Iowa Electronic Music Studios | CC0; Iowa: free for any use without restrictions |
 | Band | FreePats FSBS electric guitars (two distorted, one clean); Bass YR, picked and finger, samples by Andrea Biasior; from Karoryfer Samples, Big Rusty Drums, a five-string bass, a pizzicato double bass, an archtop guitar, a baritone sax and a tuba; a solo cello by Karoryfer Lecolds and bigcat instruments; a nylon-string classical guitar from the University of Iowa Electronic Music Studios | CC0; Iowa: free for any use without restrictions |
 | Solo and world | Tenor sax, saxello, recorders, ocarina, harmonicas, folk harp, dan tranh, psaltery, kalimbas, balafon and world percussion from VCSL; an erhu; a tenor steel pan; a sung "ah" | CC0; steel pan: Unlicense |
-| Synthesizers | Built-in synthesizers and drum machines; Surge XT with fifty curated factory presets, optional and installed by default | built in: MIT; Surge XT: GPL-3.0, run by a separate GPL program |
+| Synthesizers | Built-in synthesizers and drum machines; Surge XT with its 3,008 factory and third-party patches, fifty of them curated, optional and installed by default | built in: MIT; Surge XT: GPL-3.0, run by a separate GPL program |
 | Everything else | MuseScore MS Basic | MIT |
 
 Every recorded bank is CC0, free for any use without restrictions (the Iowa recordings) or dedicated to the public domain (the steel pan), so what you make with them needs no credit. Surge XT is GPL-3.0 and runs only inside a separate GPL program of this project (`surge_host.py`); the GPL covers the programs, not the music they play. MS Basic, the General MIDI bank that other parts fall back to, is MIT, and its notice asks for its acknowledgements in any derivative work. We read that as copies and adaptations of the bank, not music played on it, but that is our reading: if a piece you publish has parts on MS Basic, credit it to be safe (the examples have none). [THIRD_PARTY.md](THIRD_PARTY.md) lists the sources.
 
 ## How well it works
 
-`selfcheck.py` runs 91 checks (73 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision synthesizes one part again, and `compare` finds the change from that note on, in every file it reached and nowhere else. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
+`selfcheck.py` runs 93 checks (75 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision synthesizes one part again, and `compare` finds the change from that note on, in every file it reached and nowhere else. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
 
 Whether the music is good is another matter, and only listening can tell. The pieces above are the best evidence this repository has.
 

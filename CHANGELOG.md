@@ -4,8 +4,86 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+Music that keeps changing and moves. Seven pieces that agents made with 0.2.0 were heard as not wrong, but at times dull or stiff; measured on their scores, the causes were loops held for 24 to 48 bars, choruses thinner than their pre-choruses and chord parts struck as blocks, not missing micro-timing.
+
+Guidance from professional sources only. Every guide was checked line by line: each statement now names a source, or is marked as this skill's own measurement, an example plan or a starting value, and what had neither was removed. New guidance comes from read sources: harmony from Open Music Theory, the voice leading `review` now follows, instruments for a scene's character from studies of timbre and emotion, and the full Surge XT patch set, measured, for choosing a synth sound.
+
+### Added
+
+- **[development-and-groove.md](skills/music-production/references/development-and-groove.md)**, from the measurements and the literature:
+  - an energy plan per section, and how much the music should change;
+  - variation that keeps identity: texture, register, rhythm, harmony, melody and transitions;
+  - loops that move at 8- and 16-bar phrase edges;
+  - syncopation in moderation, and pushes into strong beats;
+  - accompaniment that moves, and chord voicings.
+- **`musiclib.voicing.voice_lead`** voices a chord progression for a keyboard, pad, string or brass part, chosen across the whole progression so the voices move as little as possible (common tones held).
+  - Spacing: adjacent voices within an octave, no close interval below its low interval limit, no voice crossing, and no minor second or minor ninth between two voices.
+  - `against`: the pitches other parts sound with each chord (the melody, the bass, the left hand). The voicing keeps minor seconds and ninths away from them and, where it can, leaves their pitches to them.
+  - `ceilings`: keeps the voicing under the melody, chord by chord.
+  - Optionally no consecutive fifths or octaves.
+  - Tones left out or doubled in the order arrangers use; under a major seventh the root goes first. A chord the range cannot hold doubles another tone, then leaves one more out. A tone that would rub against the other parts wherever the range puts it is left out: under a melody on the root of a major-seventh chord, the accompaniment plays the triad. `keep_root` keeps the root where no bass part plays it (a rootless A♭maj7 in three voices is heard as C minor).
+
+  A ii-V-I moves three semitones per change; an I-V-vi-IV loop moves five to seven, against seven to 28 as root-position blocks.
+- **A bright pop piano** in [performance-and-mix.md](skills/music-production/references/performance-and-mix.md): the bundled pianos measured for brightness. The recording and the touch changed it more than EQ or compression. The two uprights and the Kawai grand measured brightest of the acoustic pianos. On the Kawai a presence EQ raised the spectral centroid 77 Hz (about 9%), a firmer touch (velocity 80 to 110) 51 Hz, a 12 kHz boost 5 Hz. Linked from the pop, ballad and anime-opening guides.
+- **Writing a melody that sounds composed** in [climax-and-melody.md](skills/music-production/references/climax-and-melody.md), a method from the songwriting, music-theory and music-psychology literature:
+  - the hook written first, as the motif: what gives a melody character (Perricone 2000), and the common contour with uncommon intervals or repeated notes of earworms (Jakubowski et al. 2017);
+  - phrases that breathe, mostly by step, with leaps for character (Perricone 2000);
+  - each section built from restatement (srdc, after Summach 2011; the sentence, Caplin 1998 and Open Music Theory);
+  - contrast between sections (Summach 2011), embellishing tones placed in the beat, question-and-answer phrases (the period), and the highest note saved for the high point.
+
+  Linked from SKILL.md and the anime-opening guide.
+- **`profile` describes the melody per section**: its phrases, the longest run without a breath, leaps, the bars that restate an earlier bar's rhythm and shape, and the peak. **`review` asks** about a section of eight bars or more in which no melody bar restates another. On the release demos, sections of eight bars or more restate between one in eight and four in five of their melody bars, and none is asked about. On the 0.2.0 agent pieces it asks about the rock piece's first chorus and solo and the horror cue's music-box passage, which restate none of their eight or nine bars.
+- **Surge XT is the default for synth parts.** Where Surge XT is installed, SKILL.md and the sound design of [electronic.md](skills/music-production/references/electronic.md) start a synth part from a Surge patch: one chosen from the full catalog for the part's job, or one of the curated patches. The built-in presets are the fallback, which plays by itself where Surge is missing, and the instrument for what the list lacks (chip waves, the 808, the 303, risers). With Surge installed, `review --config` asks about a built-in preset that a curated patch covers and names the patches to audition. The beats, pop and ballad, jazz and funk and anime-opening guides name Surge patches beside the built-in presets. An eighth-note melody from G4 to G5, played alone, put 65% of its power above 2 kHz on the built-in `fm_bell` and 2% on Surge's `fantasy_bell`.
+- **What each Surge patch's controls move.** [surge-controls.json](skills/music-production/references/surge-controls.json), read from the patch files, lists what each curated patch's mod wheel and macros move, with the depth and the wheel position it was saved with. In many leads and pads the wheel opens the filter: `smooth_lead` by 17 semitones, `juno_60_strings` by 42. In a few (`sharpish`, `slow_poly`) it closes the filter. A CC1 value or curve on the part sets or sweeps the brightness. Measured on a passage: `smooth_lead` at full wheel doubled its spectral centroid, and `bright_pad`'s Cutoff macro raised it from 668 to 1150 Hz.
+- **The full Surge XT patch set, measured.** [surge-catalog.json](skills/music-production/references/surge-catalog.json) describes all 3,008 patches of Surge XT 1.3.4, 637 from its team and 2,371 from 32 sound designers. Each was measured on one probe note: its brightness, the share of its power above 2 and 5 kHz, its attack, tail and width, whether it sounds at the written pitch, and what its mod wheel and macros move. Patches that stayed silent on a plain note, need an MPE controller, are microtonal or sound off their pitch are flagged.
+  - **`studio.py sounds`** searches the catalog by role, measured character, name and designer, dark to bright, leaving flagged patches out; `--id` prints one patch in full.
+  - A part plays any catalog patch by its id (`surge: {"preset": "factory/pads/bright"}`), falling back by its role where Surge or the patch is missing.
+  - The bootstrap installs the set from Surge's pinned commit, each file checked by size and hash (about 217 MB; `--no-surge-catalog` leaves it out).
+  - **For the sounds no curated patch plays**, `review --config` names the catalog patches whose designers named them for that sound and whose measurement raises no flag: for the 808 `a_liv/basses/bonsai_808` and `vospi/basses/808_builder_a`, eight acid and 303 basses, two reese and four wobble basses, three chip leads, a riser and a reverse crash, to hear against the built-in preset on the part.
+- **[sound-selection.md](skills/music-production/references/sound-selection.md)**, choosing a sound from professional sources:
+  - the part's job: Owsinski's five arrangement elements, and the foreground and background layers of McAdams, Goodchild and Soden (2022);
+  - what puts a sound in front or behind: the timbre dimensions of McAdams et al. (1995), and depth by brightness, reverb and chorus (White 2009, *Sound On Sound*);
+  - by element: Sound On Sound practice for synth bass (Flint 2007), pads (Senior 2010), centred lead and bass (Flint 2005), and fills from presets (Senior 2020);
+  - across a piece: timbral contrasts at section boundaries (McAdams, Goodchild and Soden 2022), layers held back and quiet layers (Senior 2024);
+  - then a shortlist with `studio.py sounds`, and hearing it on the part with `studio.py audition`.
+- **[harmony.md](skills/music-production/references/harmony.md)**, from Open Music Theory: cadences, strong predominants and the cadential 6/4; tonicization and modal mixture; sequences; modulation to close and distant keys; substitutions for a returning theme (applied chords, mixture, the tritone substitution); developing a motive. Linked from SKILL.md's checklist and the arrangement and development guides.
+- **Instruments and a scene's character** in [scene-music.md](skills/music-production/references/scene-music.md), from studies of timbre and emotion: the instrument alone changes the emotion heard in a melody (Hailstone et al. 2009); a darker melody instrument made a passage more peaceful and a brighter one scarier (Eerola, Friberg and Bresin 2013); musicians' judgements of how sad 44 instruments sound followed the cues of sad speech, best of all the ability to make small pitch movements (Huron, Anderson and Shanahan 2014); the xylophone's recital repertoire stays in major, the marimba's often does not (Schutz et al. 2008). The game guide's mood table gains the timbre for peaceful and scary cues.
+- **`profile` reports onsets per second** for each section, the pitched parts together: the tempo measure of Eerola, Friberg and Bresin (2013), whose passages ran from 1.2 to 6. [game-music.md](skills/music-production/references/game-music.md) gives their scale.
+- **Melody on top, rhythm in the bass**, in [sound-selection.md](skills/music-production/references/sound-selection.md) and the arrangement guide: the ear follows the pitch of the highest voice best, from three months of age (Marie and Trainor 2014), and the timing of the lowest (Hove, Marie, Bruce and Trainor 2014), and picks out the top and bottom bands of a mixture of pure-tone melodies more easily than its middle (Bürgel, Mares and Siedenburg 2024). Listeners find a lead vocal in a mix more reliably than any instrument (Bürgel, Picinali and Siedenburg 2021), so the anime-opening guide asks an instrumental lead to be given the singer's place.
+- **`studio.py audition`** plays one part's passage on several sounds in turn: the part as written, then each Surge patch, built-in preset or SoundFont preset asked for, with the other parts, at one loudness. It reports each version's level and brightness and, for a Surge patch, its measured character and controls: an A/B on identical notes. A patch whose own reverb or delay still rings when the passage's tail ends is rendered again with a longer tail.
+- [anime-opening.md](skills/music-production/references/anime-opening.md) cites Ramage (2023), a study of the royal road progression in Japanese popular music.
+- **New `review` questions**, each with its figures in `score_review.json` (`repetition`, `stiffness`):
+  - where nothing changes: the whole texture repeating a block for 16 bars, a part repeating a short pattern past one or two phrases, a section returning note for note, an arrival thinner than the section before it, neighbouring sections alike;
+  - where the parts move as blocks: chord parts struck and released together when they are held or keep one length (syncopated stabs of varied lengths are a rhythm), and no melody or accompaniment attack pushing a strong beat.
+
+  On the seven pieces they ask about the techno kit and bass loops, the boom-bap keys loop, the rock choruses and the held block chords (the rock organ, the techno stab and pad, the trap pad and brass), and nothing about the ballad, the film cue or the horror cue.
+- `review` treats synth parts whose oscillators are all noise (a riser, a reverse cymbal, a downlifter) as unpitched, like drums, so their notes are not read as chord tones or loops.
+- **`review` follows the voice leading**, each question with its figures in `score_review.json`:
+  - **Notes outside the written chord** (`outside_chord`), in every pitched part, each named by how it is approached and left after Open Music Theory's embellishing tones: passing, neighbour, appoggiatura, escape tone, suspension, retardation, pedal, anticipation. It asks about those not resolved by step, for the melody, the bass and the accompaniment; Temperley (2007) found rock melodies leaving them unresolved, mostly in pentatonic verses. A chordal part's voices are followed by pitch proximity (Huron 2001), and a chord restated with the same notes is not a change.
+  - **Parallel fifths and octaves** (`parallel_fifths_octaves`) between two lines moving the same way: parts written one note at a time, a melody's top line, a bass part's bottom line (Open Music Theory, First-Species Counterpoint). Octaves inside a line doubled at the octave are counted apart. [baroque.md](skills/music-production/references/baroque.md) no longer asks for a script of your own.
+  - **Close intervals under their low interval limits** (`low_intervals`), after Hoffmann's chart, the fourth and fifth of a power chord left out.
+
+  On the seven 0.2.0 agent pieces it names 212 notes outside the chord as embellishing tones and asks about 94: 55 in the horror cue (49 in its accompaniment), 25 in the boom-bap horns and keys, 10 in the techno arpeggio, two or fewer in each of the others. It finds 53 parallel fifths or octaves, 32 of them between the film cue's orchestral parts, and 468 close intervals under their limits, 180 in the horror cue.
+- **Every guide checked for its sources.** Each piece of guidance now names a professional source, or is marked as this skill's own measurement, an example plan or a starting value for a parameter. Statements with none of these were removed or rewritten.
+  - **New sources, read for this:** Open Music Theory (verse-chorus form, four-chord schemas, melody and phrasing, drumbeats, jazz voicings, embellishing tones, cadences); Sound On Sound (Dow on drum programming, Senior on mixing order, pads and arrangement, Robjohns on loudness-matched comparison, White on depth, Flint on panning and synth bass); Grimes on string bending; Li's tempo finding for anime openings; Dalla Riva's key-change counts; Spotify's loudness normalisation; and the Wikipedia articles on house, trance, big room house, dub techno, future bass, synthwave, boom bap, lo-fi hip-hop, trap and the blues for their tempos and traits.
+  - **Removed for want of a source:**
+    - tempo ranges labelled as conventions in the rock, metal, beats, jazz, film, game and scene guides (tempos now come from the style articles or the brief);
+    - the game and scene "starting points", whose instruments and harmonic colours had no source; the tables now map each scene to a character and its emotion cues (Eerola, Friberg and Bresin 2013);
+    - J-pop pushes and kime presented as hallmarks, and an octave-and-a-half range;
+    - a chorus always higher than its verse (a higher melody is one of Summach's chorus features);
+    - a −16 LUFS ballad target, and an 8-second clip length that was a listening preference;
+    - in the 0.3.0 melody method, rhythm before pitch and one peak late in each chorus;
+    - judgements of the pianos' character.
+  - The review's questions on loops, returns, melodies and pushes now cite their sources.
+- The selfcheck runs 96 checks (77 without a renderer configuration).
+
+### Fixed
+
+- **Surge XT parts render in about half a second instead of minutes.** The plugin host pedalboard describes every parameter of a plugin it loads by asking for its text at 1001 points, and does so again when the plugin's state is set. Surge XT has 2855 parameters, so loading took one to five minutes and setting the patch as long again, longer when several Surge parts started together. The Surge host now skips that description and sets the state and the few parameters it needs directly. The synthesis itself was always fast.
+
 ### Changed
 
+- `review`'s `foreground_outside_chord` is replaced by `outside_chord`, which covers every pitched part and names each note.
 - CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (qsynth, video drivers, a speech model and other extras the tests never use, which also brought in the large General MIDI bank `fluid-soundfont-gm`): 70 MB to download instead of 248 MB. A slow mirror once stretched that download past 20 minutes. The packages are now fetched in attempts of at most four minutes, a stalled one starting again where it stopped, before anything is installed, and the step stops after 15 minutes.
 - CI requires a loop's Ogg Vorbis copy on Linux and Windows. The loop test otherwise accepts it as skipped when FFmpeg has no `libvorbis` encoder, so a lighter install could have tested less without failing.
 - On macOS, Homebrew's `ffmpeg` lacks the `libvorbis` encoder the Ogg copy uses (`ffmpeg-full` has it), so a loop rendered with it has no Ogg copy, and the loop test notes the copy as skipped there. The macOS job had been doing so all along.

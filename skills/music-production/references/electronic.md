@@ -6,25 +6,26 @@ Read this when the request is a dance track (house, techno, trance, festival EDM
 
 Settle these from the request, deciding what it leaves open and saying so:
 
-- **Style and tempo.** Conventional ranges, not data; take the brief's tempo when it gives one.
+- **Style and tempo.** From the Wikipedia article on each style (read 7 November 2026) and the sources named; take the brief's tempo when it gives one.
 
-  | Style | Tempo (BPM) | Pulse | Signature |
+  | Style | Tempo (BPM) | Pulse | Traits |
   |---|---|---|---|
-  | House | 120–128 | four on the floor, open hat on the off-beat | piano or organ stabs, plucks, a clap on 2 and 4 |
-  | Techno | 120–135 (Detroit, minimal); 135–150 for harder styles | four on the floor, open hat on the off-beat, sixteenth hats | a loop that changes by process: filter sweeps, an acid line, a rumble under the kick, dub chord stabs |
-  | Trance | 132–140 | four on the floor, bass on the off-beats or rolling sixteenths | supersaw lead, long breakdown on pads |
-  | Festival EDM | 126–130 | four on the floor | build-up and drop, a big supersaw or brass hook |
-  | Future bass | 140–160 felt in half time | snare on beat 3 | supersaw chords pumping against the kick, wobbling chord swells |
-  | Synthwave | 80–118 | straight eighths, snare on 2 and 4 | gated snare, octave bass in eighths or sixteenths, string-machine pads, arpeggios |
-  | Chiptune | any | whatever the game needs | two pulses, a triangle bass, noise drums |
+  | House | 120–130 | four on the floor, off-beat hi-hats | a clap or snare on 2 and 4, synthesizer riffs, deep basslines; gospel piano riffs in garage house |
+  | Techno | 120–150 | common time, built for a continuous DJ set | repeated sequences more than harmonic motion; a loop that changes by process (Garcia 2005; Smith 2021) |
+  | Dub techno | 110–125 | 4/4, deep repetitive basslines | sparse chords; delay and reverb on percussion and melody |
+  | Trance | 120–150 | — | repeating melodic phrases; a mid-track breakdown without beats, then a build to a peak or drop |
+  | Festival EDM (big room house) | 126–132 | a four-on-the-floor kick | long build-ups and an electro-style drop; simple melodies, often a supersaw |
+  | Future bass | 130–175 | 4/4 | wobble by automation or LFO on filter cutoff or amplitude; risers; arpeggiated chords, vocal chops, vocoders |
+  | Synthwave | 80–118 (upbeat tracks 128–140) | — | 1980s film and synth-pop sources; gated reverb snares, the LM-1 and TR-808, an arpeggiated bass (Merlini 2023) |
+  | Chiptune | from the game | from the game | two pulses, a triangle bass, noise drums (NESdev) |
 
-- **Use.** A club or DJ track starts and ends with 16–32 bars of drums for mixing; a game or video cue starts on the music and may loop ([game-music.md](game-music.md)); a streaming track can skip the DJ intro.
+- **Use.** A club or DJ track opens and closes sparsely so a DJ can mix it (Wikipedia, Trance music); a game or video cue starts on the music and may loop ([game-music.md](game-music.md)).
 - **Length.** Count bars against seconds: at 128 BPM a 4/4 bar lasts 1.875 s, so 64 bars take 2 minutes.
-- **Loudness.** Dance styles are mastered loud: `mix.loudness: "loud"` with `target_lufs` −9 to −8 for a club master, or the usual −14 for streaming, where platforms turn loud masters down anyway.
+- **Loudness.** For a club master, `mix.loudness: "loud"` (measured here, the festival-house demo reached −9.1 LUFS); for streaming, −14, the level Spotify plays tracks at, turning louder masters down ([pop-and-ballad.md](pop-and-ballad.md)).
 
 ## Form: breakdown, build-up, drop
 
-By convention dance tracks are built from 8-bar phrases (16 and 32 for sections), and parts enter and leave on those boundaries. The central device is the break routine, a breakdown, a build-up and a drop. Solberg and Dibben (2019) measured listeners' skin conductance across break routines: the drop drew the strongest response of the routine, and listeners described the experience as energising and bodily even when they listened without dancing, away from a club. Plan the drop as the track's high point.
+Dance music is phrased in groups of two bars at several levels, and new sounds enter at the downbeats of those phrases (Smith 2021, citing Snoman 2019). The central device is the break routine, a breakdown, a build-up and a drop. Solberg and Dibben (2019) measured listeners' skin conductance across break routines: the drop drew the strongest response of the routine, and listeners described the experience as energising and bodily even when they listened without dancing, away from a club. Plan the drop as the track's high point.
 
 Solberg (2014) analysed how producers build the tension a drop releases and named five techniques. Each maps to a tool here:
 
@@ -33,29 +34,33 @@ Solberg (2014) analysed how producers build the tension a drop releases and name
 | Uplifters | a `noise` part with a `rise` note across the build, or a `synth` part on `noise_riser` (its filter opens over 8 s); `reverse_cymbal` ending exactly on the drop's downbeat |
 | The drum roll | snare or clap notes doubling in rate every two or four bars (quarters, eighths, sixteenths, then thirty-seconds in the last bar), velocity rising with them |
 | Large frequency changes | `mix.filter_sweep` high-pass on the music parts rising over the build (from about 80 Hz to 1–2 kHz), or a low-pass opening on the lead through a breakdown |
-| Removing and returning bass and kick | take kick and bass out for the breakdown and build; bring both back on the drop's downbeat. A beat or a bar of silence just before the drop sharpens it |
+| Removing and returning bass and kick | take kick and bass out for the breakdown and build; bring both back on the drop's downbeat |
 | A contrasting breakdown | chords on pads, a piano or the lead alone, no drums: the drop then arrives against something |
 
-A layout that works for a 3-minute track at 128 BPM (96 bars): intro 16, breakdown 16, build 8, drop 16, break 8, build 8, drop 16, outro 8. A cue for video or games can shorten it to one routine: intro 8, build 8, drop 16, outro 4.
+Big room house typically has two build-ups with breaks, two drops and one or two breakdowns (Wikipedia, Big room house). An example layout for a 3-minute track at 128 BPM (96 bars): intro 16, breakdown 16, build 8, drop 16, break 8, build 8, drop 16, outro 8. A cue for video or games can shorten it to one routine: intro 8, build 8, drop 16, outro 4.
 
 ## Sound design
 
-Every part is a preset from [synth-presets.json](synth-presets.json) with your own fields over it ([schema.md](schema.md)). A field you give replaces the preset's whole field: to change one value of a nested object (`lfo`, `filter`, `amp`), copy the preset's object and change that value. Probe a preset on the part's notes before building on it.
+Where Surge XT is installed (the default setup), start a synth part from a Surge patch: one chosen from its catalog for the part's job ([sound-selection.md](sound-selection.md)), or one of the curated patches [below](#surge-xt-presets). Each is a full synthesizer patch with its own oscillators, filters, modulation and effects. The built-in synth is the fallback where Surge is missing, and the tool for what the curated list lacks: chip waves, a supersaw stack set field by field, the 808's pitch punch and glide, the 303's resonant sweep, risers and downlifters. A built-in part is a preset from [synth-presets.json](synth-presets.json) with your own fields over it ([schema.md](schema.md)); a field you give replaces the preset's whole field, so to change one value of a nested object (`lfo`, `filter`, `amp`), copy the preset's object and change that value. Hear two to four candidates on the part's own notes, in the mix, before building on one: `studio.py audition` plays them in turn at one loudness. With Surge installed, `review --config` asks about a built-in preset that a curated patch covers. With the full patch set it also names, for the 808, acid, reese, wobble, chip, riser and reverse-cymbal presets, the catalog patches named for those sounds that the measurement does not flag (for the 808, `a_liv/basses/bonsai_808` and `vospi/basses/808_builder_a`); a name is the designer's label, so hear them on the part.
 
-| Role | Preset and settings |
-|---|---|
-| Trance or EDM lead, anthem chords | `supersaw_lead`: seven detuned sawtooths spread across the stereo field, like the Roland JP-8000's Super Saw (Szabo 2010 measured its detune and mix curves). More `detune_cents` thickens it; fewer `voices` thins and focuses it |
-| Plucks and arpeggios | `pluck`, with a dotted-eighth delay (`mix.delay` `beats: 0.75`) |
-| Future-bass chords | `future_bass_chord`, ducked hard by the kick (below); an `lfo` on pitch (10–30 cents, `rate_beats` 0.5–1) for the wobbling swell |
-| Pads | `trance_pad`, `warm_pad`; `pwm_strings` for a string machine, with `effects` `chorus` |
-| Bass | `sub_bass` under a kick-led groove; `acid_bass` with a filter swept by its envelope; `reese_bass`; `wobble_bass` (its `lfo`, copied whole, with `rate_beats` 0.5 or 0.25 for wobbles on eighths or sixteenths); `synthwave_bass`; `bass_808` (a long sine with a pitch punch and glide) |
-| Stabs and brass | `brass_stab` |
-| Keys | `fm_epiano`, `fm_bell` |
-| Transitions | `noise_riser`, `downlifter` after a drop, `reverse_cymbal` into a downbeat; `noise` parts with `rise` and `impact` |
+| Role | Surge XT, by measured character | Built-in preset and settings |
+|---|---|---|
+| Trance or EDM lead, anthem chords | `notched_saws` (bright, wide), `turbo` (bright, long tail), `moogy_saw` (mid) | `supersaw_lead`: seven detuned sawtooths spread across the stereo field, like the Roland JP-8000's Super Saw (Szabo 2010 measured its detune and mix curves). More `detune_cents` thickens it; fewer `voices` thins and focuses it |
+| A lead that sings | `smooth_lead`, `butter` (warm), `dreamy_flute`, `violini_solo` | a square with `glide_ms` and a delayed vibrato |
+| Plucks and arpeggios | `pure_square`, `late_fall`, `bell_pluck`, `woody` (warm, short), `diamonds` (mid, long tail) | `pluck`, with a dotted-eighth delay (`mix.delay` `beats: 0.75`) |
+| Future-bass chords | `uni_saw`, `trance_stab`, `phasey` (warm, wide) | `future_bass_chord`, ducked hard by the kick (below); an `lfo` on pitch (10–30 cents, `rate_beats` 0.5–1) for the wobbling swell |
+| Pads | `juno_60_strings`, `sawteeth`, `bright_pad` (warm, slow swell), `moody_pad` (dark), `synth_choir`, `ghost_pad` | `trance_pad`, `warm_pad`; `pwm_strings` for a string machine, with `effects` `chorus` |
+| Bass | `sub_bass_3`, `fm_bass`, `rubber_bass` (sub); `bass_1`, `fingered_bass`, `saw_lofi_bass` (round); `fm_slap`, `distorted_fm_bass` (edgy) | `sub_bass` under a kick-led groove; `acid_bass` with a filter swept by its envelope; `reese_bass`; `wobble_bass` (its `lfo`, copied whole, with `rate_beats` 0.5 or 0.25 for wobbles on eighths or sixteenths); `synthwave_bass`; `bass_808` (a long sine with a pitch punch and glide) |
+| Stabs and brass | `synth_brass_warm`, `synth_brass_bright`, `trance_stab` | `brass_stab` |
+| Keys | `ep_1`, `soft_suitcase` (dark electric pianos), `dx_ep` (warm), `organ_1` | `fm_epiano` |
+| Bells | `fantasy_bell`, `music_box`, `bell_pluck` (warm) | `fm_bell` (bright: an eighth-note melody from G4 to G5, played alone, measured a spectral centroid of 3.3 kHz and 65% of its power above 2 kHz) |
+| Transitions | — | `noise_riser`, `downlifter` after a drop, `reverse_cymbal` into a downbeat; `noise` parts with `rise` and `impact` |
 
 Write bass lines for the key-tracked filter: a bass whose cutoff follows its envelope gets duller the lower and shorter its notes. A synth part plays exactly what is written, so shape it with velocity (most presets map velocity to level and some to the filter) and with note lengths.
 
 ### Surge XT presets
+
+Surge XT comes with 3,008 patches, 637 from its team and 2,371 from 32 sound designers. [surge-catalog.json](surge-catalog.json) measures every one on a note in its role's register: level, brightness, attack, tail, width, whether it sounds at the written pitch, and what its mod wheel and macros move. `studio.py sounds` searches it by role, character, name and designer (`--id` prints one patch in full), and a part plays any catalog patch by its id (`surge: {"preset": "factory/pads/bright"}`). The bootstrap installs the full set unless `--no-surge-catalog`; without it a catalog patch plays its fallback. Choose by the part's job and hear the shortlist on the part, as [sound-selection.md](sound-selection.md) describes. The fifty patches below are a measured short list, a quick start rather than the whole palette.
 
 Where Surge XT is installed (bootstrap.py installs it unless `--no-surge`), a part can play one of fifty curated factory patches of the Surge XT synthesizer instead of a built-in preset: `engine: "surge"` with `surge: {"preset": ...}` ([schema.md](schema.md)). They were chosen from Surge XT 1.3.4's 505 lead, pad, polysynth, key, pluck, brass, wind and bass patches by measurement: each plays at the written pitch (the bass patches, built to sound an octave below their key, are played an octave up for that) and speaks as its role needs; [surge-presets.json](surge-presets.json) holds each one's measurements and built-in fallback. The words below are those measurements: dark, warm, mid or bright by spectral centroid (under 400, 800 and 1500 Hz, then above); fast attack under 30 ms to half level, soft under 250 ms, slow swell beyond; dry, short tail (under 1.2 s) or long tail after the release, the patch's own effects included; mono, narrow or wide.
 
@@ -69,29 +74,35 @@ Where Surge XT is installed (bootstrap.py installs it unless `--no-surge`), a pa
 | Plucks and bells | `bell_pluck` (warm, fast attack, dry, narrow); `ambient_guitar` (warm, fast attack, long tail, narrow); `fantasy_bell` (warm, fast attack, long tail, narrow); `pure_square` (warm, fast attack, short tail, narrow); `music_box` (warm, fast attack, long tail, narrow); `late_fall` (warm, fast attack, short tail, narrow); `woody` (warm, fast attack, dry, narrow); `diamonds` (mid, fast attack, long tail, narrow) |
 | Bass | `sub_bass_3` (sub, fast attack, dry, mono); `fm_bass` (sub, fast attack, dry, mono); `rubber_bass` (sub, fast attack, dry, mono); `bass_1` (round, fast attack, dry, mono); `saw_lofi_bass` (round, fast attack, dry, mono); `fingered_bass` (round, fast attack, dry, mono); `fm_slap` (edgy, fast attack, dry, mono); `distorted_fm_bass` (edgy, fast attack, dry, mono) |
 
-Probe a preset on the part's notes as with a built-in one, and pick by role first and brightness second. A patch's own chorus, delay or reverb adds to the mix's, so a long-tailed patch needs less `reverb_db` and a `tail_seconds` that lets it ring out. A Surge part's take differs from one synthesis to the next (random oscillator phases); the render cache keeps it until the part changes. Where Surge XT is missing the part plays its fallback preset, and `analyze` warns.
+Choose by the part's job ([sound-selection.md](sound-selection.md)), then hear the candidates on the part's notes in the mix (`studio.py audition`, below). A patch's own chorus, delay or reverb adds to the mix's, and effect tails can make chord changes sound sluggish (Senior 2010, in [sound-selection.md](sound-selection.md)); weigh the mix's `reverb_db` with the patch's tail, and give the project a `tail_seconds` that lets the tail ring out. A Surge part's take differs from one synthesis to the next (random oscillator phases); the render cache keeps it until the part changes. Where Surge XT is missing the part plays its fallback preset, and `analyze` warns.
+
+**The controls a patch gives you.** [surge-controls.json](surge-controls.json) lists, for every curated patch, what its mod wheel and its macros move, read from the patch files, with the depth.
+- Most curated patches route the mod wheel (CC1, which reaches the patch) to something. In many leads and pads it opens the filter: `smooth_lead` by 17 semitones at full wheel, `butter` 39, `dreamy_flute` 25, `juno_60_strings`, `sawteeth` and `prophet_vs` 42. In `sharpish`, `slow_poly`, `mg_poly` and `rubber_bass` it closes it. Elsewhere it moves vibrato (`moogy_saw`), FM depth (`fm_rock`) or the patch's effects.
+- A part with no CC1 plays the wheel where the patch was saved: at zero, except `synth_choir`, `organ_1` and `diamonds`, saved at full. A CC1 value at beat 0 (`performance.cc` `[[0, 1, 64]]`) sets the part's brightness. A curve, with `performance.cc_mode` `"linear"`, opens or closes it over a build, the filter sweep of dance music played on the patch's own filter.
+- A few patches have labelled macros, set once for the part with `surge.macros` (`{"1": 0.3}`): `bright_pad` (1 Cutoff, 2 Resonance, 3 Uni Spread, 4 Attack), `slow_poly` (1 Cutoff, 2 Sync), `uni_saw` (1 Sync, 2 Uni Spread, 3 Decay), `ambient_guitar` (1 Drive, 2 Brightness, 7 FX1 Send, among eight), `bell_pad` (1 Cutoff, among eight). Others route unlabelled macros to the filter, an oscillator or an effect; the file says which.
+
+**Hearing candidates.** `studio.py audition <project>/song.json --track lead --sounds surge:smooth_lead,surge:butter,synth:supersaw_lead --bars 21-24 --output <folder> --config <config>` renders the part's passage once as written and once per sound, with the other parts, and writes `audition.mp3` (the versions in turn at one loudness, 0.8 s apart) and `audition.json`. That file holds the part's level and brightness per version (spectral centroid, the share above 2 and 5 kHz) and, for a Surge patch, its controls. `--solo` plays the part alone; `soundfont:<bank>:<bank number>:<program>` auditions a sampled preset the same way.
 
 ## Drums
 
-`drum_synth` builds each hit from the circuits of the classic machines ([schema.md](schema.md)): `kit.style` `"909"` for house, trance and EDM, `"808"` for future bass, trap and synthwave; `tune` and `decay` shape the whole kit.
+`drum_synth` builds each hit from the circuits of the classic machines ([schema.md](schema.md)); `tune` and `decay` shape the whole kit. House and techno were made on the Roland TR-808 and TR-909 (Wikipedia, House music; Techno), synthwave revives the LM-1 and the TR-808 (Merlini 2023), and trap is built on the 808 ([beats.md](beats.md)): `kit.style` `"909"` or `"808"`.
 
-- **Four on the floor**: kick (36) on every beat; clap (39) or snare (38) on 2 and 4; closed hat (42) on sixteenths or eighths; open hat (46) on every off-beat eighth, cut by the next closed hat as on the machines.
-- **Trance**: bass on the off-beat eighths or on the three sixteenths after each kick, so kick and bass alternate.
-- **Half time** (future bass, trap): the snare or clap on beat 3 of each bar at 140–160 BPM; hats in eighths with rolls of thirty-seconds and triplets before phrase ends.
+- **Four on the floor**: kick (36) on every beat, off-beat hi-hats, a clap (39) or snare (38) on 2 and 4 (Wikipedia, House music; the "poumtchak", Zeiner-Henriksen 2010). The open hat (46) is cut by the next closed hat (42), as on the machines.
+- **Half time**: the backbeat at half the felt tempo, so the snare or clap falls on beat 3 of each bar (Open Music Theory, Drumbeats); trap's hats and rolls are in [beats.md](beats.md).
 - **Synthwave**: snare on 2 and 4 with `kit.gated_ms` 250–400, the gated reverb that marks the 1980s sound (Merlini 2023 lists it among the decade's trademarks that synthwave revives); toms (41–50) for fills.
-- Accents carry the groove: off-beat hats a little louder than on-beat ones, ghost snares far below the backbeat.
+- Velocities vary with intent, and ghost notes are quiet hits between the main ones (Dow 2010).
 
 ## Production
 
 The production tools work on a part's processed stem ([schema.md](schema.md)); `analyze` measures what they did.
 
-- **Pumping.** `mix.duck` `{"by": "kick", "depth_db": 6–12, "release_ms": about an eighth note}` on pads, chords and the bass makes room for each kick and gives the style its breathing (at 128 BPM an eighth note lasts 234 ms). Producers treat this as part of the groove, not only of the mix: how deep and how slow the ducking is changes where listeners feel the beat (Brøvig-Hanssen, Sandvik and Aareskjold-Drecker 2020), so set it with the drums playing. Future bass ducks its chords deepest, 10–14 dB.
-- **Delay.** Dotted eighths (`beats: 0.75`) or eighths on plucks and leads, `ping_pong` for width, `highpass` around 300–500 Hz so the echoes stay out of the bass.
+- **Pumping.** `mix.duck` `{"by": "kick", "depth_db": 6–12, "release_ms": about an eighth note}` on pads, chords and the bass makes room for each kick and gives the style its breathing (at 128 BPM an eighth note lasts 234 ms). Producers treat this as part of the groove, not only of the mix: how deep and how slow the ducking is changes where listeners feel the beat (Brøvig-Hanssen, Sandvik and Aareskjold-Drecker 2020), so set it with the drums playing.
+- **Delay.** This skill's starting values: dotted eighths (`beats: 0.75`) or eighths on plucks and leads, `ping_pong` for width, and a `highpass` around 300–500 Hz so the echoes stay out of the bass (White 2009 rolls a delay off below about 200 Hz).
 - **Sweeps.** `mix.filter_sweep` on builds and intros (above). A resonance of 0.3–0.5 makes the sweep audible as a sound of its own.
-- **Saturation.** `mix.saturate` 0.2–0.4 on a bass makes its harmonics carry on small speakers at the same loudness.
+- **Saturation.** `mix.saturate` 0.2–0.4 adds harmonics above a bass's fundamental; a partial an octave up gives a bass more presence where the ear is more sensitive (Flint 2007).
 - **Gate.** `mix.gate` with a pattern such as `"x.x.xx.x"` in sixteenths chops a pad into a trance gate.
-- **Low end.** `mix.mono_below_hz` 100–150 keeps the bass and kick in the middle, as club systems and vinyl cutting want.
-- **Loudness.** `mix.loudness: "loud"` rounds peaks in an oversampled soft clipper before the limiter. A festival-house test track reached −9.1 LUFS at −1.2 dBTP this way, its drop the loudest section, with clipper and limiter taking at most 0.2 dB of level from any section (`mastering.limiting_db` in the report). If a section loses more than about 3 dB there (`analyze` warns), its transients flatten and it can measure quieter than the sparser sections around it: lower `target_lufs`, or lower that section's peaks with `mix.saturate` on its loudest parts (a supersaw lead's unison peaks, the kick). Ask the user to listen for the kick losing its click before pushing further.
+- **Low end.** `mix.mono_below_hz` 100–150 keeps the bass and kick in the middle: the position of frequencies below about 100 Hz cannot be heard, and a centred mono bass is more focused (Flint 2007); centred low bass also lets a vinyl record carry more bass without the needle jumping (Flint 2005).
+- **Loudness.** `mix.loudness: "loud"` rounds peaks in an oversampled soft clipper before the limiter. A festival-house test track reached −9.1 LUFS at −1.2 dBTP this way, its drop the loudest section, with clipper and limiter taking at most 0.2 dB of level from any section (`mastering.limiting_db` in the report). Sound On Sound's guidance is 3–6 dB of gain reduction on loud peaks and rarely more than 6 (White 2003); `analyze` warns past 3 dB in a section, where transients can flatten: lower `target_lufs`, or lower that section's peaks with `mix.saturate` on its loudest parts (a supersaw lead's unison peaks, the kick). Ask the user to listen for the kick losing its click before pushing further.
 
 ## Techno
 
@@ -100,16 +111,15 @@ Techno grew in Detroit in the mid-1980s from synth-pop, electro, funk and house,
 - **The pulse.**
   - The kick on every beat and an open hat on every off-beat eighth: the "poumtchak" pattern, a continuous alternation of bass drum and hi-hat. Zeiner-Henriksen (2010) linked it to the vertical movements of club dancing: head nodding, bouncing, foot tapping.
   - Closed hats or a shaker in sixteenths over it.
-  - A clap or snare on 2 and 4 in most styles; minimal techno often leaves it out.
-  - A ride on the off-beats for the peak.
+  - A clap or snare on 2 and 4 if the track wants it, as in house (Wikipedia, House music).
 - **Repetition with process.** A loop of one to four bars runs for minutes while its sound moves.
   - Garcia (2005) reads the pleasure of repetitive dance music as "process pleasure": pleasure in the unfolding of its processes.
   - Smith (2021), analysing 2010s trance and house, shows how continuous processes, filter sweeps, crescendos and pitch slides, work as ornament, as orientation (they tell dancers where a section is going) and, in breakdowns, as disorientation.
   - On the engine:
-    - `mix.filter_sweep` on the loop over 16–32 bars;
+    - `mix.filter_sweep` on the loop across a phrase or two;
     - a delay that grows: the line doubled on a second part whose `mix.delay` has more `feedback` and a higher `send_db`, faded in with that part's `automation` (a part's delay settings hold for the whole part);
     - a part's `automation`;
-    - a new percussion layer every 8 or 16 bars.
+    - a new percussion layer at a phrase downbeat (Smith 2021).
 - **The rumble.** A low, swelling tail under the kick, made in the studio by sending the kick to a long reverb, low-passing it at 250–300 Hz, distorting it and ducking it by the kick so it swells between hits (Attack Magazine; MusicRadar). On the engine:
   - a second `drum_synth` part playing the kick's notes with a long `kit.decay` (2–3);
   - `lowpass` 200–300 Hz and `saturate` 0.3–0.5;
@@ -118,32 +128,30 @@ Techno grew in Detroit in the mid-1980s from synth-pop, electro, funk and house,
   - Write sixteenths with rests, octave jumps and a few accents (higher velocities open the filter).
   - Turn the cutoff over a section with `filter_sweep`.
 - **Chords and stabs.**
-  - A minor-seventh or ninth stab on an off-beat with a dotted-eighth delay (`mix.delay` `beats: 0.75`, feedback 0.4–0.6): the dub chord of Detroit and Berlin techno (a convention).
-  - Pads on `warm_pad` or Surge `moody_pad` under breakdowns.
-- **Polymeter.** A sequence of three or five sixteenths looped against the 4/4 bar shifts its accents bar by bar and returns after three or five bars (a convention).
+  - Dub techno sets sparse chords in heavy delay and reverb (Wikipedia, Dub techno): a chord on an off-beat with a dotted-eighth delay (`mix.delay` `beats: 0.75`, feedback 0.4–0.6, this skill's starting values).
+  - Pads on Surge `moody_pad` or `warm_pad` under breakdowns.
+- **Polymeter.** A sequence of three or five sixteenths looped against the 4/4 bar shifts its accents bar by bar and returns after three or five bars.
 - **Arrangement.**
-  - DJ-friendly: 16–32 bars of drums to start and end.
-  - Parts enter and leave on 8- and 16-bar boundaries.
-  - One or two breakdowns, shorter and subtler than trance's, ended by a filter rise rather than a big drop.
-  - A track runs 6–8 minutes; a cue can compress that into 2–3.
+  - Sparse openings and closings for DJ mixing (Use, above).
+  - Parts enter and leave at phrase downbeats (Smith 2021).
 - **The mix.**
   - The kick and the rumble own the low end, with `mono_below_hz` 100–150.
-  - The bass ducked by the kick; bright but not harsh hats.
-  - `loudness: "loud"` at −9 to −8 LUFS for a club master, −14 for streaming.
+  - The bass ducked by the kick.
+  - `loudness: "loud"` for a club master, −14 for streaming (Brief, above).
 
 ## Future bass
 
-Half-time drums at 140–160 BPM with a big clap or snare on beat 3; chords of sevenths and ninths (IVmaj7–V–iii7–vi suits it) on `future_bass_chord`, ducked deep by the kick and held through each bar so the pumping is heard; a pitch LFO on the chords for the wobbling swell; a lead built from short notes, for example short notes on `vocal_ah` with a dotted-eighth delay where a vocal chop would go. Drop the chords on the drop's downbeat with the kick. These are conventions of the style, not measurements.
+Future bass mixes elements of dubstep and EDM trap with warmer rhythms, in 4/4 at 130–175 BPM. Its sounds wobble under automation or an LFO on a filter's cutoff or the amplitude, and it uses risers, arpeggiated chords, vocal chops and vocoders (Wikipedia, Future bass). On the engine: chords on Surge `uni_saw` or `future_bass_chord`, ducked by the kick (Pumping, above); an LFO on pitch or cutoff for the wobble; short notes on `vocal_ah` with a dotted-eighth delay where a vocal chop would go.
 
 ## Synthwave
 
 Synthwave revives the sound of 1980s film scores and pop. Merlini (2023) traces it to the soundtracks of Tangerine Dream, John Carpenter, Giorgio Moroder and Vangelis, and names its style flags: the arpeggiated, fat bass line of early-1980s polysynths, the Linn LM-1 and TR-808 drum machines, and gated reverb snares, mixed with the thicker sound of present-day EDM. Its usual means here:
 
-- straight eighths at 80–118 BPM, snare on 2 and 4 with a gated room (`kit.gated_ms` 250–400);
-- an octave bass on `synthwave_bass` in driving eighths or sixteenths;
-- string-machine pads (`pwm_strings` with `effects` `chorus`), arpeggios on `pluck` with a delay, a lead on `supersaw_lead` or a square with `glide_ms` and a delayed vibrato;
-- minor keys and four-chord loops such as i–VI–III–VII;
-- reverb on snare and lead (`reverb_db`, the plate), less on the bass.
+- 80–118 BPM, upbeat tracks 128–140 (Wikipedia, Synthwave); the snare with a gated room (`kit.gated_ms` 250–400);
+- an octave bass on `synthwave_bass` or Surge `bass_1` in driving eighths or sixteenths;
+- string-machine pads (Surge `juno_60_strings`, or `pwm_strings` with `effects` `chorus`), arpeggios on a pluck with a delay (Surge `pure_square` or `late_fall`, or `pluck`), a lead on Surge `smooth_lead` or `moogy_saw`, `supersaw_lead`, or a square with `glide_ms` and a delayed vibrato;
+- four-chord loops such as i–VI–III–VII, the singer/songwriter schema read in its relative minor (Open Music Theory, Four-Chord Schemas);
+- this skill's starting point for reverb: on the snare and the lead (`reverb_db`, the plate), less on the bass.
 
 ## Chiptune
 
@@ -160,6 +168,8 @@ Keep to one note at a time per part, except for `chip_arp` chords, and to four o
 
 ## Symptoms and causes
 
+Sources for the table: Solberg (2014) for the drop, Flint (2007) and Senior (2010) for the low end, Brøvig-Hanssen et al. (2020) for pumping, Senior (2018) and Israels ([anime-opening.md](anime-opening.md)) for a buried lead; parameter values are starting points.
+
 | Symptom | Likely causes | What to check or change |
 |---|---|---|
 | The drop does not hit | the build kept the kick and bass, or the drop has no more parts or register than the breakdown | remove kick and bass in the build, bring both back on the downbeat, a riser or reverse cymbal into it |
@@ -173,6 +183,15 @@ Keep to one note at a time per part, except for `chip_arp` chords, and to four o
 
 - Solberg, R. T. (2014). ["Waiting for the Bass to Drop": Correlations between Intense Emotional Experiences and Production Techniques in Build-up and Drop Sections of Electronic Dance Music](https://dj.dancecult.net/index.php/dancecult/article/view/451). *Dancecult* 6(1).
 - Solberg, R. T. and Dibben, N. (2019). [Peak Experiences with Electronic Dance Music: Subjective Experiences, Physiological Responses, and Musical Characteristics of the Break Routine](https://doi.org/10.1525/mp.2019.36.4.371). *Music Perception* 36(4), 371–389.
+- Dow, R. (2010). [Programming Realistic Drum Parts](https://www.soundonsound.com/techniques/programming-realistic-drum-parts). *Sound On Sound*, September 2010.
+- Flint, T. (2005). [Q. Should I always pan my vocals to the centre of the mix?](https://www.soundonsound.com/sound-advice/q-should-always-pan-my-vocals-centre-mix) *Sound On Sound*, February 2005.
+- Flint, T. (2007). [Q. How can I get more effective synth bass in my mixes?](https://www.soundonsound.com/sound-advice/q-how-can-get-more-effective-synth-bass-my-mixes) *Sound On Sound*, January 2007.
+- Gotham, M. et al. *Open Music Theory*, version 2: Hughes, B. and Lavengood, M., [Four-Chord Schemas](https://viva.pressbooks.pub/openmusictheory/chapter/4-chord-schemas/); Hanenberg, S., [Drumbeats](https://viva.pressbooks.pub/openmusictheory/chapter/drumbeats/).
+- Senior, M. (2010). [Creating & Using Synth Pad Sounds](https://www.soundonsound.com/techniques/creating-using-synth-pad-sounds). *Sound On Sound*, May 2010.
+- Senior, M. (2018). [Q. How can I locate the masking problems in my mix?](https://www.soundonsound.com/sound-advice/q-how-can-locate-masking-problems-my-mix) *Sound On Sound*, March 2018.
+- White, P. (2009). [Creating A Sense Of Depth In Your Mix](https://www.soundonsound.com/techniques/creating-sense-depth-your-mix). *Sound On Sound*, February 2009.
+- Wikipedia, read 7 November 2026, for each style's tempo and traits and the sources they cite: [House music](https://en.wikipedia.org/wiki/House_music), [Trance music](https://en.wikipedia.org/wiki/Trance_music), [Big room house](https://en.wikipedia.org/wiki/Big_room_house), [Dub techno](https://en.wikipedia.org/wiki/Dub_techno), [Future bass](https://en.wikipedia.org/wiki/Future_bass), [Synthwave](https://en.wikipedia.org/wiki/Synthwave).
+- White, P. (2003). [Maximising The Loudness Of Your Masters](https://www.soundonsound.com/techniques/maximising-loudness-your-masters). *Sound On Sound*, March 2003; with White, P., Inglis, S. et al. (2003), [Using Your DAW's Compressors & Limiters](https://www.soundonsound.com/techniques/using-your-daws-compressors-limiters).
 - Brøvig-Hanssen, R., Sandvik, B. and Aareskjold-Drecker, J. M. (2020). [Dynamic Range Processing and Its Influence on Perceived Timing in Electronic Dance Music](https://doi.org/10.30535/mto.26.2.3). *Music Theory Online* 26(2).
 - Danielsen, A., Johansson, M., Brøvig, R., Sandvik, B. and Bøhler, K. K. (2023). [Shaping rhythm: timing and sound in five groove-based genres](https://doi.org/10.1017/S0261143023000041). *Popular Music* 42(1). Producers' and musicians' own accounts of timing and sound in EDM, hip-hop, jazz and other styles.
 - Szabo, A. (2010). How to Emulate the Super Saw. Thesis, KTH Royal Institute of Technology.

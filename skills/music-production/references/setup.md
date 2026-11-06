@@ -36,12 +36,12 @@ Homebrew's `ffmpeg` is built without `libvorbis`, the Vorbis encoder the skill u
 
 ## Surge XT
 
-Unless you pass `--no-surge`, the bootstrap also sets up Surge XT for `surge` parts (fifty curated presets, [electronic.md](electronic.md)):
+Unless you pass `--no-surge`, the bootstrap also sets up Surge XT for `surge` parts (its 3,008 patches, fifty of them curated: [sound-selection.md](sound-selection.md), [electronic.md](electronic.md)):
 
-- Windows: the pinned plugin-only Surge XT 1.3.4 release (49 MB, checked by hash; only its VST3, 21 MB, is kept), the pinned pedalboard 0.9.26 wheel for your Python (about 4 MB, checked against the hashes PyPI publishes, installed into the runtime folder only, never into your Python), and the fifty patches (1.8 MB) from Surge's pinned repository commit, each checked by hash.
+- Windows: the pinned plugin-only Surge XT 1.3.4 release (49 MB, checked by hash; only its VST3, 21 MB, is kept), the pinned pedalboard 0.9.26 wheel for your Python (about 4 MB, checked against the hashes PyPI publishes, installed into the runtime folder only, never into your Python), the fifty curated patches (1.8 MB) from Surge's pinned repository commit, each checked by hash, and every patch of the catalog (3,008, about 217 MB, eight downloads at a time) from the same commit, each checked by size and hash. `--no-surge-catalog` leaves the full set out: parts that name a catalog patch then play their fallback presets.
 - Linux, macOS, and Windows with `--system`: install Surge XT 1.3.4 from https://surge-synthesizer.github.io/ first. The bootstrap finds `Surge XT.vst3` in the usual VST3 folders (or takes `--surge-vst3 <bundle>`), records its hash, then installs pedalboard and the patches as above. This path is not yet covered by CI.
 
-Without Surge XT the bootstrap says so and carries on, and Surge parts play their fallback presets on the built-in synth. Surge XT and pedalboard are GPL-3.0 programs; they run only inside `scripts/surge_host.py`, a GPL-3.0-or-later program the renderer starts as its own process and exchanges files with, so the rest of the skill stays MIT, and what you render with them is yours. An optional piece that fails to install (no wheel for this Python, a changed file) is skipped with its reason and the configuration is still written. A Surge part takes about 20 s to load the plugin when it renders; afterwards the render cache keeps its take.
+Without Surge XT the bootstrap says so and carries on, and Surge parts play their fallback presets on the built-in synth. Surge XT and pedalboard are GPL-3.0 programs; they run only inside `scripts/surge_host.py`, a GPL-3.0-or-later program the renderer starts as its own process and exchanges files with, so the rest of the skill stays MIT, and what you render with them is yours. An optional piece that fails to install (no wheel for this Python, a changed file) is skipped with its reason and the configuration is still written. Loading the plugin and a patch takes under a second per part; afterwards the render cache keeps the part's take.
 
 ## Check the setup
 
