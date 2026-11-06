@@ -42,10 +42,19 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install FluidSynth and FFmpeg (Ubuntu)
         if: runner.os == 'Linux'
-        # Without the recommended packages (two General MIDI soundfonts and video drivers, none of which the tests use):
-        # they made up much of a 248 MB download that a slow mirror once stretched past 20 minutes.
+        # Without the recommended packages (qsynth, video drivers, a speech model and other extras the tests never use,
+        # which also brought in the large General MIDI bank fluid-soundfont-gm) the download is 70 MB instead of 248 MB,
+        # normally a few seconds. A slow mirror still stalls some downloads, so the packages are fetched first, each
+        # attempt for at most four minutes, a stalled one starting again where it stopped; only then are they installed,
+        # so dpkg is never cut off half way. The step stops after 15 minutes in all.
         timeout-minutes: 15
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fluidsynth ffmpeg libarchive-tools
+        run: |
+          sudo apt-get update
+          for attempt in 1 2 3; do
+            timeout 240 sudo apt-get install -y --no-install-recommends --download-only fluidsynth ffmpeg libarchive-tools && break
+            echo "The package download stalled (attempt $attempt); starting again"
+          done
+          sudo apt-get install -y --no-install-recommends fluidsynth ffmpeg libarchive-tools
       - name: Install FluidSynth and FFmpeg (macOS)
         if: runner.os == 'macOS'
         run: brew install fluid-synth ffmpeg
@@ -63,7 +72,7 @@ jobs:
         env:
           MUSIC_SKILL_CONFIG: ${{ runner.temp }}/runtime/local-config.json
           # A loop's Ogg Vorbis copy is optional for users; here it is required, so a missing encoder fails the run.
-          # Not on macOS: Homebrew's ffmpeg has no Vorbis encoder (ffmpeg-full has it), so there the loop test notes
+          # Not on macOS: Homebrew's ffmpeg lacks the libvorbis encoder (ffmpeg-full has it), so there the loop test notes
           # the copy as skipped, as it does for users with that FFmpeg.
           MUSIC_SKILL_REQUIRE_OGG: ${{ runner.os != 'macOS' && '1' || '' }}
         run: python -m pytest -q tests

@@ -8,7 +8,7 @@ extracts them.  No installer runs; the registry and the system PATH are not touc
 with --fluidsynth/--ffmpeg) and downloads only the default sound bank and its licence notice, checked the same way.
 Install the tools from your package manager first, e.g. `sudo apt install fluidsynth ffmpeg` or
 `brew install fluid-synth ffmpeg`.  FFmpeg 6.0 or newer is required; renders are tested with FFmpeg 6.1 (Ubuntu
-24.04) and 9.0 (macOS and the pinned Windows build).  Homebrew's ffmpeg has no Vorbis encoder, so a game loop rendered
+24.04) and 9.0 (macOS and the pinned Windows build).  Homebrew's ffmpeg lacks the libvorbis encoder, so a game loop rendered
 with it gets no Ogg copy; for one, `brew install ffmpeg-full` and pass --ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg".
 
 Surge XT (engine "surge") is installed too unless --no-surge: on Windows the pinned plugin-only release (its VST3

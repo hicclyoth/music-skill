@@ -32,7 +32,7 @@ python3 <skill>/scripts/bootstrap.py --system --runtime <work>/.runtime --config
 
 `--system` records the `fluidsynth` and `ffmpeg` found on PATH (or given with `--fluidsynth` and `--ffmpeg`) with their hash and version, and downloads only MS Basic and its licence notice, checked against the lock. It refuses FFmpeg older than 6.0. `libarchive-tools` provides `bsdtar` for the optional .7z banks. The repository's CI renders with FluidSynth 2.3.4 and FFmpeg 6.1 on Ubuntu 24.04 and with FluidSynth 2.6.1 and Homebrew's FFmpeg 9.0 on macOS; other binary versions may produce slightly different samples.
 
-Homebrew's `ffmpeg` is built without the Vorbis encoder, so a game loop rendered with it gets `loop.wav` but no `loop.ogg`, and the render notes the Ogg copy as skipped. For the Ogg copy, install `ffmpeg-full`, which Homebrew keeps off PATH, and give it to the bootstrap: `brew install ffmpeg-full`, then `--ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"`. The bootstrap says when an FFmpeg cannot write Ogg, and so does `studio.py doctor`.
+Homebrew's `ffmpeg` is built without `libvorbis`, the Vorbis encoder the skill uses, so a game loop rendered with it gets `loop.wav` but no `loop.ogg`, and the render notes the Ogg copy as skipped. For the Ogg copy, install `ffmpeg-full`, which Homebrew keeps off PATH, and give it to the bootstrap: `brew install ffmpeg-full`, then `--ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"`. The bootstrap says when an FFmpeg cannot write Ogg, and so does `studio.py doctor`.
 
 ## Surge XT
 

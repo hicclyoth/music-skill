@@ -6,9 +6,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (two General MIDI soundfonts and video drivers the tests never use), which made up much of a 248 MB download that a slow mirror once stretched past 20 minutes. The step now stops after 15 minutes.
-- CI requires a loop's Ogg Vorbis copy on Linux and Windows. The loop test otherwise accepts it as skipped when FFmpeg has no Vorbis encoder, so a lighter install could have tested less without failing.
-- On macOS, Homebrew's `ffmpeg` has no Vorbis encoder (`ffmpeg-full` has it), so a loop rendered with it has no Ogg copy, and the loop test notes the copy as skipped there. The macOS job had been doing so all along.
+- CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (qsynth, video drivers, a speech model and other extras the tests never use, which also brought in the large General MIDI bank `fluid-soundfont-gm`): 70 MB to download instead of 248 MB. A slow mirror once stretched that download past 20 minutes. The packages are now fetched in attempts of at most four minutes, a stalled one starting again where it stopped, before anything is installed, and the step stops after 15 minutes.
+- CI requires a loop's Ogg Vorbis copy on Linux and Windows. The loop test otherwise accepts it as skipped when FFmpeg has no `libvorbis` encoder, so a lighter install could have tested less without failing.
+- On macOS, Homebrew's `ffmpeg` lacks the `libvorbis` encoder the Ogg copy uses (`ffmpeg-full` has it), so a loop rendered with it has no Ogg copy, and the loop test notes the copy as skipped there. The macOS job had been doing so all along.
 - macOS users are told how to get a game loop's Ogg copy. The README and setup.md give Homebrew's `ffmpeg-full`, passed to the bootstrap with `--ffmpeg`, and the bootstrap and `studio.py doctor` say when an FFmpeg cannot write Ogg.
 
 ## [0.2.0] - 2026-11-06
