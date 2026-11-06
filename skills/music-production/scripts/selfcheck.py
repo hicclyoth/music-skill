@@ -12,7 +12,7 @@ import zipfile
 import numpy as np
 from make_example import example
 from excerpt import extract
-from bootstrap import safe_extract
+from bootstrap import safe_extract,has_vorbis as setup_has_vorbis
 from soundbank import yin_f0
 from musiclib import midi,audio
 from musiclib.model import Clock,TPQ,validate,performed,save_json,file_hash,cc_events
@@ -1725,6 +1725,7 @@ def checks(work,config=None):
             # The Ogg Vorbis copy needs FFmpeg's libvorbis encoder and is noted as skipped without it.  With
             # MUSIC_SKILL_REQUIRE_OGG set (CI sets it) it is required, so an FFmpeg without the encoder fails here.
             ogg=('ogg' in lp['files'] and r['checks']['loop_ogg_tags'] and r['checks']['loop_ogg_length_exact'])
+            assert setup_has_vorbis(audio.load_config(config)['ffmpeg']['path'])==loop.has_vorbis(audio.load_config(config)),'the setup and the render ask FFmpeg alike'
             assert ogg or ('ogg_skipped' in lp and not os.environ.get('MUSIC_SKILL_REQUIRE_OGG')),lp.get('ogg_skipped',lp['files'])
             return {'loop_samples':end,'files':lp['files'],'abruptness':lp['seam']['abruptness']}
         check('loop_render_folds_the_tail_into_wav_and_ogg',loop_render)

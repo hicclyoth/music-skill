@@ -124,6 +124,8 @@ sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install
 python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
+macOS の Homebrew 版 `ffmpeg` は、ゲーム用ループの Ogg 版（`loop.ogg`）を書き出せません。必要なら `brew install ffmpeg-full` を実行し、bootstrap に `--ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"` を加えてください。
+
 続いて音源を入れます（このプロジェクトで構築したもの）。30 種すべてでダウンロードは約 3.5 GB、インストール後は約 8 GB です。`--delete-sources` を付けない限りダウンロードしたファイルは runtime フォルダーに残るので、約 12 GB の空きを用意してください。`--only orchestra`、`band`、`world`、`examples`（サンプル曲で使う音源）でグループごとに、または音源名（`--only vcsl,rusty`）で個別に入れられます。入っていない音源を使うプロジェクトは、それを入れるコマンドを示して止まります。`--from-source` を付けると、配布元のサンプルから自分で構築します。
 
 ```

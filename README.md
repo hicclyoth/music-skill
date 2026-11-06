@@ -124,6 +124,8 @@ sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install
 python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
+On macOS, Homebrew's `ffmpeg` cannot write a game loop's Ogg copy (`loop.ogg`). For it, run `brew install ffmpeg-full` and add `--ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"` to the bootstrap.
+
 Then the sound banks, as this project built them: all thirty are about 3.5 GB to download and 8 GB installed, and the downloads stay in the runtime folder unless you add `--delete-sources`, so keep about 12 GB free. `--only orchestra`, `band`, `world` or `examples` (the banks the examples use) installs a group, or name the banks (`--only vcsl,rusty`); a project that needs a bank you haven't installed stops with the command that adds it. `--from-source` builds the banks from their publishers' samples instead.
 
 ```

@@ -68,6 +68,8 @@ def main():
         for key in ('fluidsynth','ffmpeg'):
             output=run([c[key]['path'],'--version' if key=='fluidsynth' else '-version'],logs,key,30)
             print(output.splitlines()[0])
+        from musiclib.loop import has_vorbis
+        print('Ogg Vorbis for game loops:','yes' if has_vorbis(c) else 'no, this FFmpeg has no libvorbis encoder (references/setup.md)')
         for name,entry in [('default',c['soundfont'])]+sorted(c.get('soundfonts',{}).items()):
             print('SoundFont',name,'|',entry.get('version',''),'|',entry.get('license',''))
         print('PASS: paths and pinned checksums verified; no malware scan implied');return

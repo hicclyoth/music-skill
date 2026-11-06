@@ -124,6 +124,8 @@ sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS：brew instal
 python skills/music-production/scripts/bootstrap.py --system --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
+macOS 上 Homebrew 的 `ffmpeg` 無法輸出遊戲迴圈的 Ogg 版本（`loop.ogg`）。需要時請執行 `brew install ffmpeg-full`，並在 bootstrap 指令加上 `--ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"`。
+
 接著下載音色庫（本專案建好的版本）：全部三十個下載約 3.5 GB、安裝後約 8 GB；除非加上 `--delete-sources`，下載的檔案會留在 runtime 資料夾，所以請預留約 12 GB。`--only orchestra`、`band`、`world` 或 `examples`（範例曲用到的音色庫）可以只裝一組，也可以直接寫音色庫名稱（`--only vcsl,rusty`）；專案用到還沒安裝的音色庫時，會停下來並列出安裝指令。加上 `--from-source` 則改從各發布者的原始取樣自行建置。
 
 ```

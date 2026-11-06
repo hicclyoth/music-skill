@@ -8,7 +8,8 @@ extracts them.  No installer runs; the registry and the system PATH are not touc
 with --fluidsynth/--ffmpeg) and downloads only the default sound bank and its licence notice, checked the same way.
 Install the tools from your package manager first, e.g. `sudo apt install fluidsynth ffmpeg` or
 `brew install fluid-synth ffmpeg`.  FFmpeg 6.0 or newer is required; renders are tested with FFmpeg 6.1 (Ubuntu
-24.04) and 9.0 (macOS and the pinned Windows build).
+24.04) and 9.0 (macOS and the pinned Windows build).  Homebrew's ffmpeg has no Vorbis encoder, so a game loop rendered
+with it gets no Ogg copy; for one, `brew install ffmpeg-full` and pass --ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg".
 
 Surge XT (engine "surge") is installed too unless --no-surge: on Windows the pinned plugin-only release (its VST3
 alone is kept), elsewhere a Surge XT 1.3.4 you installed from https://surge-synthesizer.github.io/ (found in the usual
@@ -94,6 +95,12 @@ def system_tool(name,given):
         m=re.search(r'version\s+n?(\d+)\.',first)
         if m and int(m.group(1))<MIN_FFMPEG:raise ValueError(f'{first}: FFmpeg {MIN_FFMPEG}.0 or newer is required')
     return {'path':str(path),'sha256':file_hash(path),'version':first,'license':'System package; see its distribution','source':'User system installation; hash is integrity, not provenance'}
+
+def has_vorbis(ffmpeg):
+    """Whether this FFmpeg has the libvorbis encoder a game loop's Ogg copy needs (musiclib.loop.has_vorbis asks the same)."""
+    flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+    out=subprocess.run([str(ffmpeg),'-hide_banner','-encoders'],capture_output=True,text=True,errors='replace',timeout=30,stdin=subprocess.DEVNULL,creationflags=flags)
+    return ' libvorbis ' in out.stdout
 
 def surge_plugin(lock,runtime,cache,args,system):
     """The Surge XT VST3 to load and the binary inside it to hash: the pinned Windows build, or a system install."""
@@ -198,6 +205,9 @@ def main():
             if item['id']=='soundfont':config['soundfont']={'path':str(target),'sha256':item['sha256'],'version':item['version'],'license':item['license'],'source':item['url']}
         receipts.append({**item,'local_archive':str(archive)})
         print('VERIFIED',item['id'],flush=True)
+    if not has_vorbis(config['ffmpeg']['path']):
+        print('NOTE ffmpeg | no libvorbis encoder: a game loop gets loop.wav but no loop.ogg. With Homebrew, brew install '
+              'ffmpeg-full and set up again to a new --config with --ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg"',flush=True)
     if not args.no_surge:install_surge(lock,runtime,cache,args,system,config)
     save_json(args.config.resolve(),config);save_json(runtime/'dependency_receipts.json',receipts)
     print('Saved',args.config.resolve())
