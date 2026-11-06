@@ -64,11 +64,11 @@ Settle these from the request, deciding what it leaves open and saying so:
 - **Power chords under distortion.**
   - Distortion and harmonic complexity both reduce sensory consonance, most of all together (Herbst 2018).
   - With an overdriven or distorted tone, listeners rated power chords and major triads as clearly more pleasant than minor triads and altered dominants. Styles with more distortion, such as metal, rely more on power chords (Herbst 2019).
-  - Distortion's intermodulation products stay simple for a fifth but turn a third into a dense cluster (Lilja 2015).
+  - Distortion's harmonics and intermodulation give most chords a major quality, the power chord included: a distorted major triad sounds much like a power chord, while a minor triad's third clashes with that implied major third and turns rough. Distorted minor triads are rare in classic heavy metal (Lilja 2015).
 
   So:
-  - distorted guitars play root and fifth, with or without the octave;
-  - the bass, the lead, keys or strings supply the thirds, and `review` still checks the written chord list;
+  - distorted rhythm guitars play root and fifth, with or without the octave, or at most a major triad;
+  - minor thirds, sevenths and added notes go to the bass, the lead, keys, strings or a clean guitar, and `review` still checks the written chord list;
   - clean guitars can play full chords and added notes.
 - **Dark colours in metal.** Heavy metal riffs rest on three harmonic traits: modal progressions, tritone and chromatic motion, and pedal points.
   - Traditional heavy metal favours the Aeolian and Phrygian modes: Aeolian i–♭VI–♭VII and i–♭VII–♭VI, and the Phrygian i–♭II–i (E–F–E), alongside pentatonic and blues-derived figures.
@@ -188,7 +188,7 @@ Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)).
 
 - Herbst, J.-P. (2018). [Heaviness and the electric guitar: considering the interaction between distortion and harmonic structures](https://pure.hud.ac.uk/en/publications/heaviness-and-the-electric-guitar-considering-the-interaction-bet/). *Metal Music Studies* 4(1), 95–113. doi:10.1386/mms.4.1.95_1
 - Herbst, J.-P. (2019). [Distortion and rock guitar harmony: the influence of distortion level and structural complexity on acoustic features and perceived pleasantness of guitar chords](https://pure.hud.ac.uk/en/publications/distortion-and-rock-guitar-harmony-the-influence-of-distortion-le/). *Music Perception* 36(4), 335–352. doi:10.1525/mp.2019.36.4.335
-- Lilja, E. (2015). [Dealing with the 3rd](https://iipc.utu.fi/MHM/Lilja2.pdf): distorted chords in classic heavy metal. Modern Heavy Metal conference, Helsinki.
+- Lilja, E. (2015). Dealing with the 3rd: anatomy of distorted chords and subsequent compositional features of classic heavy metal. In T.-M. Karjalainen and K. Kärki (eds.), *Modern Heavy Metal: Markets, Practices and Cultures*, pp. 393–403. Helsinki and Turku: Aalto University and the International Institute for Popular Culture. [Archived PDF](https://web.archive.org/web/20250124071258/https://iipc.utu.fi/MHM/Lilja2.pdf).
 - Mynett, M. (2017). *Metal Music Manual: Producing, Engineering, Mixing, and Mastering Contemporary Heavy Music*. Routledge.
 - de Clercq, T. and Temperley, D. (2011). [A corpus analysis of rock harmony](https://doi.org/10.1017/S026114301000067X). *Popular Music* 30(1), 47–70.
 - Biamonte, N. (2010). Triadic modal and pentatonic patterns in rock music. *Music Theory Spectrum* 32(2), 95–110.

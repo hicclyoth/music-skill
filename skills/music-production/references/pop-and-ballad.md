@@ -29,7 +29,7 @@ Settle these from the request, deciding what it leaves open and saying so:
 - **Bridge.** New harmony, often starting on IV or vi, and a break in the texture before the last chorus.
 - **Final chorus.** Bigger than the first: the melody an octave up or doubled, strings or a countermelody added, the drums at full strength. A key change is optional (Harmony below).
 
-A layout for a 90-second instrumental ballad at 72 BPM, where a 4/4 bar lasts 3.33 s:
+A layout for an instrumental ballad at 72 BPM, where a 4/4 bar lasts 3.33 s: 29 to 34 bars, about 97 to 113 seconds before the last chord rings out. For 90 seconds (27 bars), make the intro and the turn one bar each, the final chorus four and the tag one.
 
 | Section | Bars | Function |
 |---|---|---|

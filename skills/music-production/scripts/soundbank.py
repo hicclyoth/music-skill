@@ -375,13 +375,16 @@ def align_run(x, rate, expected, quiet_db=25.0, edge_db=35.0, min_note=0.25, tol
 def spectral_pitch(x, rate, midi, window=(0.05, 0.65), reach=1.0):
     """The frequency of the strongest spectral peak within `reach` semitones of `midi`, from a Hann-windowed spectrum
     of the stretch `window` seconds into `x` (bins of 1 Hz or finer), refined by a parabola through the log magnitudes;
-    None when that peak is more than 30 dB under the stretch's strongest.  For struck metal (crotales, gongs), whose
-    partials are not harmonic, so that YIN's period is not the pitch heard."""
+    None when that peak is more than 30 dB under the stretch's strongest, and when the stretch is too short to tell a
+    semitone (under 0.1 s or 20 periods of the named note: a short take ends before a default window) or silent.  For
+    struck metal (crotales, gongs), whose partials are not harmonic, so that YIN's period is not the pitch heard."""
     seg = np.asarray(x, dtype=np.float64)[int(window[0] * rate):int(window[1] * rate)]
+    f = 440 * 2 ** ((midi - 69) / 12)
+    if len(seg) < max(0.1 * rate, 20 * rate / f) or not np.any(seg):
+        return None
     n = 1 << int(math.ceil(math.log2(max(len(seg), rate))))
     spec = np.abs(np.fft.rfft(seg * np.hanning(len(seg)), n))
     freqs = np.arange(len(spec)) * rate / n
-    f = 440 * 2 ** ((midi - 69) / 12)
     band = np.flatnonzero((freqs >= f * 2 ** (-reach / 12)) & (freqs <= f * 2 ** (reach / 12)))
     k = int(band[np.argmax(spec[band])])
     if spec[k] < spec.max() * 10 ** (-30 / 20) or not 0 < k < len(spec) - 1:
@@ -1205,22 +1208,13 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             elif loop and len(x) - loop[1] < 8:
                 # Interpolation reads a few frames past the loop end: there they repeat the loop's first frames.
                 x = np.concatenate([x[:loop[1]], x[loop[0]:loop[0] + 16]])
-            seg = x[int(0.25 * info['rate']):int(0.85 * info['rate'])].mean(axis=1)
-            if layer.get('pitch_source') == 'spectrum':
-                # The strongest peak within a semitone of the named fundamental over `spectrum_window` seconds: for
-                # plucked strings recorded over a room's rumble, which can pull YIN or the split's tracker off pitch.
-                f0 = spectral_pitch(x.mean(axis=1), info['rate'], e['named'], tuple(layer.get('spectrum_window', (0.2, 1.2))))
-            else:
-                f0 = (yin_f0(seg, info['rate'], fmin=layer.get('fmin', 25.0), fmax=layer.get('fmax', 4200.0),
-                             threshold=layer.get('yin_threshold', 0.12))
-                      if layer.get('pitch_check', True) and split_cents is None and len(seg) > 2048 else None)
             body = x[:int(1.0 * info['rate'])]
             # Sustained layers are matched by early RMS; percussive layers by peak.
             level = (float(np.abs(x).max()) * 0.115 if layer.get('level') == 'peak'
                      else float(np.sqrt(np.mean(body ** 2))))
             hashes = [file_hash(f) for f in e['files']]
             loaded[key] = {'x': x, 'rate': info['rate'], 'loop': loop, 'loop_match': match, 'noise_db': noise_db, 'noise_from': noise_from,
-                           'trim_ms': round(1000 * start / info['rate'], 1), 'f0': f0,
+                           'trim_ms': round(1000 * start / info['rate'], 1),
                            'clicks_ms': [[round(1000 * a / info['rate'], 1), round(1000 * b / info['rate'], 1), s] for a, b, s in clicks],
                            'rms': level, 'sha256': hashes[0] if not mics else hashlib.sha256(''.join(hashes).encode()).hexdigest(),
                            'mic_files': ([{'file': str(f.relative_to(root)), 'sha256': h, 'gain': mic.get('gain', 1.0),
@@ -1228,6 +1222,23 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
                                          if mics else None)}
         e.update(loaded[key])
         e['take'] = key
+        # The pitch follows this layer's own settings and named note, not the first layer that loaded the take: kept
+        # apart in the shared cache under its own key (a tuple; the audio's keys are strings).
+        rate = loaded[key]['rate']
+        how = ('f0', key, e['named'], layer.get('pitch_source'), tuple(layer.get('spectrum_window', (0.2, 1.2))),
+               layer.get('fmin', 25.0), layer.get('fmax', 4200.0), layer.get('yin_threshold', 0.12),
+               bool(layer.get('pitch_check', True)), split_cents is None)
+        if how not in loaded:
+            x = loaded[key]['x']
+            if layer.get('pitch_source') == 'spectrum':
+                # The strongest peak within a semitone of the named fundamental over `spectrum_window` seconds: for
+                # plucked strings recorded over a room's rumble, which can pull YIN or the split's tracker off pitch.
+                loaded[how] = spectral_pitch(x.mean(axis=1), rate, e['named'], how[4])
+            else:
+                seg = x[int(0.25 * rate):int(0.85 * rate)].mean(axis=1)
+                loaded[how] = (yin_f0(seg, rate, fmin=how[5], fmax=how[6], threshold=how[7])
+                               if how[8] and how[9] and len(seg) > 2048 else None)
+        e['f0'] = loaded[how]
         e['cents'] = (100 * (e['measured'] - e['named']) if e['measured'] is not None else
                       None if e['f0'] is None else 1200 * math.log2(e['f0'] / (440 * 2 ** ((e['named'] - 69) / 12))))
     checked = [e['cents'] for e in entries if e['cents'] is not None]

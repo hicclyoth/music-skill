@@ -355,7 +355,17 @@ def checks(work,config=None):
         for key,value in (('bus','vocals'),('space','cathedral')):
             q=example();q['tracks'][0]['mix'][key]=value;rejects(lambda:validate(q))
         q=example();q['mix']['chain']='tape';rejects(lambda:validate(q))
-        return {'default_buses':buses,'invalid_settings_rejected':3}
+        # The render's premix check allows float32 rounding at the parts' size: eleven loud parts summed in float32, as
+        # FFmpeg sums them, miss their exact sum by more than a fixed 1e-5 (a premix runs far above full scale before
+        # mastering) and still pass; with one part left out the sum fails.
+        rng=np.random.default_rng(3);parts=[(rng.standard_normal((48000,2))*10).astype(np.float32) for _ in range(11)]
+        mixed=parts[0].copy()
+        for x in parts[1:]:mixed=(mixed+x).astype(np.float32)
+        total=sum(x.astype(np.float64) for x in parts);mag=sum(np.abs(x.astype(np.float64)) for x in parts)
+        ok,worst,share=mixbus.adds_up(total,mag,mixed.astype(np.float64))
+        assert ok and worst>1e-5,(worst,share)
+        assert not mixbus.adds_up(total-parts[3],mag-np.abs(parts[3]),mixed.astype(np.float64))[0]
+        return {'default_buses':buses,'invalid_settings_rejected':3,'loud_float32_sum_error':worst,'share_of_allowance':round(share,3)}
     check('bus_assignment_and_validation',bus_settings)
     def spaces_and_dynamics():
         from musiclib import mixbus
@@ -601,7 +611,26 @@ def checks(work,config=None):
             assert z['gens'].get(52,0)==-round(cents[note]),(note,z['gens'])
             # 10 dB quieter as heard: FluidSynth applies the generator at 0.4 of its centibels, so 250 is written.
             assert z['gens'].get(48,0)==(250 if z['gens'][44][1]<=63 else 0),z['gens']
-        return {'zones':len(zones),'borrowed_attenuation_heard_cb':100,'written_cb':250}
+        # Tuning from the spectrum, through the build: one take of an A4 played 30 cents flat for a second and 30 cents
+        # sharp the next, read by two presets over their own windows, keeps each preset's tuning in either order (the
+        # takes are shared between layers, a pitch is not); and a 150 ms A4 ends before the default window, so it is
+        # left as it is rather than pulled toward the band's edge.
+        rate=44100;tt=np.arange(2*rate)/rate
+        for d in ('S','Q'):(work/'spec_notes'/d).mkdir(parents=True,exist_ok=True)
+        aiff(work/'spec_notes'/'S'/'S_mf_A4.aiff',.3*np.sin(2*np.pi*np.cumsum(np.where(tt<1,440*2**(-30/1200),440*2**(30/1200)))/rate),rate)
+        aiff(work/'spec_notes'/'Q'/'Q_mf_A4.aiff',.3*np.sin(2*np.pi*440*np.arange(int(.15*rate))/rate),rate)
+        def spec_layer(folder,window=None):
+            return {'dir':folder,'pattern':folder+r'_(?P<dyn>mf)_(?P<note>[A-G]#?-?\d)\.aiff','dynamics':['mf'],'velocity':{'mf':[1,127]},
+                    'keys':[69,69],'pitch_source':'spectrum','max_correction_cents':100,**({'spectrum_window':window} if window else {})}
+        def tunes(path):
+            bank=sf2.read(path);return {p['name']:[z['gens'].get(52,0) for z in bank['instruments'][p['zones'][0]['gens'][41]]['zones'] if z['target'] is not None] for p in bank['presets']}
+        early={'name':'early','program':0,'layers':[spec_layer('S',[.2,.8])]};late={'name':'late','program':1,'layers':[spec_layer('S',[1.2,1.8])]}
+        for order,name in (([early,late],'early_first'),([late,early],'late_first')):
+            build({'name':name,'presets':order},work/'spec_notes',work/f'{name}.sf2')
+            assert tunes(work/f'{name}.sf2')=={'early':[30],'late':[-30]},(name,tunes(work/f'{name}.sf2'))
+        build({'name':'short','presets':[{'name':'short','program':0,'layers':[spec_layer('Q')]}]},work/'spec_notes',work/'short.sf2')
+        assert tunes(work/'short.sf2')=={'short':[0]},tunes(work/'short.sf2')
+        return {'zones':len(zones),'borrowed_attenuation_heard_cb':100,'written_cb':250,'spectrum_fine_tunes':{'early':30,'late':-30,'short':0}}
     check('soundbank_tunes_split_notes_and_quiets_borrowed_dynamics',split_bank)
     def crossfade_gains():
         from musiclib import layered
@@ -1295,40 +1324,52 @@ def checks(work,config=None):
         return {'short_read':'tried again, never cached','damaged_cache':'downloaded again','damaged_wheel':'replaced'}
     check('a_short_or_damaged_download_is_never_kept',short_downloads)
     def compare_unit():
-        # Hand-made renders of the setup study: one where the piano's note in bar 3 changes (and its whole part moves
-        # 0.2 dB, as a part whose level is set from its loudness can: 0.01 dB here and 0.11 dB on Ubuntu's FluidSynth
-        # for one note) under a master 0.3 dB quieter, and one where only the lead is 1 dB louder.  The part's move must
-        # not show in the premix or the master away from the note.
+        # Hand-made renders of the setup study (no buses: the premix is the stems summed), the bass a quiet part:
+        # - note: the piano's note in bar 3 changes and its whole part moves 0.2 dB, as a part whose level is set from
+        #   its loudness can (one note moved a piano 0.01 dB here and 0.11 dB on Ubuntu's FluidSynth), under a master
+        #   0.3 dB quieter;
+        # - louder: only the lead is 1 dB louder;
+        # - quiet_bass: the same note change while the bass is 6 dB louder.
+        # Every passage stays in the report.  The parts' level moves account only for their own share of a mix, so the
+        # note is a change in the premix and the master however far another part moved, and from the note on only.
         from musiclib.compare import compare
         p=example();clock=Clock(p);rate=audio.RATE;frames=round((clock.end+clock.tail)*rate);t=np.arange(frames)/rate
-        def tone(k):
-            x=.1*np.sin(2*np.pi*110*2**(k/5)*t)*(1+.5*np.sin(2*np.pi*.3*t+k));return np.stack([x,.9*x],axis=1)
-        stems={tr['id']:tone(k) for k,tr in enumerate(p['tracks'])}
+        def tone(k,amp=.1):
+            x=amp*np.sin(2*np.pi*110*2**(k/5)*t)*(1+.5*np.sin(2*np.pi*.3*t+k));return np.stack([x,.9*x],axis=1)
+        stems={tr['id']:tone(k,.01 if tr['id']=='bass' else .1) for k,tr in enumerate(p['tracks'])}
         on,off=clock.seconds(8.5),clock.seconds(10);a,b=int(on*rate),int(off*rate)
         note=copy.deepcopy(p);next(n for n in note['tracks'][0]['notes'] if n['id']=='piano_n7')['pitch']+=1
         note_stems={k:v.copy() for k,v in stems.items()};note_stems['piano'][a:b]=tone(9)[a:b];note_stems['piano']*=10**(.2/20)
         louder=copy.deepcopy(p);next(tr for tr in louder['tracks'] if tr['id']=='lead')['mix']['level_dbfs']+=1
         louder_stems={k:v*(10**(1/20) if k=='lead' else 1) for k,v in stems.items()}
-        for name,proj,parts,master_db in (('before',p,stems,0),('note',note,note_stems,-.3),('louder',louder,louder_stems,0)):
+        quiet=copy.deepcopy(note);next(tr for tr in quiet['tracks'] if tr['id']=='bass')['mix']['level_dbfs']+=6
+        quiet_stems={k:v.copy() for k,v in stems.items()};quiet_stems['piano'][a:b]=tone(9)[a:b];quiet_stems['bass']*=2
+        for name,proj,parts,master_db in (('before',p,stems,0),('note',note,note_stems,-.3),('louder',louder,louder_stems,0),('quiet_bass',quiet,quiet_stems,0)):
             out=work/'compare_unit'/name;(out/'stems').mkdir(parents=True,exist_ok=True)
             save_json(out/'project.json',proj);save_json(out/'report.json',{'renderer_sha256':'one','master':{'integrated_lufs':-18}})
-            again=lambda k:k+('2' if name=='note' and k=='piano' else '')
+            again=lambda k:k+('2' if name in ('note','quiet_bass') and k=='piano' else '')
             save_json(out/'stem_receipts.json',[{'track':k,'cache_key':again(k),'raw_sha256':again(k)} for k in parts])
             for k,x in parts.items():audio.write_wav(out/'stems'/f'{k}.wav',x.astype(np.float32))
             mix=sum(parts.values());audio.write_wav(out/'premix.wav',mix.astype(np.float32));audio.write_wav(out/'master.wav',(mix*10**(master_db/20)).astype(np.float32))
+        real=lambda e:[q for q in e['passages'] if not q.get('follows_part_levels')]
         r=compare(work/'compare_unit'/'before',work/'compare_unit'/'note',work/'compare_unit'/'difference');f=r['files']
         assert r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'] and r['synthesis']['synthesized_again']==['piano'],r['summary']
         assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and f['stems']['piano']['level_db']==.2,f['stems']['piano']
         assert abs(f['premix']['premix']['level_db'])<.1 and abs(f['master']['master']['level_db']+.3)<.1,(f['premix'],f['master'])
-        assert r['mix_counted_within_db']<40 and r['summary']['note'].startswith('piano moved +0.20 dB'),r['summary']
         for e in (f['stems']['piano'],f['premix']['premix'],f['master']['master']):
-            assert len(e['passages'])==1 and abs(e['passages'][0]['start_s']-on)<.02 and abs(e['passages'][0]['end_s']-off)<.02,e
+            assert len(real(e))==1 and abs(real(e)[0]['start_s']-on)<.02 and abs(real(e)[0]['end_s']-off)<.02,e
+        assert 'note' not in r['summary'] or 'piano +0.20 dB' in r['summary']['note'],r['summary']
         d,_=audio.read_wav(work/'compare_unit'/'difference'/'stems_piano.wav');d=np.abs(np.asarray(d))
         assert d[:a-480].max()<1e-5 and d[b+480:].max()<1e-5 and d[a:b].max()>.05,'the difference is the changed note alone'
         m=compare(work/'compare_unit'/'before',work/'compare_unit'/'louder');g=m['files']
         assert m['summary']['project']==['lead mix: level_dbfs -25 -> -24'] and m['synthesis']['synthesized_again']==[]
         assert g['stems']['lead']['level_db']==1 and not g['stems']['lead']['passages'] and m['summary']['changed']['stems']=={'lead':'level only, +1.00 dB'}
-        return {'note':r['summary']['changed'],'louder':m['summary']['changed']}
+        assert not real(g['premix']['premix']) and not real(g['master']['master']),(g['premix'],g['master'])
+        q=compare(work/'compare_unit'/'before',work/'compare_unit'/'quiet_bass');h=q['files']
+        assert h['stems']['bass']['level_db']==6.02 and not h['stems']['bass']['passages'],h['stems']['bass']
+        for e in (h['premix']['premix'],h['master']['master']):
+            assert real(e) and abs(real(e)[0]['start_s']-on)<.02 and all(x['start_s']>on-.02 for x in real(e)),e
+        return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed']}
     check('compare_finds_level_and_local_changes',compare_unit)
     if config:
         from musiclib.render import render
@@ -1456,7 +1497,16 @@ def checks(work,config=None):
             spaces=sorted(set(r['buses']['spaces'].values()));wanted=[f'{s}_return.wav' for s in spaces]+['delay_return.wav']
             assert sorted(r['buses']['returns'])==sorted(wanted) and all((out/'returns'/n).is_file() for n in wanted),r['buses']['returns']
             assert r['checks']['buses_and_returns_add_up_to_premix'] and r['buses']['sum_minus_premix_peak_dbfs']<-100,r['buses']
-            return {'buses':r['buses']['assignment'],'returns':r['buses']['returns'],'sum_minus_premix_peak_dbfs':r['buses']['sum_minus_premix_peak_dbfs'],'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
+            # The same with tape wobble and a mono low end on the mix: they act on master_input.wav, and the delivered
+            # buses and returns, read back once the render is done, still add up to the delivered premix.wav.
+            t=copy.deepcopy(q);t['mix'].update(mono_below_hz=150,wow_flutter={'wow_cents':8,'wow_hz':.5,'flutter_cents':2,'flutter_hz':8})
+            save_json(work/'bus_tape.json',t);rt=render(work/'bus_tape.json',work/'render_bus_tape',config,cache);ot=work/'render_bus_tape'
+            parts=[np.asarray(audio.read_wav(f)[0],dtype=np.float64) for f in sorted((ot/'returns').glob('bus_*.wav'))+sorted((ot/'returns').glob('*_return.wav'))]
+            pm=np.asarray(audio.read_wav(ot/'premix.wav')[0],dtype=np.float64);mi=np.asarray(audio.read_wav(ot/'master_input.wav')[0],dtype=np.float64)
+            from musiclib.mixbus import adds_up
+            ok,worst,_=adds_up(sum(parts),sum(np.abs(x) for x in parts),pm,480)
+            assert rt['checks']['buses_and_returns_add_up_to_premix'] and ok and float(np.max(np.abs(mi-pm)))>1e-3,(worst,rt['checks'])
+            return {'buses':r['buses']['assignment'],'returns':r['buses']['returns'],'sum_minus_premix_peak_dbfs':r['buses']['sum_minus_premix_peak_dbfs'],'tape_premix_rebuilt_within':worst,'level_change_db':change,'master_lufs':r['master']['integrated_lufs'],'true_peak_dbtp':r['master']['true_peak_dbtp']}
         check('bus_chain_render_and_delivery_checks',bus_render)
         def chorus_pass_logs():
             # A part with a chorus logs its later FFmpeg pass as ".pass1"; a part named like that pass ("<id>_1")
@@ -1493,15 +1543,28 @@ def checks(work,config=None):
             assert r['synthesis']['synthesized_again']==['piano'] and r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'],r['summary']
             assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and [k for k,e in f['returns'].items() if not e['identical']]==['hall'],r['summary']
             # Every file that changed changes from the note on, on any system: how far the piano's level moves with the
-            # note depends on the FluidSynth (0.01 dB here, 0.11 dB on Ubuntu), and a mix counts that move apart.
+            # note depends on the FluidSynth (0.01 dB here, 0.11 dB on Ubuntu), and that move is marked apart.
+            real=lambda e:[x for x in e['passages'] if not x.get('follows_part_levels')]
             moved=[e for g in ('stems','buses','returns','premix','master') for e in f[g].values() if not e['identical']]
-            assert all(e['passages'] and abs(e['passages'][0]['start_s']-on)<.15 and all(q['start_s']>on-.15 for q in e['passages']) for e in moved),r['summary']
+            assert all(real(e) and abs(real(e)[0]['start_s']-on)<.15 and all(x['start_s']>on-.15 for x in real(e)) for e in moved),r['summary']
             heard=clip(audio.load_config(config),r,work/'note_ab.mp3')
-            assert heard and (work/'note_ab.mp3').stat().st_size>10000 and abs(heard['start_s']-(f['master']['master']['passages'][0]['start_s']-1.5))<.02,heard
+            assert heard and (work/'note_ab.mp3').stat().st_size>10000 and abs(heard['start_s']-(real(f['master']['master'])[0]['start_s']-1.5))<.02,heard
             m=compare(work/'render_bus',work/'render_bus_louder');g=m['files']
             assert m['synthesis']['synthesized_again']==[] and g['stems']['lead']['level_db']==1 and not g['stems']['lead']['passages'],m['summary']
             assert all(g['returns'][s]['level_db']==1 and not g['returns'][s]['passages'] for s in ('plate','delay')),m['summary']
-            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard}
+            assert not real(g['premix']['premix']) and not real(g['master']['master']),m['summary']
+            # A clip whose old side is silent (a part added in a rest): the silent side stays silent, the other is cut
+            # at its own loudness, and the clip is made.
+            for name,tone_at in (('silent_before',None),('silent_after',(10.,14.))):
+                d=work/'clip_case'/name;d.mkdir(parents=True,exist_ok=True);save_json(d/'project.json',p)
+                save_json(d/'report.json',{'renderer_sha256':'one'});save_json(d/'stem_receipts.json',[])
+                n=20*audio.RATE;x=np.zeros((n,2));tt=np.arange(n)/audio.RATE;x[:4*audio.RATE]=(.2*np.sin(2*np.pi*220*tt[:4*audio.RATE]))[:,None]
+                if tone_at:x[int(tone_at[0]*audio.RATE):int(tone_at[1]*audio.RATE)]=(.2*np.sin(2*np.pi*330*tt[:int(4*audio.RATE)]))[:,None]
+                audio.write_wav(d/'master.wav',x.astype(np.float32))
+            s=compare(work/'clip_case'/'silent_before',work/'clip_case'/'silent_after')
+            quiet=clip(audio.load_config(config),s,work/'silent_ab.mp3')
+            assert quiet and quiet['levels_lufs'][0] is None and quiet['levels_lufs'][1] is not None and (work/'silent_ab.mp3').stat().st_size>10000,quiet
+            return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'clip':heard,'silent_side_clip':quiet}
         check('compare_reports_what_changed_and_where',compare_render)
         def loop_render():
             from musiclib import loop

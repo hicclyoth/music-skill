@@ -22,8 +22,9 @@ mix (musiclib/stage.py) and sends more to its space, half the distance loss.
 
 Files.  returns/ keeps each bus (bus_<bus>.wav), each space's return (<space>_return.wav), the delay return
 (delay_return.wav) and the impulse responses.  The buses and the returns are the premix in parts: summed they give it
-back, which the render checks, so a mix can be rebuilt from them in another program.  The stems in stems/ are each
-part before its bus and without the shared spaces.
+back to float32 rounding, which the render checks, so a mix can be rebuilt from them in another program.  The stems in
+stems/ are each part before its bus and without the shared spaces.  A project's mix.wow_flutter and mix.mono_below_hz
+act on a copy the master reads (master_input.wav), so premix.wav stays the sum.
 
 Master.  The premix is brought to -18 LUFS for glue compression (about 2 dB on the loudest passages), an air shelf, a
 little presence and a -1 dBFS limiter.  One gain toward mix.target_lufs then feeds a -1.5 dBFS sample-peak limiter;
@@ -205,26 +206,37 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
     if not full:
         return None
 
-    change, total = {}, None
+    change, total, mag = {}, 0.0, 0.0
     for b in BUSES:
         members = [s for s, t in zip(stems, tracks) if bus_of(t) == b]
         if members:
             summed = sum(audio.read_wav(s)[0].astype(np.float64) for s in members)
             bus = np.asarray(audio.read_wav(returns / f'bus_{b}.wav')[0], dtype=np.float64)
             change[b] = round(k_level(bus) - k_level(summed), 2)
-            total = bus if total is None else total + bus
+            total, mag = total + bus, mag + np.abs(bus)
     for _, path in returned:
-        total = total + audio.read_wav(path)[0]
+        x = np.asarray(audio.read_wav(path)[0], dtype=np.float64)
+        total, mag = total + x, mag + np.abs(x)
     save_json(output / 'bus_level_change_db.json', change)
     # Summed, the buses and returns give the premix back up to float rounding (the premix fades in over its first 5 ms).
-    # The copy releases the mapped premix, which the master may rewrite.
     mixed = np.asarray(audio.read_wav(premix)[0], dtype=np.float64)
-    skip = int(.01 * RATE)
-    worst = float(np.max(np.abs(total[skip:] - mixed[skip:]))) if len(mixed) > skip else 0.0
+    ok, worst, share = adds_up(total, mag, mixed, int(.01 * RATE))
     return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
                                                                          if t['mix'].get('reverb_db') is not None},
             'level_change_db': change, 'returns': [path.name for _, path in returned],
-            'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1), 'adds_up_to_premix': worst < 1e-5}
+            'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1),
+            'sum_error_share_of_allowance': round(share, 4), 'adds_up_to_premix': ok}
+
+
+def adds_up(total, mag, mixed, skip=0):
+    """Whether the sum of a mix's parts (`total`, with `mag` the sum of their magnitudes) gives `mixed` back to float32
+    rounding: per sample within 1e-6 plus 16 float32 steps of the parts' magnitudes, since a premix before mastering
+    can run far above full scale.  Returns (ok, the worst absolute difference, the worst share of that allowance)."""
+    d = np.abs(total[skip:] - mixed[skip:])
+    if not d.size:
+        return True, 0.0, 0.0
+    share = float(np.max(d / (1e-6 + 16 * 2.0 ** -23 * mag[skip:])))
+    return share <= 1, float(d.max()), share
 
 
 def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):
@@ -249,25 +261,27 @@ def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):
 
 
 def master(p, cfg, output):
-    """premix.wav -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit)."""
+    """premix.wav (or master_input.wav) -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit)."""
     logs = output / 'logs'
+    source_in = output / 'premix.wav'
     if p['mix'].get('wow_flutter') or p['mix'].get('mono_below_hz'):
         # Tape wobble over the whole mix, then low frequencies mono (musiclib/production.py), before the master
-        # measures and compresses the premix.
+        # measures and compresses it: written to master_input.wav, so premix.wav stays the buses and returns summed.
         from . import production
-        x, _ = audio.read_wav(output / 'premix.wav')
+        x, _ = audio.read_wav(source_in)
         x = x.astype('float64')  # releases the mapped file
         if p['mix'].get('wow_flutter'):
             x, _ = production.wow_flutter(x, p['mix']['wow_flutter'], 'premix')
         if p['mix'].get('mono_below_hz'):
             x = production.mono_below(x, p['mix']['mono_below_hz'])
-        audio.write_wav(output / 'premix.wav', x.astype('float32'))
-    before = audio.measure(cfg, output / 'premix.wav', logs, 'measure_premix')
+        source_in = output / 'master_input.wav'
+        audio.write_wav(source_in, x.astype('float32'))
+    before = audio.measure(cfg, source_in, logs, 'measure_premix')
     gain = MIX_LUFS - before['integrated_lufs']
     wide = p['mix'].get('dynamics') == 'wide'
     chain = f'volume={gain:.6f}dB,' + (MASTER_EQ if wide else MASTER.format(thr=10 ** (-16 / 20)))
     mixed = output / 'mixed.wav'
-    audio.ffmpeg(cfg, ['-i', output / 'premix.wav', '-af', chain, '-ar', str(RATE), '-c:a', 'pcm_f32le', mixed], logs, 'master_chain')
+    audio.ffmpeg(cfg, ['-i', source_in, '-af', chain, '-ar', str(RATE), '-c:a', 'pcm_f32le', mixed], logs, 'master_chain')
     source = audio.measure(cfg, mixed, logs, 'measure_mixed')
     target = p['mix'].get('target_lufs', -16)
     if wide:

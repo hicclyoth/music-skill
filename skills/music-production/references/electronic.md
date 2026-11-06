@@ -107,7 +107,7 @@ Techno grew in Detroit in the mid-1980s from synth-pop, electro, funk and house,
   - Smith (2021), analysing 2010s trance and house, shows how continuous processes, filter sweeps, crescendos and pitch slides, work as ornament, as orientation (they tell dancers where a section is going) and, in breakdowns, as disorientation.
   - On the engine:
     - `mix.filter_sweep` on the loop over 16–32 bars;
-    - a delay's `send_db` or `feedback` raised over a section;
+    - a delay that grows: the line doubled on a second part whose `mix.delay` has more `feedback` and a higher `send_db`, faded in with that part's `automation` (a part's delay settings hold for the whole part);
     - a part's `automation`;
     - a new percussion layer every 8 or 16 bars.
 - **The rumble.** A low, swelling tail under the kick, made in the studio by sending the kick to a long reverb, low-passing it at 250–300 Hz, distorting it and ducking it by the kick so it swells between hits (Attack Magazine; MusicRadar). On the engine:

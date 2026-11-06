@@ -97,7 +97,10 @@ def main():
         out=args.output or args.after/f'compare_{args.before.resolve().name}.json';fresh(out)
         if args.clip:fresh(args.clip)
         r=compare(args.before,args.after,args.differences)
-        if args.clip:r['clip']=clip(load_config(args.config),r,args.clip)
+        if args.clip:
+            # The clip is optional: if it cannot be made, the report still is, and says why.
+            try:r['clip']=clip(load_config(args.config),r,args.clip)
+            except (ValueError,OSError,RuntimeError) as e:r['clip']={'error':str(e)}
         save_json(out,r)
         print(json.dumps({'output':str(out),'warnings':r['warnings'],**r['summary'],'clip':r.get('clip')},ensure_ascii=False));return
     p=load_project(args.project)

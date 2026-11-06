@@ -6,16 +6,18 @@ On one machine and runtime a file nothing reached is identical sample for sample
 "identical" is exact.  A file whose whole level moved, as a part's stem does when its level changes or when an edit
 moves the loudness its level is set from, and as the master always does (its gain follows the loudness target), is
 first matched in level by one gain.  What remains is the change: it counts in a 10 ms window where it is louder than
--100 dBFS and no more than 40 dB under the louder version there, and is reported by where it is (seconds, and bars of
-the later render) and how far it sits under the signal.  The numbers say what changed and where, not whether it sounds
-better; the clip (`clip`) is for listening.
+-100 dBFS and no more than 40 dB under the louder version there (in a file that mixes parts, under its highest level
+within 50 ms either side, since parts close in pitch beat against each other and dip the mix for a moment).  Each
+passage is reported by where it is (seconds, and bars of the later render) and how far it sits under the signal.  The
+numbers say what changed and where, not whether it sounds better; the clip (`clip`) is for listening.
 
-A part's level is set from its loudness, so one changed note moves the whole part a little (the same edit moved a
-piano 0.01 dB with one FluidSynth and 0.11 dB with another).  Its stem reports that as its overall level.  In the files
-that mix parts (buses, returns, premix, master) such a move is no single gain for the file and would show wherever the
-part plays, so there a difference counts only when it is louder, by 6 dB, than what the largest move leaves; the entry
-says whether anything beyond the parts' level changes differs.  In those files the signal's level in a window is its
-highest within 50 ms either side, since parts close in pitch beat against each other and dip the mix for a moment.
+A part's level is set from its loudness, so one changed note also moves the whole part a little (the same edit moved a
+piano 0.01 dB with one FluidSynth and 0.11 dB with another), and a part's level can be changed on purpose.  Its stem
+reports that as its overall level.  In a file that mixes parts such a move is no single gain for the file and shows
+wherever the part plays.  Every passage stays in the report; one whose difference the parts' level moves account for,
+within 6 dB, is marked `follows_part_levels`.  What they account for follows the chain: a bus from its parts' stems, a
+return from the parts that send to it, the premix from the buses and returns (it is their sum), the master from the
+premix.
 """
 import json
 import math
@@ -30,16 +32,11 @@ from .model import Clock
 RATE = audio.RATE
 HOP = 480               # 10 ms windows
 FLOOR_DB = -100.0       # a difference quieter than this (dBFS) does not count
-UNDER_SIGNAL_DB = 40.0  # nor one this far under the louder version in its 10 ms window.  A part whose level is set
-                        # from its loudness moves by about 0.01 dB when one of its notes changes, which leaves about
-                        # 60 dB under that part wherever it plays in the premix, and the master's compressor and
-                        # limiter answer any change of loudness by a hair everywhere
+UNDER_SIGNAL_DB = 40.0  # nor one this far under the louder version in its 10 ms window
 MERGE_S = .5            # changed windows closer than this make one passage
-SPILL_MARGIN_DB = 6.0   # in a mix, over what the largest part's level move leaves (see above)
-MIN_UNDER_DB = 10.0     # however far a part moved, a mix still counts a difference within 10 dB of the signal
-NEAR_WINDOWS = 5        # a mix's signal level in a window is its highest within 50 ms either side: parts close in
-                        # pitch beat against each other, and a window at a beat's trough would make a hair of a
-                        # part's level move look loud
+NEAR_WINDOWS = 5        # in a mix, the signal's level in a window is its highest within 50 ms either side
+RELEASE_WINDOWS = 30    # a bus compressor's release (300 ms) carries a part's level move past its notes
+LEVEL_MARGIN = 4.0      # a passage follows the parts' level moves when its difference stays within 6 dB of theirs
 GROUPS = ('stems', 'buses', 'returns', 'premix', 'master')
 
 
@@ -168,14 +165,48 @@ def _near_max(p, k=NEAR_WINDOWS):
     return out
 
 
-def compare_audio(before, after, clock, under_db=UNDER_SIGNAL_DB, mix=False):
-    """One file of two renders: identical, or the level change that matches them best and where the rest differs.
-    A difference counts within `under_db` of the signal (less than UNDER_SIGNAL_DB in a mix whose parts moved); in a
-    `mix` the signal's level is its highest nearby (NEAR_WINDOWS)."""
+def _trail(p, k):
+    """Each window's value as the highest over itself and the k windows before it."""
+    out = p.copy()
+    for s in range(1, k + 1):
+        out[s:] = np.maximum(out[s:], p[:-s])
+    return out
+
+
+def _difference(entry, pr, louder, windows):
+    """How far the difference sits under the signal over `windows`."""
+    entry['difference_db'] = round(float(_db(pr[windows].sum() / louder[windows].sum())), 1)
+
+
+def _spans(windows):
+    """The first and last window of each run of marked windows, runs closer than MERGE_S joined."""
+    spans = []
+    for i in np.flatnonzero(windows):
+        if spans and i - spans[-1][1] <= MERGE_S * RATE / HOP:
+            spans[-1][1] = int(i)
+        else:
+            spans.append([int(i), int(i)])
+    return spans
+
+
+def _passages(clock, windows):
+    """The passages of the marked windows, in seconds and bar:beat."""
+    return [{'start_s': round(s * HOP / RATE, 2), 'end_s': round((e + 1) * HOP / RATE, 2),
+             'from': position(clock, s * HOP / RATE), 'to': position(clock, (e + 1) * HOP / RATE)} for s, e in _spans(windows)]
+
+
+def compare_audio(before, after, clock, mix=False):
+    """One file of two renders: identical, or the level change that matches them best and the passages where the rest
+    differs.  Also returns the residual (after minus the matched before) and, per 10 ms window, what the chain needs to
+    tell a part's level move from a change: the matching gain, the before file's power, the residual's power, the
+    signal's level and which windows count."""
     xa, xb = audio.read_wav(before)[0], audio.read_wav(after)[0]
-    if xa.shape == xb.shape and np.array_equal(xa, xb):
-        return {'identical': True}, None
+    same = xa.shape == xb.shape and np.array_equal(xa, xb)
     a = np.asarray(xa, dtype=np.float64)
+    if same:
+        pa = _power(a * a)
+        return {'identical': True}, None, {'gain': 1.0, 'pa': pa, 'pb': pa, 'pr': np.zeros_like(pa), 'louder': pa,
+                                           'counted': np.zeros(len(pa), dtype=bool)}
     b = np.asarray(xb, dtype=np.float64)
     del xa, xb
     out = {'identical': False}
@@ -201,27 +232,13 @@ def compare_audio(before, after, clock, under_db=UNDER_SIGNAL_DB, mix=False):
     r = b - gain * a
     pr, louder = _power(r * r), np.maximum(gain * gain * pa, pb)
     level_ref = _near_max(louder) if mix else louder
-    heard = _db(pr) > FLOOR_DB
-    strict = heard & (_db(pr) > _db(level_ref) - UNDER_SIGNAL_DB)
-    changed = strict if under_db >= UNDER_SIGNAL_DB else heard & (_db(pr) > _db(level_ref) - under_db)
+    counted = (_db(pr) > FLOOR_DB) & (_db(pr) > _db(level_ref) - UNDER_SIGNAL_DB)
     out['level_db'] = round(level, 2)
-    if under_db < UNDER_SIGNAL_DB:
-        out['counted_within_db'] = round(under_db, 1)
-        out['follows_part_levels'] = bool(strict.any() and not changed.any())
-    idx = np.flatnonzero(changed)
-    passages = []
-    for i in idx:
-        if passages and i - passages[-1][1] <= MERGE_S * RATE / HOP:
-            passages[-1][1] = i
-        else:
-            passages.append([i, i])
-    out['passages'] = [{'start_s': round(s * HOP / RATE, 2), 'end_s': round((e + 1) * HOP / RATE, 2),
-                        'from': position(clock, s * HOP / RATE), 'to': position(clock, (e + 1) * HOP / RATE)}
-                       for s, e in passages]
-    if len(idx):
-        out['difference_db'] = round(float(_db(pr[idx].sum() / louder[idx].sum())), 1)
+    out['passages'] = _passages(clock, counted)
+    if counted.any():
+        _difference(out, pr, louder, counted)
         out['difference_peak_dbfs'] = round(20 * math.log10(max(float(np.max(np.abs(r))), 1e-15)), 1)
-    return out, r
+    return out, r, {'gain': gain, 'pa': pa, 'pb': pb, 'pr': pr, 'louder': louder, 'counted': counted}
 
 
 def _files(render):
@@ -234,26 +251,100 @@ def _files(render):
     return {g: {k: p for k, p in files.items() if p.is_file()} for g, files in out.items()}
 
 
+def _explain(project, clock, files, data):
+    """Split the passages of the mixed files into changes and what the parts' level moves account for (see the module
+    notes), the chain in order: buses, returns, premix, master."""
+    from .mixbus import bus_of, space_of
+    tracks = project['tracks']
+    stems = {n: data[('stems', n)] for n in files['stems'] if ('stems', n) in data}
+    bus_chain = project['mix'].get('chain', 'room') == 'bus'
+
+    def amp(units, g_file, release=0):
+        """What the units' level moves leave in a file matched by g_file, as an amplitude per window: each unit's
+        move against the file's gain on its own level, plus whatever part of its own difference its parts' moves
+        already account for.  Where a unit itself changed (and for a bus compressor's release after), its level move
+        explains nothing: the change is played there."""
+        total = 0.0
+        for u in units:
+            p = _near_max(u['pa'])
+            if release:
+                p = _trail(p, release)
+            own = _trail(u.get('real', u['counted']).astype(float), RELEASE_WINDOWS) > 0
+            total = total + np.where(own, 0.0, abs(u['gain'] - g_file) * np.sqrt(p)) + np.sqrt(u.get('pr_level', 0.0))
+        return total
+
+    def label(group, name, bound):
+        w, e = data.get((group, name)), files[group].get(name)
+        w['bound'] = bound
+        if e.get('identical'):
+            w['real'], w['pr_level'] = w['counted'], w['pr']
+            return
+        explained = w['pr'] <= LEVEL_MARGIN * bound
+        # A change's passage keeps every counted window inside it (its tail, a dip): only what lies apart from the
+        # changes can follow the parts' level moves.
+        inside = np.zeros_like(w['counted'])
+        for s, t in _spans(w['counted'] & ~explained):
+            inside[s:t + 1] = True
+        w['real'] = w['counted'] & inside
+        w['pr_level'] = np.where(explained & ~inside, w['pr'], 0.0)
+        e['passages'] = sorted([{**q, 'follows_part_levels': False} for q in _passages(clock, w['real'])]
+                               + [{**q, 'follows_part_levels': True} for q in _passages(clock, w['counted'] & ~inside)],
+                               key=lambda q: q['start_s'])
+        if w['real'].any():
+            _difference(e, w['pr'], w['louder'], w['real'])
+
+    for name in files['buses']:
+        if ('buses', name) in data:
+            members = [stems[t['id']] for t in tracks if bus_of(t) == name and t['id'] in stems]
+            label('buses', name, amp(members, data[('buses', name)]['gain'], RELEASE_WINDOWS) ** 2)
+    for name in files['returns']:
+        w = data.get(('returns', name))
+        if w is None:
+            continue
+        if name == 'delay':
+            senders = [t['id'] for t in tracks if t['mix'].get('delay_db') is not None]
+        else:
+            senders = [t['id'] for t in tracks if t['mix'].get('reverb_db') is not None and (not bus_chain or space_of(t) == name)]
+        # A return is its senders' sends through one space: a sender's level move reaches it as that share of the
+        # return's own level, at most all of it.
+        moved = max([abs(stems[i]['gain'] - w['gain']) for i in senders if i in stems] or [0.0])
+        label('returns', name, moved ** 2 * _near_max(w['louder']))
+    wp, wm = data.get(('premix', 'premix')), data.get(('master', 'master'))
+    if wp is not None:
+        units = [data[('buses', n)] for n in files['buses'] if ('buses', n) in data] or list(stems.values())
+        units += [data[('returns', n)] for n in files['returns'] if ('returns', n) in data]
+        label('premix', 'premix', amp(units, wp['gain']) ** 2)
+        if wm is not None:
+            # The master is the premix through a gain and the master chain: what the premix's level moves leave
+            # reaches it scaled by the master's level over the premix's.
+            g2 = float(wm['pb'].mean() / max(float(wp['pb'].mean()), 1e-30))
+            label('master', 'master', g2 * (np.sqrt(wp['bound']) + np.sqrt(wp['pr_level'])) ** 2)
+
+
+def _span_text(passages):
+    return ', '.join(f'{p["from"]}-{p["to"]}' for p in passages[:4]) + (f' and {len(passages) - 4} more' if len(passages) > 4 else '')
+
+
 def describe(entry):
     """One line for a changed file."""
     if entry.get('identical'):
         return 'identical'
     parts = []
     passages = entry.get('passages', [])
+    real = [p for p in passages if not p.get('follows_part_levels')]
+    follow = [p for p in passages if p.get('follows_part_levels')]
     level = entry.get('level_db')
-    if passages:
-        if level:
-            parts.append(f'overall level {level:+.2f} dB')
-        spans = ', '.join(f'{p["from"]}-{p["to"]}' for p in passages[:4]) + (f' and {len(passages) - 4} more' if len(passages) > 4 else '')
+    if level and passages:
+        parts.append(f'overall level {level:+.2f} dB')
+    if real:
         d = entry['difference_db']
-        parts.append(f'changed at {spans} (bar:beat), the change ' + (f'{-d:.1f} dB under the signal' if d <= -.5 else
-                                                                     f'as loud as the signal ({d:+.1f} dB)'))
-    elif entry.get('follows_part_levels'):
-        parts.append((f'overall level {level:+.2f} dB; ' if level else '') + "the rest follows the parts' level changes")
-    elif level:
-        parts.append(f'level only, {level:+.2f} dB')
-    else:
-        parts.append(f'differs only below {FLOOR_DB:g} dBFS or {UNDER_SIGNAL_DB:g} dB under the signal')
+        parts.append(f'changed at {_span_text(real)} (bar:beat), the change ' + (f'{-d:.1f} dB under the signal' if d <= -.5 else
+                                                                            f'as loud as the signal ({d:+.1f} dB)'))
+    if follow:
+        parts.append(('elsewhere ' if real else '') + f"the parts' level changes reach it at {_span_text(follow)}")
+    if not passages:
+        parts.append(f'level only, {level:+.2f} dB' if level else
+                     f'differs only below {FLOOR_DB:g} dBFS or {UNDER_SIGNAL_DB:g} dB under the signal')
     if entry.get('length_change_s'):
         parts.append(f'length {entry["length_change_s"]:+g} s')
     return '; '.join(parts)
@@ -287,8 +378,8 @@ def compare(before, after, differences=None):
             raise ValueError(f'{differences} exists; outputs never overwrite, so choose a new folder')
         differences.mkdir(parents=True)
     fa, fb = _files(a), _files(b)
-    files, mix_under, note = {}, UNDER_SIGNAL_DB, None
-    for group in GROUPS:  # the stems first: their level moves set what a mix counts
+    files, data = {}, {}
+    for group in GROUPS:
         entries = {}
         for name in [*fb[group], *(n for n in fa[group] if n not in fb[group])]:
             if name not in fa[group]:
@@ -297,47 +388,43 @@ def compare(before, after, differences=None):
             if name not in fb[group]:
                 entries[name] = {'removed': True}
                 continue
-            entry, residual = compare_audio(fa[group][name], fb[group][name], clock,
-                                            UNDER_SIGNAL_DB if group == 'stems' else mix_under, mix=group != 'stems')
+            entry, residual, data[(group, name)] = compare_audio(fa[group][name], fb[group][name], clock, mix=group != 'stems')
             if differences is not None and residual is not None and entry.get('passages'):
                 audio.write_wav(differences / f'{group}_{name}.wav', residual.astype(np.float32))
             entries[name] = entry
         files[group] = entries
-        moves = [(n, e['level_db']) for n, e in entries.items() if e.get('level_db')] if group == 'stems' else []
-        if moves:
-            part, level = max(moves, key=lambda m: abs(10 ** (m[1] / 20) - 1))
-            left = -20 * math.log10(abs(10 ** (level / 20) - 1))
-            mix_under = min(UNDER_SIGNAL_DB, max(MIN_UNDER_DB, left - SPILL_MARGIN_DB))
-            if mix_under < UNDER_SIGNAL_DB:
-                note = (f'{part} moved {level:+.2f} dB as a whole, which reaches every mix it plays in about {left:.0f} dB '
-                        f'under that part; the buses, returns, premix and master count a difference only within '
-                        f'{mix_under:.0f} dB of the signal')
+    _explain(b['project'], clock, files, data)
     changes = project_changes(a['project'], b['project'])
     synth = synthesis(a, b)
     summary = {'project': project_lines(changes), **{k: v for k, v in synth.items() if k != 'reused'},
                'changed': {g: {n: ('added' if e.get('added') else 'removed' if e.get('removed') else describe(e))
                                for n, e in entries.items() if not e.get('identical')} for g, entries in files.items()},
                'identical': {g: sum(1 for e in entries.values() if e.get('identical')) for g, entries in files.items()}}
-    if note:
-        summary['note'] = note
+    if any(p.get('follows_part_levels') for g in GROUPS[1:] for e in files[g].values() for p in e.get('passages', [])):
+        moved = [f'{n} {e["level_db"]:+.2f} dB' for n, e in files['stems'].items() if e.get('level_db')]
+        summary['note'] = ("Passages marked as following the parts' level changes are where a part that moved as a whole"
+                           f" ({', '.join(moved) or 'see the stems'}) reaches the mix; nothing new was played there.")
     return {'before': str(a['folder']), 'after': str(b['folder']), 'warnings': runtime_warnings(a, b),
             'project_changes': changes, 'synthesis': synth, 'files': files, 'summary': summary,
-            'mix_counted_within_db': round(mix_under, 1),
             'master_lufs': [a['report'].get('master', {}).get('integrated_lufs'), b['report'].get('master', {}).get('integrated_lufs')]}
 
 
 def first_change(result):
-    """The first changed passage of the master (or, if the master only moved in level, of the premix), in seconds."""
-    for group, name in (('master', 'master'), ('premix', 'premix')):
-        passages = result['files'].get(group, {}).get(name, {}).get('passages')
-        if passages:
-            return passages[0]['start_s']
+    """Where the first change of the master starts, in seconds (or of the premix): its first passage that is more than
+    the parts' level moves, else its first passage."""
+    for real_only in (True, False):
+        for group, name in (('master', 'master'), ('premix', 'premix')):
+            passages = result['files'].get(group, {}).get(name, {}).get('passages') or []
+            passages = [p for p in passages if not (real_only and p.get('follows_part_levels'))]
+            if passages:
+                return passages[0]['start_s']
     return None
 
 
 def clip(cfg, result, out, seconds=8.0, lead_in=1.5):
-    """Old then new: the same span of both masters around the first change, each brought to the same integrated
-    loudness by one gain, 0.8 s apart, as an MP3 (FFmpeg measures and encodes it)."""
+    """Old then new: the same span of both masters around the first change, each as long as the span (silence where a
+    master is silent or ends), brought to the same integrated loudness by one gain where both can be measured, 0.8 s
+    apart, as an MP3 (FFmpeg measures and encodes it)."""
     out = Path(out)
     if out.exists():
         raise ValueError(f'{out} exists; outputs never overwrite, so choose a new path')
@@ -345,24 +432,32 @@ def clip(cfg, result, out, seconds=8.0, lead_in=1.5):
     if start is None:
         return None
     start = max(0.0, start - lead_in)
+    n = int(seconds * RATE)
     work = out.parent / (out.stem + '_work')
     work.mkdir(parents=True, exist_ok=False)
     try:
         cuts = []
         for label, folder in (('before', result['before']), ('after', result['after'])):
             x = audio.read_wav(Path(folder) / 'master.wav')[0]
-            a, z = int(start * RATE), min(len(x), int((start + seconds) * RATE))
-            cut = np.array(x[a:z], dtype=np.float64)
-            fade = min(int(.03 * RATE), len(cut) // 2)
+            a = int(start * RATE)
+            cut = np.zeros((n, x.shape[1]))
+            part = np.asarray(x[a:a + n], dtype=np.float64)
+            cut[:len(part)] = part
+            fade = int(.03 * RATE)
             ramp = np.linspace(0, 1, fade)[:, None]
             cut[:fade] *= ramp
-            cut[len(cut) - fade:] *= ramp[::-1]
+            cut[n - fade:] *= ramp[::-1]
             path = work / f'{label}.wav'
             audio.write_wav(path, cut.astype(np.float32))
-            cuts.append((cut, audio.measure(cfg, path, work, f'measure_{label}')['integrated_lufs']))
-        target = min(level for _, level in cuts)
-        both = np.concatenate([cuts[0][0] * 10 ** ((target - cuts[0][1]) / 20), np.zeros((int(.8 * RATE), cuts[0][0].shape[1])),
-                               cuts[1][0] * 10 ** ((target - cuts[1][1]) / 20)])
+            try:
+                level = audio.measure(cfg, path, work, f'measure_{label}')['integrated_lufs']
+            except ValueError:
+                level = None  # silent here (a part added in a rest, or the music removed): kept silent
+            cuts.append((cut, level))
+        measured = [level for _, level in cuts if level is not None]
+        target = min(measured) if measured else None
+        gained = [cut * (10 ** ((target - level) / 20) if level is not None else 1.0) for cut, level in cuts]
+        both = np.concatenate([gained[0], np.zeros((int(.8 * RATE), gained[0].shape[1])), gained[1]])
         peak = float(np.max(np.abs(both)))
         if peak > .89:
             both *= .89 / peak
@@ -371,5 +466,6 @@ def clip(cfg, result, out, seconds=8.0, lead_in=1.5):
         audio.ffmpeg(cfg, ['-i', work / 'clip.wav', '-c:a', 'libmp3lame', '-b:a', '256k', out], work, 'clip_mp3')
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    return {'file': str(out), 'start_s': round(start, 2), 'seconds': round(min(seconds, len(cuts[0][0]) / RATE), 2),
-            'from': position(Clock(load(result['after'])['project']), start), 'levels_lufs': [round(l, 2) for _, l in cuts]}
+    return {'file': str(out), 'start_s': round(start, 2), 'seconds': round(seconds, 2),
+            'from': position(Clock(load(result['after'])['project']), start),
+            'levels_lufs': [None if level is None else round(level, 2) for _, level in cuts]}

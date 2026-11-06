@@ -11,7 +11,7 @@ More styles, each with a guide written from its sources, a nylon-string guitar, 
 - **`studio.py compare`** for two renders of a project. It reports:
   - what the project changed: notes, mix, clock;
   - which parts were synthesized again;
-  - for every stem, bus, reverb and delay return, the premix and the master: identical sample for sample, or its overall level change and the passages, in bar:beat, where it differs and how loud the difference is.
+  - for every stem, bus, reverb and delay return, the premix and the master: identical sample for sample, or its overall level change and the passages, in bar:beat, where it differs and how loud the difference is. A passage that only follows a part's overall level change is marked as such.
 
   `--clip` cuts eight seconds of the change, old then new at the same loudness, and `--differences` writes each changed file as after minus before. The agent now compares every revision with the previous render. Two selfchecks cover it; the selfcheck now runs 91 checks (73 without a renderer configuration).
 - **Reverb and delay returns as files.** On the bus chain, `returns/` now also holds each reverb's return and the delay return. With the six buses they add up to the premix, and every render checks that, so a mix can be rebuilt in another program.
