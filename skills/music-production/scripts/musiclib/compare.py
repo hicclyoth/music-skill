@@ -9,6 +9,13 @@ first matched in level by one gain.  What remains is the change: it counts in a 
 -100 dBFS and no more than 40 dB under the louder version there, and is reported by where it is (seconds, and bars of
 the later render) and how far it sits under the signal.  The numbers say what changed and where, not whether it sounds
 better; the clip (`clip`) is for listening.
+
+A part's level is set from its loudness, so one changed note moves the whole part a little (the same edit moved a
+piano 0.01 dB with one FluidSynth and 0.11 dB with another).  Its stem reports that as its overall level.  In the files
+that mix parts (buses, returns, premix, master) such a move is no single gain for the file and would show wherever the
+part plays, so there a difference counts only when it is louder, by 6 dB, than what the largest move leaves; the entry
+says whether anything beyond the parts' level changes differs.  In those files the signal's level in a window is its
+highest within 50 ms either side, since parts close in pitch beat against each other and dip the mix for a moment.
 """
 import json
 import math
@@ -28,6 +35,11 @@ UNDER_SIGNAL_DB = 40.0  # nor one this far under the louder version in its 10 ms
                         # 60 dB under that part wherever it plays in the premix, and the master's compressor and
                         # limiter answer any change of loudness by a hair everywhere
 MERGE_S = .5            # changed windows closer than this make one passage
+SPILL_MARGIN_DB = 6.0   # in a mix, over what the largest part's level move leaves (see above)
+MIN_UNDER_DB = 10.0     # however far a part moved, a mix still counts a difference within 10 dB of the signal
+NEAR_WINDOWS = 5        # a mix's signal level in a window is its highest within 50 ms either side: parts close in
+                        # pitch beat against each other, and a window at a beat's trough would make a hair of a
+                        # part's level move look loud
 GROUPS = ('stems', 'buses', 'returns', 'premix', 'master')
 
 
@@ -147,8 +159,19 @@ def _db(p):
     return 10 * np.log10(np.maximum(p, 1e-30))
 
 
-def compare_audio(before, after, clock):
-    """One file of two renders: identical, or the level change that matches them best and where the rest differs."""
+def _near_max(p, k=NEAR_WINDOWS):
+    """Each window's value as the highest within k windows either side."""
+    out = p.copy()
+    for s in range(1, k + 1):
+        out[s:] = np.maximum(out[s:], p[:-s])
+        out[:-s] = np.maximum(out[:-s], p[s:])
+    return out
+
+
+def compare_audio(before, after, clock, under_db=UNDER_SIGNAL_DB, mix=False):
+    """One file of two renders: identical, or the level change that matches them best and where the rest differs.
+    A difference counts within `under_db` of the signal (less than UNDER_SIGNAL_DB in a mix whose parts moved); in a
+    `mix` the signal's level is its highest nearby (NEAR_WINDOWS)."""
     xa, xb = audio.read_wav(before)[0], audio.read_wav(after)[0]
     if xa.shape == xb.shape and np.array_equal(xa, xb):
         return {'identical': True}, None
@@ -177,8 +200,14 @@ def compare_audio(before, after, clock):
         gain, level = 1.0, 0.0
     r = b - gain * a
     pr, louder = _power(r * r), np.maximum(gain * gain * pa, pb)
-    changed = (_db(pr) > FLOOR_DB) & (_db(pr) > _db(louder) - UNDER_SIGNAL_DB)
+    level_ref = _near_max(louder) if mix else louder
+    heard = _db(pr) > FLOOR_DB
+    strict = heard & (_db(pr) > _db(level_ref) - UNDER_SIGNAL_DB)
+    changed = strict if under_db >= UNDER_SIGNAL_DB else heard & (_db(pr) > _db(level_ref) - under_db)
     out['level_db'] = round(level, 2)
+    if under_db < UNDER_SIGNAL_DB:
+        out['counted_within_db'] = round(under_db, 1)
+        out['follows_part_levels'] = bool(strict.any() and not changed.any())
     idx = np.flatnonzero(changed)
     passages = []
     for i in idx:
@@ -211,14 +240,19 @@ def describe(entry):
         return 'identical'
     parts = []
     passages = entry.get('passages', [])
-    if entry.get('level_db'):
-        parts.append(f'overall level {entry["level_db"]:+.2f} dB' if passages else f'level only, {entry["level_db"]:+.2f} dB')
+    level = entry.get('level_db')
     if passages:
+        if level:
+            parts.append(f'overall level {level:+.2f} dB')
         spans = ', '.join(f'{p["from"]}-{p["to"]}' for p in passages[:4]) + (f' and {len(passages) - 4} more' if len(passages) > 4 else '')
         d = entry['difference_db']
         parts.append(f'changed at {spans} (bar:beat), the change ' + (f'{-d:.1f} dB under the signal' if d <= -.5 else
                                                                      f'as loud as the signal ({d:+.1f} dB)'))
-    elif not entry.get('level_db'):
+    elif entry.get('follows_part_levels'):
+        parts.append((f'overall level {level:+.2f} dB; ' if level else '') + "the rest follows the parts' level changes")
+    elif level:
+        parts.append(f'level only, {level:+.2f} dB')
+    else:
         parts.append(f'differs only below {FLOOR_DB:g} dBFS or {UNDER_SIGNAL_DB:g} dB under the signal')
     if entry.get('length_change_s'):
         parts.append(f'length {entry["length_change_s"]:+g} s')
@@ -253,8 +287,8 @@ def compare(before, after, differences=None):
             raise ValueError(f'{differences} exists; outputs never overwrite, so choose a new folder')
         differences.mkdir(parents=True)
     fa, fb = _files(a), _files(b)
-    files = {}
-    for group in GROUPS:
+    files, mix_under, note = {}, UNDER_SIGNAL_DB, None
+    for group in GROUPS:  # the stems first: their level moves set what a mix counts
         entries = {}
         for name in [*fb[group], *(n for n in fa[group] if n not in fb[group])]:
             if name not in fa[group]:
@@ -263,19 +297,32 @@ def compare(before, after, differences=None):
             if name not in fb[group]:
                 entries[name] = {'removed': True}
                 continue
-            entry, residual = compare_audio(fa[group][name], fb[group][name], clock)
+            entry, residual = compare_audio(fa[group][name], fb[group][name], clock,
+                                            UNDER_SIGNAL_DB if group == 'stems' else mix_under, mix=group != 'stems')
             if differences is not None and residual is not None and entry.get('passages'):
                 audio.write_wav(differences / f'{group}_{name}.wav', residual.astype(np.float32))
             entries[name] = entry
         files[group] = entries
+        moves = [(n, e['level_db']) for n, e in entries.items() if e.get('level_db')] if group == 'stems' else []
+        if moves:
+            part, level = max(moves, key=lambda m: abs(10 ** (m[1] / 20) - 1))
+            left = -20 * math.log10(abs(10 ** (level / 20) - 1))
+            mix_under = min(UNDER_SIGNAL_DB, max(MIN_UNDER_DB, left - SPILL_MARGIN_DB))
+            if mix_under < UNDER_SIGNAL_DB:
+                note = (f'{part} moved {level:+.2f} dB as a whole, which reaches every mix it plays in about {left:.0f} dB '
+                        f'under that part; the buses, returns, premix and master count a difference only within '
+                        f'{mix_under:.0f} dB of the signal')
     changes = project_changes(a['project'], b['project'])
     synth = synthesis(a, b)
     summary = {'project': project_lines(changes), **{k: v for k, v in synth.items() if k != 'reused'},
                'changed': {g: {n: ('added' if e.get('added') else 'removed' if e.get('removed') else describe(e))
                                for n, e in entries.items() if not e.get('identical')} for g, entries in files.items()},
                'identical': {g: sum(1 for e in entries.values() if e.get('identical')) for g, entries in files.items()}}
+    if note:
+        summary['note'] = note
     return {'before': str(a['folder']), 'after': str(b['folder']), 'warnings': runtime_warnings(a, b),
             'project_changes': changes, 'synthesis': synth, 'files': files, 'summary': summary,
+            'mix_counted_within_db': round(mix_under, 1),
             'master_lufs': [a['report'].get('master', {}).get('integrated_lufs'), b['report'].get('master', {}).get('integrated_lufs')]}
 
 

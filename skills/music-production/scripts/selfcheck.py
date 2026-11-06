@@ -1296,8 +1296,9 @@ def checks(work,config=None):
     check('a_short_or_damaged_download_is_never_kept',short_downloads)
     def compare_unit():
         # Hand-made renders of the setup study: one where the piano's note in bar 3 changes (and its whole part moves
-        # 0.01 dB, as a part whose level is set from its loudness does) under a master 0.3 dB quieter, and one where
-        # only the lead is 1 dB louder.
+        # 0.2 dB, as a part whose level is set from its loudness can: 0.01 dB here and 0.11 dB on Ubuntu's FluidSynth
+        # for one note) under a master 0.3 dB quieter, and one where only the lead is 1 dB louder.  The part's move must
+        # not show in the premix or the master away from the note.
         from musiclib.compare import compare
         p=example();clock=Clock(p);rate=audio.RATE;frames=round((clock.end+clock.tail)*rate);t=np.arange(frames)/rate
         def tone(k):
@@ -1305,7 +1306,7 @@ def checks(work,config=None):
         stems={tr['id']:tone(k) for k,tr in enumerate(p['tracks'])}
         on,off=clock.seconds(8.5),clock.seconds(10);a,b=int(on*rate),int(off*rate)
         note=copy.deepcopy(p);next(n for n in note['tracks'][0]['notes'] if n['id']=='piano_n7')['pitch']+=1
-        note_stems={k:v.copy() for k,v in stems.items()};note_stems['piano'][a:b]=tone(9)[a:b];note_stems['piano']*=10**(.01/20)
+        note_stems={k:v.copy() for k,v in stems.items()};note_stems['piano'][a:b]=tone(9)[a:b];note_stems['piano']*=10**(.2/20)
         louder=copy.deepcopy(p);next(tr for tr in louder['tracks'] if tr['id']=='lead')['mix']['level_dbfs']+=1
         louder_stems={k:v*(10**(1/20) if k=='lead' else 1) for k,v in stems.items()}
         for name,proj,parts,master_db in (('before',p,stems,0),('note',note,note_stems,-.3),('louder',louder,louder_stems,0)):
@@ -1317,8 +1318,9 @@ def checks(work,config=None):
             mix=sum(parts.values());audio.write_wav(out/'premix.wav',mix.astype(np.float32));audio.write_wav(out/'master.wav',(mix*10**(master_db/20)).astype(np.float32))
         r=compare(work/'compare_unit'/'before',work/'compare_unit'/'note',work/'compare_unit'/'difference');f=r['files']
         assert r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'] and r['synthesis']['synthesized_again']==['piano'],r['summary']
-        assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and f['stems']['piano']['level_db']==.01,f['stems']['piano']
-        assert f['premix']['premix']['level_db']==0 and abs(f['master']['master']['level_db']+.3)<.011,(f['premix'],f['master'])
+        assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and f['stems']['piano']['level_db']==.2,f['stems']['piano']
+        assert abs(f['premix']['premix']['level_db'])<.1 and abs(f['master']['master']['level_db']+.3)<.1,(f['premix'],f['master'])
+        assert r['mix_counted_within_db']<40 and r['summary']['note'].startswith('piano moved +0.20 dB'),r['summary']
         for e in (f['stems']['piano'],f['premix']['premix'],f['master']['master']):
             assert len(e['passages'])==1 and abs(e['passages'][0]['start_s']-on)<.02 and abs(e['passages'][0]['end_s']-off)<.02,e
         d,_=audio.read_wav(work/'compare_unit'/'difference'/'stems_piano.wav');d=np.abs(np.asarray(d))
@@ -1490,8 +1492,10 @@ def checks(work,config=None):
             r=compare(work/'render_bus',work/'render_bus_note');f=r['files'];on=Clock(note).seconds(8.5)
             assert r['synthesis']['synthesized_again']==['piano'] and r['summary']['project']==['piano note piano_n7 at 3:1.5: pitch 64 -> 65'],r['summary']
             assert [k for k,e in f['stems'].items() if not e['identical']]==['piano'] and [k for k,e in f['returns'].items() if not e['identical']]==['hall'],r['summary']
+            # Every file that changed changes from the note on, on any system: how far the piano's level moves with the
+            # note depends on the FluidSynth (0.01 dB here, 0.11 dB on Ubuntu), and a mix counts that move apart.
             moved=[e for g in ('stems','buses','returns','premix','master') for e in f[g].values() if not e['identical']]
-            assert all(len(e['passages'])==1 and abs(e['passages'][0]['start_s']-on)<.15 for e in moved),r['summary']
+            assert all(e['passages'] and abs(e['passages'][0]['start_s']-on)<.15 and all(q['start_s']>on-.15 for q in e['passages']) for e in moved),r['summary']
             heard=clip(audio.load_config(config),r,work/'note_ab.mp3')
             assert heard and (work/'note_ab.mp3').stat().st_size>10000 and abs(heard['start_s']-(f['master']['master']['passages'][0]['start_s']-1.5))<.02,heard
             m=compare(work/'render_bus',work/'render_bus_louder');g=m['files']

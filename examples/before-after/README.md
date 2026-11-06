@@ -29,10 +29,12 @@ On Windows with the pinned FluidSynth 2.6.1 and FFmpeg 9.0.2, positions in bar:b
 | Stems | flute changed from 5:1 to 5:4.6, and 0.03 dB louder overall: a part's level is set from its loudness, which the new note moves. Piano, bass and drums identical. |
 | Buses | lead changed from 5:1 to 5:4.65; the other three identical |
 | Returns | plate changed from 5:1.05 to 6:1.95, almost a bar past the note; hall and room identical |
-| Premix | changed from 5:1 to 6:1.05 |
-| Master | 0.05 dB louder overall, because the master's gain follows the loudness target; besides that, changed from 5:1 to 6:1.05 |
+| Premix | changed from 5:1 to 5:4.95 |
+| Master | 0.05 dB louder overall, because the master's gain follows the loudness target; besides that, changed from 5:1 to 6:1 |
 
-The premix stops counting the plate's tail at 6:1.05. From there on the difference is more than 40 dB under the music around it, and `compare` does not count it. A file whose whole level moved is first matched in level by one gain, so a level change and a local change are reported apart.
+In the premix and the master the plate's tail stops counting around 6:1. From there on the difference is more than 40 dB under the music around it, and `compare` does not count it. A file whose whole level moved is first matched in level by one gain, so a level change and a local change are reported apart.
+
+A part's level is set from its loudness, so the new note also moves the whole flute a little (0.03 dB here). On another system the same edit can move it more: one note moved a piano 0.01 dB with this FluidSynth and 0.11 dB with Ubuntu's. In the files that mix parts, `compare` counts a difference only when it is louder than what that move leaves, so the passages stay where the note changed.
 
 On Linux and macOS the system FluidSynth and FFmpeg can make the levels differ slightly. The same files should change in the same places.
 
