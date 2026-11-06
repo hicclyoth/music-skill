@@ -1,18 +1,20 @@
 """Observable invariants and optional real render/revision tests. Not a taste test."""
 import argparse
 import copy
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import struct
+import tarfile
 import tempfile
 import time
 import zipfile
 import numpy as np
 from make_example import example
 from excerpt import extract
-from bootstrap import safe_extract,has_vorbis as setup_has_vorbis
+from bootstrap import safe_extract,safe_extract_tar,surge_platform,has_vorbis as setup_has_vorbis
 from soundbank import yin_f0
 from musiclib import midi,audio
 from musiclib.model import Clock,TPQ,validate,performed,save_json,file_hash,cc_events
@@ -70,6 +72,33 @@ def checks(work,config=None):
         with zipfile.ZipFile(z,'w') as f:f.writestr('../escaped.txt','must not escape')
         rejects(lambda:safe_extract(z,work/'extract'))
         assert not (work/'escaped.txt').exists()
+        # The Linux Surge build is a .tar.gz: a member outside the target or a link is refused; "./" is dropped from
+        # the names, only the asked-for prefix is written, and its permission bits are kept off Windows.
+        def tar(name,members):
+            path=work/name
+            with tarfile.open(path,'w:gz') as t:
+                for m,data in members:
+                    info=tarfile.TarInfo(m);info.mode=0o755
+                    if data is None:
+                        info.type=tarfile.SYMTYPE;info.linkname='/etc/passwd';t.addfile(info)
+                    else:
+                        info.size=len(data);t.addfile(info,io.BytesIO(data))
+            return path
+        rejects(lambda:safe_extract_tar(tar('bad.tar.gz',[('../escaped2.txt',b'x')]),work/'extract_tar'))
+        rejects(lambda:safe_extract_tar(tar('link.tar.gz',[('./plugin.vst3/link',None)]),work/'extract_tar'))
+        assert not (work/'escaped2.txt').exists()
+        good=tar('good.tar.gz',[('./plugin.vst3/Contents/x86_64-linux/plugin.so',b'binary'),('./other.txt',b'left out')])
+        safe_extract_tar(good,work/'extract_good','plugin.vst3/')
+        out=work/'extract_good'/'plugin.vst3'/'Contents'/'x86_64-linux'/'plugin.so'
+        assert out.read_bytes()==b'binary' and not (work/'extract_good'/'other.txt').exists()
+        assert os.name=='nt' or out.stat().st_mode&0o777==0o755
+        # Every pinned Surge build names its archive, hashes and the binary to check; this machine maps to one or none.
+        pinned=json.loads((Path(__file__).resolve().parents[1]/'references'/'runtime-lock.json').read_text(encoding='utf-8'))['optional']['surge_xt']
+        for key in ('windows-x86_64','linux-x86_64','macos-universal'):
+            item=pinned[key]
+            assert item['url'].endswith('/'+item['filename']) and len(item['sha256'])==64 and len(item['executable_sha256'])==64
+            assert item['executable'].startswith(item['extract']) and item['bytes']>1e7
+        assert surge_platform() in (None,'windows-x86_64','linux-x86_64','macos-universal')
         return True
     check('archive_cannot_escape_destination',zip_traversal)
     def wav_roundtrip():

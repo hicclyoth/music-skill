@@ -117,7 +117,7 @@ Windows x64 會下載鎖定版本的 FluidSynth 和 FFmpeg 免安裝版，以及
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux（Ubuntu 24.04、Debian 13 或更新）和 macOS 使用系統套件，以及你自行安裝的 Surge XT（如果有）：
+Linux（Ubuntu 24.04、Debian 13 或更新）和 macOS 使用系統套件；Surge XT 和它的音色會像 Windows 一樣自動下載（Linux 限 x86-64）：
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS：brew install fluid-synth ffmpeg

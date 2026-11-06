@@ -117,7 +117,7 @@ Windows x64 downloads pinned portable builds of FluidSynth and FFmpeg, and the S
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux (Ubuntu 24.04, Debian 13 or newer) and macOS use the system packages, and Surge XT if you have installed it:
+Linux (Ubuntu 24.04, Debian 13 or newer) and macOS use the system packages; Surge XT and its patches are downloaded as on Windows (on Linux, for x86-64):
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install fluid-synth ffmpeg

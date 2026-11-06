@@ -11,9 +11,9 @@ Install the tools from your package manager first, e.g. `sudo apt install fluids
 24.04) and 9.0 (macOS and the pinned Windows build).  Homebrew's ffmpeg lacks the libvorbis encoder, so a game loop rendered
 with it gets no Ogg copy; for one, `brew install ffmpeg-full` and pass --ffmpeg "$(brew --prefix ffmpeg-full)/bin/ffmpeg".
 
-Surge XT (engine "surge") is installed too unless --no-surge: on Windows the pinned plugin-only release (its VST3
-alone is kept), elsewhere a Surge XT 1.3.4 you installed from https://surge-synthesizer.github.io/ (found in the usual
-VST3 folders, or given with --surge-vst3); then the pinned pedalboard wheel for this Python, checked against the
+Surge XT (engine "surge") is installed too unless --no-surge: the pinned plugin-only release for Windows or Linux on
+x86-64 or for macOS (its VST3 alone is kept), or the bundle given with --surge-vst3; elsewhere (Linux on ARM) a Surge
+XT 1.3.4 you installed from https://surge-synthesizer.github.io/, found in the usual VST3 folders; then the pinned pedalboard wheel for this Python, checked against the
 hashes PyPI publishes, installed into the runtime folder only, and the curated factory patches from Surge's pinned
 repository commit, each checked by hash.  Then, unless --no-surge-catalog, every patch of the catalog
 (references/surge-catalog.json: 3,008 factory and third-party patches, about 217 MB) from the same commit, each checked
@@ -26,8 +26,10 @@ import http.client
 import json
 import os
 from pathlib import Path,PurePosixPath
+import platform
 import re
 import shutil
+import tarfile
 import tempfile
 import subprocess
 import time
@@ -57,6 +59,28 @@ def safe_extract(path,target,only=None):
             if i.file_size>350_000_000:raise ValueError('Archive member too large')
             out.parent.mkdir(parents=True,exist_ok=True)
             with z.open(i) as src,out.open('wb') as dst:shutil.copyfileobj(src,dst,1024*1024)
+            mode=(i.external_attr>>16)&0o777  # Unix permission bits, kept so an extracted plugin stays loadable
+            if os.name!='nt' and mode:os.chmod(out,mode)
+
+def safe_extract_tar(path,target,only=None):
+    """Extract a .tar.gz after checking every member: regular files and folders only (no link), no absolute path and
+    none outside the target.  A leading "./" is dropped from the names, `only` keeps the members under that prefix, and
+    the permission bits are kept."""
+    target=Path(target).resolve();target.mkdir(parents=True,exist_ok=True)
+    with tarfile.open(path,'r:gz') as t:
+        members=t.getmembers()
+        if len(members)>10000 or sum(m.size for m in members)>800_000_000:raise ValueError('Archive exceeds limits')
+        for m in members:
+            name=m.name[2:] if m.name.startswith('./') else m.name;p=PurePosixPath(name)
+            if not (m.isfile() or m.isdir()) or p.is_absolute() or '..' in p.parts or ':' in name or '\\' in name:
+                raise ValueError('Unsafe archive member')
+            if only and not name.startswith(only):continue
+            out=(target/Path(*p.parts)).resolve();out.relative_to(target)
+            if m.isdir():out.mkdir(parents=True,exist_ok=True);continue
+            if m.size>350_000_000:raise ValueError('Archive member too large')
+            out.parent.mkdir(parents=True,exist_ok=True)
+            with t.extractfile(m) as src,out.open('wb') as dst:shutil.copyfileobj(src,dst,1024*1024)
+            if os.name!='nt':os.chmod(out,m.mode&0o777)
 
 class Allowed(urllib.request.HTTPRedirectHandler):
     """Follows a redirect only to an allowed host over HTTPS, checked before the request is made."""
@@ -107,15 +131,24 @@ def has_vorbis(ffmpeg):
     out=subprocess.run([str(ffmpeg),'-hide_banner','-encoders'],capture_output=True,text=True,errors='replace',timeout=30,stdin=subprocess.DEVNULL,creationflags=flags)
     return ' libvorbis ' in out.stdout
 
+def surge_platform():
+    """This machine's pinned Surge XT build in runtime-lock.json: Windows and Linux on x86-64, and macOS (a universal
+    binary for Intel and Apple silicon); None elsewhere (Linux on ARM), where a system install is looked for."""
+    if sys.platform=='darwin':return 'macos-universal'
+    if platform.machine().lower() not in ('x86_64','amd64'):return None
+    return 'windows-x86_64' if os.name=='nt' else 'linux-x86_64' if sys.platform.startswith('linux') else None
+
 def surge_plugin(lock,runtime,cache,args,system):
-    """The Surge XT VST3 to load and the binary inside it to hash: the pinned Windows build, or a system install."""
-    s=lock['optional']['surge_xt']
-    if not system:
-        item=s['windows-x86_64'];archive=cache/item['filename'];download(item,archive,args.offline)
+    """The Surge XT VST3 to load and the binary inside it to hash: the bundle given with --surge-vst3, else the pinned
+    plugin-only build for this machine (surge_platform), else a system install in the usual VST3 folders."""
+    s=lock['optional']['surge_xt'];key=None if args.surge_vst3 else surge_platform()
+    if key in s:
+        item=s[key];archive=cache/item['filename'];download(item,archive,args.offline)
         if archive.stat().st_size!=item['bytes'] or file_hash(archive)!=item['sha256']:raise ValueError('Archive integrity failed: surge_xt')
-        target=runtime/'surge_xt';safe_extract(archive,target,item['extract']);binary=target/item['executable']
+        target=runtime/'surge_xt';(safe_extract_tar if item['filename'].endswith('.tar.gz') else safe_extract)(archive,target,item['extract'])
+        binary=target/item['executable']
         if file_hash(binary)!=item['executable_sha256']:raise ValueError('Executable integrity failed: surge_xt')
-        return binary,binary,item['url']
+        return (binary if key=='windows-x86_64' else target/item['extract'].rstrip('/')),binary,item['url']
     kind='darwin' if sys.platform=='darwin' else 'windows' if os.name=='nt' else 'linux'
     for bundle in ([args.surge_vst3] if args.surge_vst3 else [Path(os.path.expandvars(p)).expanduser() for p in s['system_bundles'].get(kind,[])]):
         for inner in s['bundle_binaries'].get(kind,[]):
@@ -174,7 +207,7 @@ def _install_surge(lock,runtime,cache,args,system,config):
         if local.stat().st_size!=p['bytes'] or file_hash(local)!=p['sha256']:raise ValueError('Patch integrity failed: '+name)
         out=patches/p['patch'];out.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(local,out)
     s=lock['optional']['surge_xt'];board=lock['optional']['pedalboard']
-    config['surge']={'path':str(plugin),'binary':str(binary),'sha256':file_hash(binary),'version':s['version'] if not system else 'system install (version not checked)','license':s['license'],'source':source,'patches':str(patches)}
+    config['surge']={'path':str(plugin),'binary':str(binary),'sha256':file_hash(binary),'version':s['version'] if source.startswith('https://') else 'system install (version not checked)','license':s['license'],'source':source,'patches':str(patches)}
     config['pedalboard']={'path':str(pylib),'sha256':meta['sha256'],'version':board['version'],'license':board['license'],'source':meta['url']}
     print('VERIFIED surge_xt |',len(presets['presets']),'curated patches',flush=True)
 
@@ -206,7 +239,7 @@ def main():
     ap.add_argument('--system',action='store_true',help='use the system fluidsynth and ffmpeg; download only the default sound bank')
     ap.add_argument('--fluidsynth',type=Path,help='with --system: this executable instead of the one on PATH');ap.add_argument('--ffmpeg',type=Path,help='with --system: this executable instead of the one on PATH')
     ap.add_argument('--no-surge',action='store_true',help='skip Surge XT and pedalboard (Surge parts then play their fallback presets)')
-    ap.add_argument('--surge-vst3',type=Path,help='with --system: this Surge XT.vst3 bundle instead of the usual VST3 folders')
+    ap.add_argument('--surge-vst3',type=Path,help='this Surge XT.vst3 bundle instead of the pinned build (or, where none is pinned, the usual VST3 folders)')
     ap.add_argument('--no-surge-catalog',action='store_true',help='skip the full Surge patch set (about 217 MB): only the curated patches; parts that name a catalog patch play their fallback presets')
     args=ap.parse_args()
     system=args.system or os.name!='nt'

@@ -117,7 +117,7 @@ Windows x64 では、固定バージョンの FluidSynth と FFmpeg のポータ
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux（Ubuntu 24.04、Debian 13 以降）と macOS では、システムのパッケージと、ご自身で入れた Surge XT（あれば）を使います。
+Linux（Ubuntu 24.04、Debian 13 以降）と macOS では、システムのパッケージを使います。Surge XT とそのパッチは Windows と同じく自動でダウンロードします（Linux は x86-64 のみ）。
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install fluid-synth ffmpeg

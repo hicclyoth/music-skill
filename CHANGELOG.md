@@ -39,6 +39,7 @@ Guidance from professional sources only. Every guide was checked line by line: e
   - **`studio.py sounds`** searches the catalog by role, measured character, name and designer, dark to bright, leaving flagged patches out; `--id` prints one patch in full.
   - A part plays any catalog patch by its id (`surge: {"preset": "factory/pads/bright"}`), falling back by its role where Surge or the patch is missing.
   - The bootstrap installs the set from Surge's pinned commit, each file checked by size and hash (about 217 MB; `--no-surge-catalog` leaves it out).
+- **Surge XT installs by itself on Linux and macOS too.** As on Windows, the bootstrap downloads the pinned plugin-only Surge XT 1.3.4 build: for Linux on x86-64 (97 MB) and for macOS (187 MB, universal for Intel and Apple silicon). It checks the archive and the plugin's binary by SHA-256 (the release publishes only MD5s, which match) and keeps only the VST3. A `.tar.gz` is extracted member by member, refusing links and paths outside the target, and the plugin's permission bits are kept. Linux on ARM, for which no build is published, still uses a system install.
   - **For the sounds no curated patch plays**, `review --config` names the catalog patches whose designers named them for that sound and whose measurement raises no flag: for the 808 `a_liv/basses/bonsai_808` and `vospi/basses/808_builder_a`, eight acid and 303 basses, two reese and four wobble basses, three chip leads, a riser and a reverse crash, to hear against the built-in preset on the part.
 - **[sound-selection.md](skills/music-production/references/sound-selection.md)**, choosing a sound from professional sources:
   - the part's job: Owsinski's five arrangement elements, and the foreground and background layers of McAdams, Goodchild and Soden (2022);
@@ -83,6 +84,7 @@ Guidance from professional sources only. Every guide was checked line by line: e
 
 ### Changed
 
+- `bootstrap.py --system` no longer makes Windows use a system install of Surge XT; `--surge-vst3 <bundle>` does, on every system.
 - `review`'s `foreground_outside_chord` is replaced by `outside_chord`, which covers every pitched part and names each note.
 - CI installs FluidSynth and FFmpeg on Ubuntu without their recommended packages (qsynth, video drivers, a speech model and other extras the tests never use, which also brought in the large General MIDI bank `fluid-soundfont-gm`): 70 MB to download instead of 248 MB. A slow mirror once stretched that download past 20 minutes. The packages are now fetched in attempts of at most four minutes, a stalled one starting again where it stopped, before anything is installed, and the step stops after 15 minutes.
 - CI requires a loop's Ogg Vorbis copy on Linux and Windows. The loop test otherwise accepts it as skipped when FFmpeg has no `libvorbis` encoder, so a lighter install could have tested less without failing.

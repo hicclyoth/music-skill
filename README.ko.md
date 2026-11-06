@@ -117,7 +117,7 @@ Windows x64에서는 고정된 버전의 FluidSynth와 FFmpeg 포터블 빌드, 
 python skills/music-production/scripts/bootstrap.py --runtime <folder>/.runtime --config <folder>/local-config.json
 ```
 
-Linux(Ubuntu 24.04, Debian 13 이상)와 macOS에서는 시스템 패키지와, 직접 설치한 Surge XT가 있으면 그것을 씁니다.
+Linux(Ubuntu 24.04, Debian 13 이상)와 macOS에서는 시스템 패키지를 씁니다. Surge XT와 패치는 Windows와 마찬가지로 자동으로 내려받습니다(Linux는 x86-64만).
 
 ```
 sudo apt install fluidsynth ffmpeg libarchive-tools        # macOS: brew install fluid-synth ffmpeg
