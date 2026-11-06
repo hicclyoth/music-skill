@@ -148,10 +148,17 @@ def fallback_track(track):
 
 
 def dependencies(cfg, track):
-    """What a Surge part's sound depends on, for the render cache."""
+    """What a Surge part's sound depends on, for the render cache: the plugin, pedalboard, patch and host, the fallback,
+    and whether the patch plays here or why not, so that a fallback rendered before Surge XT or its full patch set was
+    installed is not reused once it is."""
     found = entry(track['surge']['preset'])
     from .model import file_hash
-    return {'surge': (cfg.get('surge') or {}).get('sha256'), 'pedalboard': (cfg.get('pedalboard') or {}).get('sha256'),
+    try:
+        locate(cfg, track)
+        plays = 'Surge XT'
+    except Unavailable as why:
+        plays = 'fallback: ' + str(why)
+    return {'plays': plays, 'surge': (cfg.get('surge') or {}).get('sha256'), 'pedalboard': (cfg.get('pedalboard') or {}).get('sha256'),
             'patch': found['sha256'], 'fallback': fallback_track(track)['synth']['preset'], 'host': file_hash(SCRIPTS / 'surge_host.py')}
 
 

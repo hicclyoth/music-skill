@@ -66,7 +66,7 @@ The sources below describe what such a melody has: an idea that returns, phrases
      - the first ends with a weaker cadence, most often a half cadence, on V;
      - the second ends with a stronger one, most often a perfect authentic cadence, with 1 in the melody over the tonic;
      - with 3 or 5 in the melody over the tonic, the authentic cadence is imperfect.
-   - **Anticipations.** A melody note that anticipates a downbeat is heard as belonging to that beat (Tan, Lustig and Temperley 2019, in [development-and-groove.md](development-and-groove.md)). Change the band's chord with it, or the early note sounds against the old chord (`review` lists such rubs).
+   - **Anticipations.** A melody note that anticipates a downbeat is heard as belonging to that beat (Tan, Lustig and Temperley 2019, in [development-and-groove.md](development-and-groove.md)). It is the next chord's tone heard early, over the old chord (Open Music Theory, Embellishing Tones); the band can stay on the beat, or push with it where the arrangement wants a joint push or the early note rubs against the old chord (`review` lists such rubs).
 6. **Save the peak.** Keep the melody's highest note for the high point (Planning a high point, above).
 7. **Check the figures.** `profile` reports, per section, the melody's phrases and its longest run without a breath, its leaps, how many bars restate an earlier bar's rhythm and contour, and where its peak falls. `review` asks about a section of eight bars or more in which no bar restates another. The figures show what the line does, not whether it is good: listen.
 

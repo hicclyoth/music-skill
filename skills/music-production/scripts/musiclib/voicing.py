@@ -18,8 +18,10 @@ can, leaves their pitches to them: a unison only doubles what already sounds, an
 strike one key at once.  Voice the parts in dependency order, each avoiding what sounds before it.  A chord that
 cannot meet these rules in its range gives up the unisons first, then the distance from the other parts, then the
 spacing rules.  Voices never cross, since each keeps its rank.
-With `avoid_parallels`, no two voices move in consecutive perfect fifths or octaves, as common-practice and choral
-writing ask; pop and rock move in parallel on purpose (power chords), so it is off by default.
+With `avoid_parallels`, voicings without consecutive perfect fifths or octaves between any two voices are chosen
+wherever the range allows one, at any cost in motion, as common-practice and choral writing ask; where it allows none
+(three voices for D then E between C4 and C5 have one voicing each), the fewest remain, and `review` lists them.  Pop
+and rock move in parallel on purpose (power chords), so it is off by default.
 
 With fewer voices than chord tones, tones are left out in the order arrangers drop them: the perfect fifth, the root
 (the bass part plays it), an eleventh, a ninth; under a major seventh the root goes before the fifth, as it would rub
@@ -44,7 +46,8 @@ from .harmony import QUALITIES, parse
 # not laws; Sweetwater's glossary gives a close table (https://www.sweetwater.com/insync/low-interval-limit/).
 LOW_INTERVAL_LIMITS = {1: 52, 2: 51, 3: 48, 4: 46, 5: 46, 6: 46, 7: 34, 8: 43, 9: 41, 10: 41, 11: 41,
                        13: 40, 14: 39, 15: 36, 16: 34}
-TOP_WEIGHT, LEAP_COST, DRIFT_COST, PARALLEL_COST = 1.5, 1.0, .3, 24.0
+TOP_WEIGHT, LEAP_COST, DRIFT_COST = 1.5, 1.0, .3
+PARALLEL_COST = 1e6  # more than any motion can cost: parallels go first wherever the range allows
 
 
 def chord_tones(symbol, voices, rotation=0, omit=0, exclude=(), keep_root=False):

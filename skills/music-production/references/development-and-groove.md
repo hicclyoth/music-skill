@@ -71,9 +71,10 @@ question is whether anything else moves.
   heavy syncopation keeps them from finding the beat (Witek et al. 2014, on funk drum breaks). Rhythm drives groove, and
   very complex harmony weakens its effect (Matthews et al. 2019). A few well-placed off-beat attacks, not all of them.
 - **Pushes.** Rock and pop melodies put accented notes just before strong beats, and listeners hear them as belonging
-  to that beat (Tan, Lustig and Temperley 2019). Let chord changes push with the melody: move the bass, guitars,
-  comping and held strings to the new chord on that eighth ([arrangement.md](arrangement.md) explains the clash
-  otherwise). `review` asks when no melody or accompaniment attack
+  to that beat (Tan, Lustig and Temperley 2019). Such a note is the next chord's tone heard early, over the old chord
+  (Open Music Theory, Embellishing Tones: the anticipation). The accompaniment can stay on the beat, or push with the
+  melody where the arrangement wants a joint push or the early note rubs against the old chord (`review` lists minor
+  seconds and ninths; [arrangement.md](arrangement.md)). `review` asks when no melody or accompaniment attack
   pushes a downbeat or half-bar at all; in a chorale or a baroque piece that is right.
 - **Accompaniment that moves.** Give each support part a job and a rhythm of its own. Owsinski's rhythm element plays
   against the foundation to add motion. Israels has the comping piano play commentary on the melody rather than its
@@ -116,14 +117,15 @@ voicing the part's own rhythm (blocks, broken chords, a strum, held tones).
   them; the two hands of one piano cannot strike one key at once. A tone that would rub against them wherever the
   range puts it is left out: under a melody on the root of a major-seventh chord, the accompaniment plays the triad
   (the third stays). Voice the parts in dependency order, each against what was written before it.
-- Where the melody anticipates a downbeat, voice the next chord with that note and move the accompaniment with it:
-  the band pushes together, or the early note rubs against the old chord.
+- Where the melody anticipates a downbeat and the accompaniment pushes with it, voice the next chord at that eighth;
+  where the accompaniment stays on the beat, check the early note against the old chord (`review` lists the rubs).
 - `ceilings` keeps the voicing under the melody chord by chord, leaving the lead its register: the ear follows the
   highest voice's pitch best (Hove et al. 2014, in [sound-selection.md](sound-selection.md)), chords above the
   comping range crowd the lead (Israels, in [anime-opening.md](anime-opening.md)), and chords in the lead's octave are
   a cause of a lead lost in a drop ([electronic.md](electronic.md)). The example below uses the melody's lowest note in
-  the bar less a minor third. `start` begins near a given voicing; `avoid_parallels` removes consecutive fifths and octaves
-  for common-practice and choral writing (pop and rock move in parallel on purpose, so it is off by default).
+  the bar less a minor third. `start` begins near a given voicing; `avoid_parallels` avoids consecutive fifths and octaves
+  wherever the range allows another voicing, for common-practice and choral writing (pop and rock move in parallel on
+  purpose, so it is off by default); `review` lists any that remain.
 
 ```python
 from musiclib.voicing import voice_lead
@@ -137,8 +139,8 @@ for bar, voicing in enumerate(pad):
         note('pad', pitch, on=bar * 4, duration=4)  # your composition script's own note helper
 ```
 
-Here the pad stays under the tune (A3 C4 D4 F4 under a line from A4 to E5) and leaves C out of C△7, which the bass
-plays, rather than put B3 a semitone under C4. Measured without a melody: a ii-V-I moves three semitones per change
+Here the pad stays under the tune (A3 C4 D4 F4 under a line from A4 to E5), and under the tune's C5 it plays C△7 as
+a C major triad, G3 C4 E4 G4: its B would rub a minor ninth under that C. Measured without a melody: a ii-V-I moves three semitones per change
 (A to G and C to B, then F to E and D to C), and an I-V-vi-IV loop five to seven, against seven to 28 for the same
 chords as root-position blocks.
 

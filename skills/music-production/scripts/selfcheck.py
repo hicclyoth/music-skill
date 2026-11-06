@@ -207,13 +207,27 @@ def checks(work,config=None):
         # to and from under G.  Pad: E held into F and rising to F, C held into G and leaving by a leap.
         assert r['tracks']['lead']['outside_chord']=={'passing':2,'suspension':1,'escape tone':1,'appoggiatura':1,'anticipation':1,'not resolved by step':1},r['tracks']
         assert r['tracks']['bass']['outside_chord']=={'pedal':1,'not resolved by step':1} and r['tracks']['pad']['outside_chord']=={'retardation':1,'not resolved by step':1},r['tracks']
-        assert [(x['track'],x['note'],x['chord'],x['approach'],x['departure']) for x in r['examples']]==[('lead','A5','C','leap up','leap down'),('bass','F2','G','leap up','leap down'),('pad','C4','G','held','leap down')],r['examples']
+        assert [(x['track'],x['note'],x['chord'],x['approach'],x['departure']) for x in r['examples']]==[('lead','A5','C','leap up','leap down'),('bass','F2','G','leap up','leap down'),('pad','C4','G','held or repeated','leap down')],r['examples']
         prompts=run_review(q,work/'review_smoothness')['prompts']
         assert sum('melody note on strong positions sits outside the written chord and is not resolved by step' in x for x in prompts)==1,prompts
         assert sum('neither resolved by step nor held as a pedal' in x for x in prompts)==2,prompts
         # A chord restated is not a change: F between G and E stays a passing note under C, C.
         q=song([part('lead','melody',[(0,67,2),(2,65,2),(4,64,4)])],['C',{'bar':1,'beat':3,'symbol':'C'},{'bar':2,'symbol':'Am'}],bars=2)
         assert outside_chord(q,Clock(q))['tracks']=={'lead':{'role':'melody','outside_chord':{'passing':1}}}
+        # A chord that falls in the rest between two repeated notes is not sounded against.
+        q=song([part('lead','melody',[(0,60,1),(2,60,.25)])],['C',{'bar':1,'beat':1,'symbol':'D'},{'bar':1,'beat':2,'symbol':'C'}],bars=1)
+        assert outside_chord(q,Clock(q))['count']==0
+        # 6/8 beats in dotted quarters: attacks on them are not syncopated, one an eighth before the second beat pushes it.
+        from musiclib.review import stiffness,repetition
+        def compound(onsets):
+            q=song([part('lead','melody',[(o,64,.5) for o in onsets])],bars=4);q['clock']['meter']=[6,8];return stiffness(q,Clock(q))
+        on,early=compound([0,1.5,3,4.5,6,7.5,9,10.5]),compound([0,1.25,3,4.25,6,7.25,9,10.25])
+        assert on['parts']['lead']['syncopated_pct']==0 and early['parts']['lead']['downbeat_pushes_pct']==50 and not early['no_pushes_anywhere'],(on,early)
+        # A pre-chorus leads in to its chorus: a chorus thinner than it is asked about, whatever the pre-chorus is called.
+        for name in ('prechorus','pre_chorus','pre-chorus'):
+            q=song([part('lead','melody',[(x*.5,60+x%3,.5) for x in range(16)]+[(8,60,4)]),part('pad','harmony',[(0,48,8)])],bars=4)
+            q['sections']=[{'id':name,'start_bar':0,'bars':2},{'id':'chorus','start_bar':2,'bars':2}]
+            assert [w['section'] for w in repetition(q,Clock(q))['arrivals_thinner_than_before']]==['chorus'],name
         sop=[72,74,76,77,79,77,76,74];alto=[65,67,69,69,72,72,69,65];bass=[48,50,45,41,40,41,43,43]
         s=song([part('sop','melody',[(i,x,1) for i,x in enumerate(sop)]),part('alto','harmony',[(i,x,1) for i,x in enumerate(alto)]),
                 part('ten','harmony',[(i,x-12,1) for i,x in enumerate(sop)]),part('bass','bass',[(i,x,1) for i,x in enumerate(bass)])],bars=2)
@@ -342,10 +356,22 @@ def checks(work,config=None):
             if where:cfg['surge']['catalog']=str(where)
             try:surge.locate(cfg,t);raise AssertionError('located '+key)
             except surge.Unavailable as why:assert reason in str(why),why
-        config={'surge':{}};said=io.StringIO()
+        # Whether the patch plays here is part of a Surge part's cache key: a fallback rendered before the full set was
+        # installed is not reused once it is.
+        plays=[]
+        for where in (None,fake/'all'):
+            c=copy.deepcopy(cfg);c['surge'].pop('catalog',None)
+            if where:c['surge']['catalog']=str(where)
+            plays.append(surge.dependencies(c,t)['plays'])
+        assert plays[0]!=plays[1] and all(x.startswith('fallback') for x in plays),plays
+        real=json.loads(Path(config).read_text(encoding='utf-8')) if config else {}
+        if (real.get('surge') or {}).get('catalog'):
+            without=copy.deepcopy(real);without['surge'].pop('catalog')
+            assert surge.dependencies(real,t)['plays']=='Surge XT' and surge.dependencies(without,t)['plays'].startswith('fallback')
+        blank={'surge':{}};said=io.StringIO()
         with contextlib.redirect_stdout(said):
-            bootstrap.install_catalog(work/'catalog_runtime',work/'catalog_cache',types.SimpleNamespace(offline=True),config)
-        assert 'catalog' not in config['surge'] and 'SKIPPED surge_catalog' in said.getvalue(),said.getvalue()
+            bootstrap.install_catalog(work/'catalog_runtime',work/'catalog_cache',types.SimpleNamespace(offline=True),blank)
+        assert 'catalog' not in blank['surge'] and 'SKIPPED surge_catalog' in said.getvalue(),said.getvalue()
         return {'patches':len(cat),'warm_slow_pads':pads['count']}
     check('surge_catalog_patch_by_id_search_and_install',surge_catalog)
     def sf2_roundtrip():
@@ -1153,6 +1179,10 @@ def checks(work,config=None):
             return n
         free,strict=voice_lead(['C','D','G','C'],voices=4),voice_lead(['C','D','G','C'],voices=4,avoid_parallels=True)
         assert parallels(free)>0 and parallels(strict)==0,(free,strict)
+        # Where the range leaves one voicing per chord (three voices for D then E between C4 and C5) the parallel stays;
+        # with room, none does.
+        assert voice_lead(['D','E'],voices=3,low=60,high=72,avoid_parallels=True)==[[62,66,69],[64,68,71]]
+        assert parallels(voice_lead(['D','E'],voices=3,low=55,high=79,avoid_parallels=True))==0
         caps=[64,62,64,60];capped=voice_lead(['F','G','Em','Am'],voices=3,ceilings=caps)
         assert all(v[-1]<=c for v,c in zip(capped,caps)),capped
         assert sorted(chord_tones('Cmaj13',3))==[4,9,11] and sorted(chord_tones('G7',5))==[2,5,7,7,11] and sorted(chord_tones('C/E',3))==[0,4,7]
@@ -2119,6 +2149,22 @@ def checks(work,config=None):
             assert [x['sound'] for x in v]==['as_written','synth_fm_bell'] and (work/'audition_out'/'audition.mp3').is_file()
             assert v[1]['part_brightness']['centroid_hz']>v[0]['part_brightness']['centroid_hz'],v
             assert rejects(lambda:parse_sound('surge:no_such_patch')) and rejects(lambda:parse_sound('synth'))
+            # Settings only a SoundFont part takes are left out on another engine, and said so.
+            from musiclib.audition import with_sound
+            sf=copy.deepcopy(p);piano=next(x for x in sf['tracks'] if x['engine']=='soundfont' and not x.get('drums'))
+            piano['performance'].update(round_robin=True,dynamics=[[0,64]],legato={'mode':'crossfade'})
+            for sound in ('synth:fm_bell','surge:juno_60_strings'):
+                q2=copy.deepcopy(sf);x=next(t for t in q2['tracks'] if t['id']==piano['id'])
+                assert sorted(with_sound(x,parse_sound(sound)))==['dynamics','legato','round_robin'];validate(q2)
+            # Without Surge XT a Surge candidate plays its fallback, and the report says so instead of describing the patch.
+            cfg=json.loads(Path(config).read_text(encoding='utf-8'))
+            for key in ('fluidsynth','ffmpeg','soundfont'):
+                value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
+            cfg.pop('surge',None);cfg.pop('pedalboard',None);save_json(work/'audition_no_surge.json',cfg)
+            r=audition(work/'audition.json','line',[parse_sound('surge:bell_pad'),parse_sound('surge:ghost_pad')],1,2,work/'audition_fallback',work/'audition_no_surge.json',work/'cache_audition_fallback',solo=True)
+            fell=r['versions'][1:]
+            assert all(x['rendered_with']=='built-in synth' and x['fallback'] and 'surge_character' not in x for x in fell),fell
+            assert r['fallbacks']==['surge_bell_pad','surge_ghost_pad'] and 'not an A/B' in r['note'],r
             return {x['sound']:x['part_brightness'] for x in v}
         check('audition_plays_one_part_on_several_sounds',audition_part)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
