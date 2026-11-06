@@ -75,6 +75,8 @@ MASTER = ('acompressor=threshold={thr:.6f}:ratio=2:attack=30:release=200:knee=4:
           + MASTER_EQ + ',alimiter=limit=0.891:attack=5:release=60:level=disabled')
 MIX_LUFS = -18
 LIMIT_DBFS = -1.5
+DELAY_BAND = (500, 4000)  # a delay send's high- and low-pass (Hz), on both chains
+RETURN_LOWPASS = 13000    # each space's return low-pass (Hz); its high-pass is SPACES[name][5]
 
 
 def bus_of(track):
@@ -159,7 +161,7 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
             sends[space_of(t)].append(f'[rs{k}]')
         if fx.get('delay_db') is not None:
             ms = clock.spb[0] * fx.get('delay_quarters', .75) * 1000
-            graph.append(f'[e{k}]highpass=f=500,lowpass=f=4000,adelay={ms:.6f}|{ms * 1.5:.6f},volume={fx["delay_db"]}dB[es{k}]')
+            graph.append(f'[e{k}]highpass=f={DELAY_BAND[0]},lowpass=f={DELAY_BAND[1]},adelay={ms:.6f}|{ms * 1.5:.6f},volume={fx["delay_db"]}dB[es{k}]')
             delays.append(f'[es{k}]')
     sums = []
     wide = p['mix'].get('dynamics') == 'wide'
@@ -180,7 +182,7 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
             continue
         graph.append(''.join(items) + (f'amix=inputs={len(items)}:normalize=0' if len(items) > 1 else 'anull') + f'[send_{name}]')
         graph.append(f'[send_{name}][{ir_input[name]}:a]afir={audio.afir_options(cfg)},'
-                     f'highpass=f={SPACES[name][5]},lowpass=f=13000,apad,atrim=end_sample={frames}'
+                     f'highpass=f={SPACES[name][5]},lowpass=f={RETURN_LOWPASS},apad,atrim=end_sample={frames}'
                      + (f',asplit=2[ret_{name}][retexp_{name}]' if full else f'[ret_{name}]'))
         sums.append(f'[ret_{name}]')
         returned.append((f'retexp_{name}', returns / f'{name}_return.wav'))

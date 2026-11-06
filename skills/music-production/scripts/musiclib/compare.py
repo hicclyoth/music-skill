@@ -17,10 +17,12 @@ reports that as its overall level.  In a file that mixes parts such a move is no
 wherever the part plays.  Every passage stays in the report; one whose difference the parts' level moves account for,
 within 6 dB, is marked `follows_part_levels`, and the two kinds of passage never overlap.  What the moves account for
 follows the chain: a bus from its parts' stems, a return from the parts that send to it, the premix from the buses and
-returns (it is their sum), the master from the premix.  They account for nothing where a part itself changed (in a
-return, for the length of its space or delay after), where nothing upstream moved in level (a bus or return whose own
-processing acts differently has not moved), or where the chain changed: another renderer, another project mix, a part
-sent elsewhere or at another level.
+returns (it is their sum), the master from the premix.  They account for nothing where a part itself changed, where
+nothing upstream moved in level (a bus or return whose own processing acts differently has not moved), or where the
+chain changed: another renderer, another project mix, a part sent elsewhere, at another level or with another delay
+time (a delay's time follows the tempo).  In a return a part's change is judged as it is sent, through the send's high-
+and low-pass filters, which can bring out a change that the part's own lows hide, and it is a change there for the
+length of the space or delay after it.
 """
 import json
 import math
@@ -176,6 +178,49 @@ def _trail(p, k):
     return out
 
 
+def _band(x, hp=None, lp=None):
+    """x (frames, channels) through the gains of FFmpeg's highpass and lowpass filters at hp and lp Hz (two poles,
+    Butterworth: 12 dB per octave), without their phase."""
+    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    h = np.ones_like(f)
+    if hp:
+        h *= (f / hp) ** 2 / np.sqrt(1 + (f / hp) ** 4)
+    if lp:
+        h /= np.sqrt(1 + (f / lp) ** 4)
+    return np.fft.irfft(np.fft.rfft(x, axis=0) * h[:, None], n=len(x), axis=0)
+
+
+def _sent_change(before, after, unit, hp=None, lp=None, block=HOP * 1000, margin=HOP * 10):
+    """The windows where a part's own change counts as it is sent, through a send's high- and low-pass filters: its
+    stem's residual (after minus the matched before) and the stem itself filtered alike, and the same test as the stem's
+    own (louder than FLOOR_DB, no more than UNDER_SIGNAL_DB under the part).  A delay's 500 Hz high-pass can bring out a
+    quiet high change over loud lows that the stem's own test leaves out; a part whose level moved through its own
+    compressor differs a little everywhere and still only moved in level, as in its stem.  In blocks of 10 s."""
+    if not (hp or lp):
+        return unit['counted']
+    if not (unit['pr'] > 10 ** (FLOOR_DB / 10)).any():
+        return np.zeros_like(unit['counted'])
+    xa, xb = audio.read_wav(before)[0], audio.read_wav(after)[0]
+    n, gain = max(len(xa), len(xb)), unit['gain']
+
+    def cut(x, lo, hi):
+        out = np.zeros((hi - lo, x.shape[1]))
+        a, b = max(lo, 0), min(hi, len(x))
+        if b > a:
+            out[a - lo:b - lo] = x[a:b]
+        return out
+    pr, louder = [], []
+    for s in range(0, n, block):
+        e = min(s + block, n)
+        a, b = (_band(cut(x, s - margin, e + margin), hp, lp)[margin:margin + e - s] for x in (xa, xb))
+        r = b - gain * a
+        pr.append(_power(r * r))
+        louder.append(np.maximum(gain * gain * _power(a * a), _power(b * b)))
+    del xa, xb
+    pr, louder = np.concatenate(pr), np.concatenate(louder)
+    return (_db(pr) > FLOOR_DB) & (_db(pr) > _db(louder) - UNDER_SIGNAL_DB)
+
+
 def _difference(entry, pr, louder, windows):
     """How far the difference sits under the signal over `windows`."""
     entry['difference_db'] = round(float(_db(pr[windows].sum() / louder[windows].sum())), 1)
@@ -257,24 +302,27 @@ def _files(render):
     return {g: {k: p for k, p in files.items() if p.is_file()} for g, files in out.items()}
 
 
-def _explain(before, project, clock, files, data, same_runtime):
+def _explain(before, project, clock, files, data, same_runtime, stem_files):
     """Split the passages of the mixed files into changes and what the parts' level moves account for (see the module
     notes), the chain in order: buses, returns, premix, master.  Level moves explain nothing where the chain itself
-    changed (another renderer, another project mix, a part sent to another bus or space or at another send level) or
-    where nothing upstream moved in level: a mix processor that acts differently is a change, not a part's level."""
-    from .mixbus import SPACES, bus_of, space_of
+    changed (another renderer, another project mix, a part sent to another bus or space, at another send level or with
+    another delay time) or where nothing upstream moved in level: a mix processor that acts differently is a change, not
+    a part's level.  `stem_files` holds the stems' paths in the two renders."""
+    from .mixbus import DELAY_BAND, RETURN_LOWPASS, SPACES, bus_of, space_of
     tracks = project['tracks']
     stems = {n: data[('stems', n)] for n in files['stems'] if ('stems', n) in data}
     bus_chain = project['mix'].get('chain', 'room') == 'bus'
     chain_changed = not same_runtime or before['mix'] != project['mix']
 
-    def route(t):
+    def route(t, c):
+        """How a part reaches the buses and returns: bus, space, sends, where it stands on the stage and its delay's time
+        in seconds, which follows the tempo of the render's clock `c`."""
         m = t['mix']
-        return (bus_of(t), space_of(t), m.get('reverb_db'), m.get('delay_db'), m.get('delay_quarters'), m.get('depth_m'),
-                m.get('facing'))
-    old = {t['id']: t for t in before['tracks']}
+        delay_s = c.spb[0] * m.get('delay_quarters', .75) if m.get('delay_db') is not None else None
+        return (bus_of(t), space_of(t), m.get('reverb_db'), m.get('delay_db'), delay_s, m.get('depth_m'), m.get('facing'))
+    old, then = {t['id']: t for t in before['tracks']}, Clock(before)
     now = {t['id'] for t in tracks}
-    rerouted = {t['id'] for t in tracks if t['id'] not in old or route(old[t['id']]) != route(t)} | (set(old) - now)
+    rerouted = {t['id'] for t in tracks if t['id'] not in old or route(old[t['id']], then) != route(t, clock)} | (set(old) - now)
     # A stem that moved in level is a part's level move; a bus or return counts as moved only when its parts moved
     # (`from_parts`), not when its own processing acts differently.
     moved = lambda u: u.get('from_parts', abs(u['gain'] - 1.0) > 1e-6) or bool(np.any(u.get('pr_level', 0.0)))
@@ -339,22 +387,27 @@ def _explain(before, project, clock, files, data, same_runtime):
         if not (chain_changed or rerouted & ({t['id'] for t in sent} | {t['id'] for t in senders(before)})):
             # A return is its senders' sends through one space or delay.  Where a sender itself changed, for the
             # space's or delay's length after, nothing in the return is put down to level moves: the change sounds
-            # there.  Elsewhere, with the sends and the routing unchanged (else this return is not explained at all),
-            # only the senders' level moves can make the return differ, by at most the largest move against the
+            # there.  A sender's change is judged as it is sent, through the send's filters (the room chain's room
+            # has none).  Elsewhere, with the sends and the routing unchanged (else this return is not explained at
+            # all), only the senders' level moves can make the return differ, by at most the largest move against the
             # return's gain on its whole level (a share-weighted estimate from the dry stems misjudged it: the
             # return's own filters keep a noise's highs and cut a piano's lows).
             if name == 'delay':
                 tail_s = max([clock.spb[0] * t['mix'].get('delay_quarters', .75) * 1.5 for t in sent] or [0.0]) + .05
+                cut = DELAY_BAND
             elif bus_chain and name in SPACES:
                 tail_s = SPACES[name][1] + 1.15 * max(SPACES[name][0])
+                cut = (SPACES[name][5], RETURN_LOWPASS)
             else:
                 tail_s = project['mix'].get('room_seconds', 1.1) + .1
+                cut = (None, None)
             tail = int(math.ceil(tail_s * RATE / HOP))
-            parts = [(stems[t['id']], t['mix']['delay_db' if name == 'delay' else 'reverb_db']) for t in sent if t['id'] in stems]
-            w['from_parts'] = any(moved(s) for s, _ in parts)
+            parts = [t['id'] for t in sent if t['id'] in stems]
+            w['from_parts'] = any(moved(stems[i]) for i in parts)
             if w['from_parts']:
-                level = max(abs(s['gain'] - w['gain']) for s, _ in parts)
-                own = sum(_trail(s['counted'].astype(float), tail) for s, _ in parts) > 0
+                level = max(abs(stems[i]['gain'] - w['gain']) for i in parts)
+                own = sum(_trail((stems[i]['counted'] | _sent_change(stem_files[0][i], stem_files[1][i], stems[i], *cut))
+                                 .astype(float), tail) for i in parts) > 0
                 bound = np.where(own, 0.0, level ** 2 * _near_max(w['louder']))
         label('returns', name, bound)
     wp, wm = data.get(('premix', 'premix')), data.get(('master', 'master'))
@@ -443,7 +496,7 @@ def compare(before, after, differences=None):
             entries[name] = entry
         files[group] = entries
     _explain(a['project'], b['project'], clock, files, data,
-             a['report'].get('renderer_sha256') == b['report'].get('renderer_sha256'))
+             a['report'].get('renderer_sha256') == b['report'].get('renderer_sha256'), (fa['stems'], fb['stems']))
     changes = project_changes(a['project'], b['project'])
     synth = synthesis(a, b)
     summary = {'project': project_lines(changes), **{k: v for k, v in synth.items() if k != 'reused'},

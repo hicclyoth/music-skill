@@ -1332,7 +1332,7 @@ def checks(work,config=None):
         # - quiet_bass: the same note change while the bass is 6 dB louder.
         # Every passage stays in the report.  The parts' level moves account only for their own share of a mix, so the
         # note is a change in the premix and the master however far another part moved, and from the note on only.
-        from musiclib.compare import compare
+        from musiclib.compare import compare,first_change
         p=example();clock=Clock(p);rate=audio.RATE;frames=round((clock.end+clock.tail)*rate);t=np.arange(frames)/rate
         def tone(k,amp=.1):
             x=amp*np.sin(2*np.pi*110*2**(k/5)*t)*(1+.5*np.sin(2*np.pi*.3*t+k));return np.stack([x,.9*x],axis=1)
@@ -1386,22 +1386,30 @@ def checks(work,config=None):
         bp=compare(work/'compare_unit'/'before',out)
         for e in (bp['files']['premix']['premix'],bp['files']['master']['master']):
             assert len(real(e))==1 and abs(real(e)[0]['start_s']-on)<.02 and abs(real(e)[0]['end_s']-z/rate)<.03,e
-        # A chain with buses and a shared delay (the files as the bus mix writes them, the delay a plain echo):
+        # A chain with buses and a shared delay (the files as the bus mix writes them, the delay an echo):
         # - chain_echo: the bass, 40 dB under the lead, gets 6 dB louder while the lead changes 0.1 s of its tone; the
         #   lead's new echo in the shared delay is a change, not the bass's level move;
         # - chain_squash and chain_dynamics: the stems are identical and only the lead bus acts differently, with the
-        #   project mix the same or changed: nothing there is put down to a part's level.
+        #   project mix the same or changed: nothing there is put down to a part's level;
+        # - band_after: the lead is loud lows with a high line 46 dB under them, through a fixed saturation, and the
+        #   echo keeps 500-4000 Hz as the delay's filters do.  The high line changes for 0.1 s, the whole lead moves
+        #   0.11 dB through the saturation and the bass gets 6 dB louder.  The lead's stem shows only its level, but
+        #   the filtered echo brings the change out: a change in the return.  The saturation's small difference
+        #   everywhere is still only the lead's level, there as in its stem;
+        # - chain_tempo: as chain_echo with the tempo halved, so the delay's time doubles: the delay return, the premix
+        #   and the master are changes from the start, and the clip starts there, not at the lead's change.
         cq=copy.deepcopy(p)
         for tr in cq['tracks']:
             if tr['id'] in ('bass','lead'):tr['mix']['delay_db']=-6
         tone2=lambda f,amp:np.stack([amp*np.sin(2*np.pi*f*t),.9*amp*np.sin(2*np.pi*f*t)],axis=1)
         lead0,bass0=tone2(1700,.1),tone2(1000,.001);e0,e1=int(6*rate),int(6.1*rate);lead1=lead0.copy();lead1[e0:e1]=tone2(2300,.1)[e0:e1]
-        lag=int(.375*rate);squash=lambda x:x*(1-.3*np.abs(x)/np.abs(x).max())
-        def chain(name,proj,bass,lead,bus_lead=None):
+        squash=lambda x:x*(1-.3*np.abs(x)/np.abs(x).max())
+        def chain(name,proj,bass,lead,bus_lead=None,lag=.375,filt=None):
             out=work/'compare_unit'/name;(out/'stems').mkdir(parents=True,exist_ok=True);(out/'returns').mkdir(exist_ok=True)
             save_json(out/'project.json',proj);save_json(out/'report.json',{'renderer_sha256':'one'})
             save_json(out/'stem_receipts.json',[{'track':k,'cache_key':k,'raw_sha256':k} for k in ('bass','lead')])
-            bus=lead if bus_lead is None else bus_lead;echo=np.zeros_like(lead);echo[lag:]=.5*(bass+lead)[:-lag]
+            d=int(lag*rate);bus=lead if bus_lead is None else bus_lead;echo=np.zeros_like(lead);echo[d:]=.5*(bass+lead)[:-d]
+            if filt:echo=filt(echo)
             for f,x in (('stems/bass',bass),('stems/lead',lead),('returns/bus_bass',bass),('returns/bus_lead',bus),('returns/delay_return',echo),('premix',bass+bus+echo),('master',bass+bus+echo)):
                 audio.write_wav(out/f'{f}.wav',x.astype(np.float32))
             return out
@@ -1417,8 +1425,22 @@ def checks(work,config=None):
             assert all(e['identical'] for e in res['files']['stems'].values()),res['summary']
             for g,n in (('buses','lead'),('premix','premix'),('master','master')):
                 e=res['files'][g][n];assert e['passages'] and not any(x.get('follows_part_levels') for x in e['passages']),(g,e)
-        for res in (r,m,q,bp,ec,sq,dy):apart(res)
-        return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed'],'echo':ec['summary']['changed']}
+        fr=np.fft.rfftfreq(len(t),1/rate);band=lambda x:np.fft.irfft(np.fft.rfft(x,axis=0)*((fr>=500)&(fr<=4000))[:,None],n=len(x),axis=0)
+        sat=lambda x:np.stack([np.tanh(4*x)/4,.9*np.tanh(4*x)/4],axis=1)
+        low,hi0=.1*np.sin(2*np.pi*100*t),.0004*np.sin(2*np.pi*1700*t);hi1=hi0.copy();hi1[e0:e1]=.0004*np.sin(2*np.pi*2300*t[e0:e1])
+        bd=compare(chain('band_before',cq,bass0,sat(low+hi0),filt=band),chain('band_after',louder_bass,2*bass0,sat(10**(.11/20)*(low+hi1)),filt=band))
+        g3=bd['files'];assert g3['stems']['lead']['level_db'] and not g3['stems']['lead']['passages'],g3['stems']['lead']
+        assert any(x['start_s']<6.38 and x['end_s']>6.47 for x in real(g3['returns']['delay'])),g3['returns']['delay']
+        for g,n in (('returns','delay'),('premix','premix'),('master','master')):
+            assert all(x['start_s']>6-.02 for x in real(g3[g][n])),(g,g3[g][n])
+        slow=copy.deepcopy(louder_bass);slow['clock']['tempo']=[[b,bpm/2] for b,bpm in slow['clock']['tempo']]
+        tp=compare(c0,chain('chain_tempo',slow,2*bass0,lead1,lag=.75));g4=tp['files']
+        for g,n in (('returns','delay'),('premix','premix'),('master','master')):
+            assert g4[g][n]['passages'] and not any(x.get('follows_part_levels') for x in g4[g][n]['passages']),(g,g4[g][n])
+        assert first_change(tp)<1,first_change(tp)
+        for res in (r,m,q,bp,ec,sq,dy,bd,tp):apart(res)
+        return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed'],'echo':ec['summary']['changed'],
+                'band':bd['summary']['changed'],'tempo':tp['summary']['changed']}
     check('compare_finds_level_and_local_changes',compare_unit)
     if config:
         from musiclib.render import render
