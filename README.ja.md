@@ -26,26 +26,22 @@ music-skill は、作曲家と小さなスタジオのやり方でオリジナ�
 音声生成モデルは一切使いません。MP3 と WAV に加えて、MIDI、パートごとのステム、そしてどの音でも書き換えて作り直せるプロジェクトファイルが手に入ります。
 
 <p align="center">
-  <img src="docs/images/above-the-clouds.png" alt="『Above the Clouds』のすべての音をオーケストラのセクションごとに並べた図。赤がメロディーで、その下に弦、木管、金管、ハープとオルガン、打楽器。上にセクション名">
+  <img src="docs/images/fughetta-on-a-lantern-theme.png" alt="『Fughetta on a Lantern Theme』のすべての音をパートごとに並べた図。上にセクション名。赤が主題で、第 1 ヴァイオリン、第 2 ヴァイオリン、ヴィオラ、チェロの順に入り、ヘ長調、ト短調、曲の終わりの低音でもう一度現れる">
 </p>
 
 ## 試聴
 
-**[『Above the Clouds』](examples/above-the-clouds)**：オーケストラとオルガンのための演奏会用序曲です。遠くから響くホルンに始まり、アレグロ、嵐、静かなヴァイオリン独奏を経て、オルガンとともに大きな旋律がフォルティッシッシモで鳴ります。[全曲](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)（4:28）をどうぞ。
+ここにある曲はどれも、Claude（Opus 5.5、xhigh effort）がこのスキルのバージョン 0.3.0 で、一行の題材と[全エージェント共通のルール](examples/agent-rules.md)から、一回の実行で作りました。曲名、形式、楽器、音色を自分で決め、すべての音を書き、レビュー、レンダリング、手直しまで自分で行っています。完成品に人の手は入っていません。各サンプルフォルダには、プロンプト、エージェントのスクリプト、レンダリングしたときのプロジェクト、エージェント自身の制作ノートがあります。
 
-**[『Signal Fire』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**：フェスティバル系のハウスです。ピアノのテーマ、ビルドアップ、スーパーソーのドロップを、スキル内蔵のシンセサイザーとドラムマシンで作っています。
+**[『Fughetta on a Lantern Theme』](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**（1:55）。題材は「チェンバロと弦楽のためのバロック風の小品、声部どうしで模倣対位法を」。グラーヴェの序奏のあと、ニ短調のフゲッタで主題が弦楽の 4 声部に順に現れます（[サンプル](examples/fughetta-on-a-lantern-theme)）。
 
-ほかのスタイルは [examples/genre-demos](examples/genre-demos) にあります。
+- [『Platform in the Snowmelt』](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/platform-in-the-snowmelt.mp3)（4:37）。題材は「アニメのエンディング曲のような日本のバラード、ピアノと弦楽が中心、静かに始まり、最後のサビで最も気持ちが高まる」（[サンプル](examples/platform-in-the-snowmelt)）
+- [『Sodium Lights』](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)（4:28）。題材は「日本のシティポップ、夜のドライブの都会的な雰囲気」（[サンプル](examples/sodium-lights)）
+- [『Sprinkle Satellite』](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)（2:30）。題材は「かわいい系のフューチャーベース、明るいコードと軽快なドロップ」（[サンプル](examples/sprinkle-satellite)）
 
-- [『Late Set at the Corner』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3)：テナーサックスとピアノトリオのジャズ・ブルース
-- [『Midnight Coastline』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3)：シンセウェイヴ。ストリングマシンのパッドにグライドするリード
-- [『Rain on the Tram Line』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3)：ローファイ・ヒップホップ。くたびれたテープのピアノとアーチトップギター
-- [『Paper Satellites』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3)：フューチャーベース。キックに合わせてうねるスーパーソーのコードと 808
-- [『Pixel Lantern』](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3)：ファミコン（NES）の制約で書いた、ゲームのフィールド用ループ
+この 4 曲は、同じ方法で作った 9 曲から耳で選びました。[Before and after](examples/before-after) は短い曲の音を一つ変え、レンダリングの中で一緒に変わったものを `compare` ですべて示します。そのパート、そのバス、リバーブの残響、マスターです。
 
-どの曲も Claude（Opus 5.5）がこのスキルで作曲・編曲・ミックスしました。各サンプルフォルダには曲を書いたスクリプトとプロジェクトファイルがあり、Windows で固定バージョンのツールを使ってレンダリングし直すと、24 ビットの丸め誤差の範囲で同じマスターになります。[『Daybreak Signal』](examples/daybreak-signal) はピアノがメロディーを弾くアニメのオープニング風の曲で、曲をどう手直ししていくかを示しています。[Before and after](examples/before-after) は短い曲の音を一つ変え、レンダリングの中で一緒に変わったものを `compare` ですべて示します。そのパート、そのバス、リバーブの残響、マスターです。
-
-録音は MP3 ファイルで、リリース [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1) からダウンロードできます。
+録音は MP3 ファイルで、リリース [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2) からダウンロードできます。
 
 ## クイックスタート
 
@@ -62,7 +58,7 @@ music-skill は、作曲家と小さなスタジオのやり方でオリジナ�
 
    > RPG の町のテーマを 1 分のループで書いて。リコーダーとハープに、やわらかい弦を添えて。
 
-MP3 と WAV、MIDI、パートごとのステム、足し合わせるとミックスになるバスとリバーブのリターン、プロジェクトファイルが手に入ります。24 スレッドのノート PC では、上のサンプル曲のレンダリングは 30 秒（ジャズトリオ、チップチューンのループ）から 5 分（内蔵シンセで作ったハウス）で、4 分半の序曲は 3 分でした。
+MP3 と WAV、MIDI、パートごとのステム、足し合わせるとミックスになるバスとリバーブのリターン、プロジェクトファイルが手に入ります。24 スレッドのノート PC では、上のサンプル曲を一からレンダリングして、1 曲あたり 30 秒（フゲッタ）から 2 分半（シティポップ）でした。
 
 ## 生成すればいいのでは？
 

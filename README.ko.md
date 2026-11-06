@@ -26,26 +26,22 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 오디오 생성 모델은 전혀 쓰지 않습니다. MP3와 WAV뿐 아니라 MIDI, 파트별 스템, 그리고 어떤 음이든 고쳐서 다시 렌더링할 수 있는 프로젝트 파일까지 받게 됩니다.
 
 <p align="center">
-  <img src="docs/images/above-the-clouds.png" alt="《Above the Clouds》의 모든 음을 오케스트라 파트별로 나열한 그림. 빨간색이 멜로디이고 그 아래로 현악, 목관, 금관, 하프와 오르간, 타악기, 위에는 구간 이름">
+  <img src="docs/images/fughetta-on-a-lantern-theme.png" alt="《Fughetta on a Lantern Theme》의 모든 음을 파트별로 나열한 그림. 위에는 구간 이름. 빨간색이 주제로, 제1 바이올린, 제2 바이올린, 비올라, 첼로 순으로 들어오고, 바장조, 사단조, 곡 끝의 저음에서 다시 나타남">
 </p>
 
 ## 들어 보기
 
-**[《Above the Clouds》](examples/above-the-clouds)**: 오케스트라와 오르간을 위한 연주회용 서곡입니다. 멀리서 울리는 호른으로 시작해 알레그로, 폭풍, 고요한 바이올린 독주를 지나, 오르간과 함께 큰 선율이 포르티시시모로 울립니다. [전곡](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)(4:28)을 들어 보세요.
+여기 있는 곡은 모두 Claude(Opus 5.5, xhigh effort)가 이 스킬의 0.3.0 버전으로, 한 줄짜리 주제와 [모든 에이전트가 따른 규칙](examples/agent-rules.md)으로, 한 번의 실행에서 만들었습니다. 곡 제목, 형식, 악기, 음색을 스스로 정하고, 모든 음을 쓰고, 리뷰·렌더링·수정까지 직접 했습니다. 결과물을 사람이 고치지 않았습니다. 각 예제 폴더에는 프롬프트, 에이전트의 스크립트, 렌더링할 때의 프로젝트, 에이전트가 직접 쓴 제작 노트가 있습니다.
 
-**[《Signal Fire》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**: 페스티벌 하우스입니다. 피아노 테마, 빌드업, 슈퍼소 드롭을 스킬에 내장된 신시사이저와 드럼 머신으로 만들었습니다.
+**[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**(1:55). 주제는 "하프시코드와 현악을 위한 바로크풍 소품, 성부끼리 모방 대위법으로". 그라베 서주에 이어 D단조 푸게타에서 주제가 현악 네 성부에 차례로 들어옵니다([예제](examples/fughetta-on-a-lantern-theme)).
 
-다른 스타일은 [examples/genre-demos](examples/genre-demos)에 있습니다.
+- [《Platform in the Snowmelt》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/platform-in-the-snowmelt.mp3)(4:37). 주제는 "애니메이션 엔딩곡 같은 일본풍 발라드, 피아노와 현악 중심, 조용히 시작해 마지막 후렴에서 감정이 가장 고조됨"([예제](examples/platform-in-the-snowmelt))
+- [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)(4:28). 주제는 "일본 시티팝, 밤 드라이브의 도시적인 느낌"([예제](examples/sodium-lights))
+- [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)(2:30). 주제는 "귀여운 퓨처 베이스, 밝은 코드와 경쾌한 드롭"([예제](examples/sprinkle-satellite))
 
-- [《Late Set at the Corner》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3): 테너 색소폰과 피아노 트리오의 재즈 블루스
-- [《Midnight Coastline》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3): 신스웨이브. 스트링 머신 패드 위로 글라이드하는 리드
-- [《Rain on the Tram Line》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3): 로파이 힙합. 낡은 테이프 느낌의 피아노와 아치톱 기타
-- [《Paper Satellites》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3): 퓨처 베이스. 킥에 맞춰 출렁이는 슈퍼소 코드와 808
-- [《Pixel Lantern》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3): 패미컴(NES)의 제약에 맞춰 쓴 게임 필드용 루프
+이 네 곡은 같은 방법으로 만든 아홉 곡 중에서 귀로 골랐습니다. [Before and after](examples/before-after)는 짧은 곡의 음 하나를 바꾸고, 렌더링에서 함께 바뀐 모든 것을 `compare`로 보여 줍니다. 그 파트, 그 버스, 리버브 꼬리, 마스터입니다.
 
-모든 곡은 Claude(Opus 5.5)가 이 스킬로 작곡·편곡·믹싱했습니다. 각 예제 폴더에는 곡을 쓴 스크립트와 프로젝트 파일이 있고, Windows에서 고정된 버전의 도구로 다시 렌더링하면 24비트 반올림 오차 범위 안에서 같은 마스터가 나옵니다. [《Daybreak Signal》](examples/daybreak-signal)은 피아노가 멜로디를 맡는 애니메이션 오프닝 풍의 곡으로, 곡을 어떻게 다듬어 가는지 보여 줍니다. [Before and after](examples/before-after)는 짧은 곡의 음 하나를 바꾸고, 렌더링에서 함께 바뀐 모든 것을 `compare`로 보여 줍니다. 그 파트, 그 버스, 리버브 꼬리, 마스터입니다.
-
-녹음은 MP3 파일이며, 릴리스 [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1)에서 내려받을 수 있습니다.
+녹음은 MP3 파일이며, 릴리스 [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2)에서 내려받을 수 있습니다.
 
 ## 빠른 시작
 
@@ -62,7 +58,7 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 
    > 내 RPG에 쓸 1분짜리 반복되는 마을 테마를 써 줘. 리코더, 하프, 부드러운 현악으로.
 
-MP3와 WAV, MIDI, 파트별 스템, 더하면 믹스가 되는 버스와 리버브 리턴, 프로젝트 파일을 받습니다. 24스레드 노트북에서 위의 예제 곡들은 30초(재즈 트리오, 칩튠 루프)에서 5분(내장 신시사이저로 만든 하우스) 만에 렌더링되었고, 4분 반짜리 서곡은 3분이 걸렸습니다.
+MP3와 WAV, MIDI, 파트별 스템, 더하면 믹스가 되는 버스와 리버브 리턴, 프로젝트 파일을 받습니다. 24스레드 노트북에서 위의 예제 곡들을 처음부터 렌더링하는 데 한 곡에 30초(푸게타)에서 2분 반(시티팝)이 걸렸습니다.
 
 ## 그냥 생성하면 안 되나요?
 

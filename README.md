@@ -26,26 +26,22 @@ music-skill is an [Agent Skill](https://agentskills.io) for writing original ins
 No audio-generation model is involved. Besides the MP3 and WAV you get the MIDI, a stem per part, and a project file in which any note can be changed and rendered again.
 
 <p align="center">
-  <img src="docs/images/above-the-clouds.png" alt="Every note of Above the Clouds, by section of the orchestra: the melody in red above the strings, winds, brass, harp and organ, and percussion, with the sections marked">
+  <img src="docs/images/fughetta-on-a-lantern-theme.png" alt="Every note of Fughetta on a Lantern Theme, part by part, with its sections marked: the subject in red as it enters in violin I, violin II, the viola and the cello, then in F major, in G minor and in the bass at the end">
 </p>
 
 ## Listen
 
-**[Above the Clouds](examples/above-the-clouds)**, a concert overture for orchestra and organ: from a distant horn call through an Allegro, a storm and a still violin solo to its big tune, fff, with the organ. Hear [the whole overture](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3) (4:28).
+Claude (Opus 5.5, xhigh effort) made each of these with this skill's version 0.3.0, in one run from a one-line subject and [the rules every agent followed](examples/agent-rules.md). It chose the title, the form, the instruments and the sounds, wrote every note, and reviewed, rendered and revised its own work; nobody edited the result. Each example folder has the prompt, the agent's script, the project as it was rendered and the agent's own notes.
 
-**[Signal Fire](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**, festival house: a piano theme, a build-up and a supersaw drop on the skill's own synthesizers and drum machine.
+**[Fughetta on a Lantern Theme](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)** (1:55), from "a baroque-style miniature for harpsichord and strings, with imitative counterpoint between the voices": a Grave, then a fughetta in D minor whose subject enters in each of the four string voices in turn ([the example](examples/fughetta-on-a-lantern-theme)).
 
-More styles, in [examples/genre-demos](examples/genre-demos):
+- [Platform in the Snowmelt](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/platform-in-the-snowmelt.mp3) (4:37), from "a Japanese ballad like an anime ending theme, mostly piano and strings: it starts quietly, and the last chorus carries the most feeling" ([the example](examples/platform-in-the-snowmelt))
+- [Sodium Lights](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3) (4:28), from "Japanese city pop: the city feeling of a drive at night" ([the example](examples/sodium-lights))
+- [Sprinkle Satellite](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3) (2:30), from "kawaii future bass: bright chords and a light, bouncy drop" ([the example](examples/sprinkle-satellite))
 
-- [Late Set at the Corner](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3): a jazz blues for tenor saxophone and piano trio
-- [Midnight Coastline](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3): synthwave, a gliding lead over string-machine pads
-- [Rain on the Tram Line](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3): lo-fi hip-hop, a worn-tape piano and an archtop guitar
-- [Paper Satellites](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3): future bass, pumped supersaw chords and an 808
-- [Pixel Lantern](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3): a chiptune loop for a game's overworld, written to the NES's limits
+These four were chosen by ear from nine pieces made the same way. [Before and after](examples/before-after) changes one note of a short piece, and `compare` shows everything in the render that changed with it: the part, its bus, the reverb's tail and the master.
 
-Claude (Opus 5.5) composed, arranged and mixed each piece with this skill. Each example folder has the scripts that wrote its pieces and their project files, and rendering a project again with the pinned Windows tools gives the same master to within 24-bit rounding. [Daybreak Signal](examples/daybreak-signal), an anime-opening-style piece with a piano melody, shows how a piece is revised. [Before and after](examples/before-after) changes one note of a short piece, and `compare` shows everything in the render that changed with it: the part, its bus, the reverb's tail and the master.
-
-The recordings download as MP3 files from the release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1).
+The recordings download as MP3 files from the release [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2).
 
 ## Quick start
 
@@ -62,7 +58,7 @@ The recordings download as MP3 files from the release [examples-1](https://githu
 
    > Write a one-minute looping town theme for my RPG: recorder, harp and light strings.
 
-You get an MP3 and a WAV, the MIDI, a stem per part, the buses and reverb returns that add up to the mix, and the project file. On a 24-thread laptop the examples above rendered in half a minute (a jazz trio, a chiptune loop) to five minutes (house on the built-in synthesizers); the four-and-a-half-minute overture took three.
+You get an MP3 and a WAV, the MIDI, a stem per part, the buses and reverb returns that add up to the mix, and the project file. On a 24-thread laptop each of the examples above rendered from scratch in half a minute (the fughetta) to two and a half minutes (the city pop).
 
 ## Why not just generate it?
 

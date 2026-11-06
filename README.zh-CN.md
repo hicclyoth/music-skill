@@ -26,26 +26,22 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 整个过程没有用到任何音频生成模型。除了 MP3 和 WAV，你还会得到 MIDI、每个声部各自的音轨，以及一份项目文件：其中任何一个音都能修改，改完再重新渲染。
 
 <p align="center">
-  <img src="docs/images/above-the-clouds.png" alt="《Above the Clouds》的每一个音按乐团声部排列：红色是主旋律，下方依次是弦乐、木管、铜管、竖琴与管风琴、打击乐，上方标出段落">
+  <img src="docs/images/fughetta-on-a-lantern-theme.png" alt="《Fughetta on a Lantern Theme》的每一个音按声部排列，上方标出段落：红色是主题，依次在第一小提琴、第二小提琴、中提琴和大提琴进入，之后在 F 大调、G 小调和曲末的低音声部再出现">
 </p>
 
 ## 试听
 
-**[《Above the Clouds》](examples/above-the-clouds)**：为管弦乐团与管风琴写的音乐会序曲。从远方的圆号开始，经过快板、暴风雨和一段宁静的小提琴独奏，最后管风琴加入，以最强音奏出主题大旋律。可以听[整首序曲](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/above_the_clouds.mp3)（4:28）。
+以下每一首都由 Claude（Opus 5.5，xhigh effort）用这个 skill 的 0.3.0 版，从一句题材和[所有 agent 共用的规则](examples/agent-rules.md)、单次运行做成。曲名、曲式、乐器和音色都由它自己决定，每个音都是它写的，审查、渲染和修改也都由它自己完成，没有人修改过成品。每个示例文件夹都有 prompt、agent 的脚本、渲染时的项目文件和 agent 自己的制作笔记。
 
-**[《Signal Fire》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/signal_fire.mp3)**：节庆浩室（festival house）。钢琴主题、渐强段和 supersaw 的爆发段（drop），都用这个 skill 内置的合成器和鼓机做成。
+**[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**（1:55），题材是「巴洛克风格的大键琴与弦乐小品，声部之间要有模仿对位」：先是庄板（Grave）序奏，接着是 D 小调的小赋格，主题依次在四个弦乐声部进入（[示例](examples/fughetta-on-a-lantern-theme)）。
 
-其他风格都在 [examples/genre-demos](examples/genre-demos)：
+- [《Platform in the Snowmelt》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/platform-in-the-snowmelt.mp3)（4:37），题材是「像动画片尾曲的日系抒情曲，钢琴和弦乐为主，安静开始，最后一次副歌情绪最满」（[示例](examples/platform-in-the-snowmelt)）
+- [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)（4:28），题材是「日系 city pop，夜晚开车兜风的都市感」（[示例](examples/sodium-lights)）
+- [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)（2:30），题材是「可爱系 future bass，明亮的和弦和轻快的 drop」（[示例](examples/sprinkle-satellite)）
 
-- [《Late Set at the Corner》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/late_set.mp3)：次中音萨克斯加钢琴三重奏的爵士布鲁斯
-- [《Midnight Coastline》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/midnight_coastline.mp3)：synthwave，滑音主旋律配上弦乐合成器铺底
-- [《Rain on the Tram Line》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/tram_line_rain.mp3)：lo-fi hip-hop，旧磁带味的钢琴和弧顶爵士吉他
-- [《Paper Satellites》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/paper_satellites.mp3)：future bass，随底鼓起伏的 supersaw 和弦与 808
-- [《Pixel Lantern》](https://github.com/owoevan-dev/music-skill/releases/download/examples-1/pixel_lantern.mp3)：按红白机（NES）的限制写成的游戏地图循环配乐
+这四首是从同样方式做出的九首里，用耳朵挑出来的。[原版与修改版对照](examples/before-after) 把一首小曲改掉一个音，再用 `compare` 列出渲染里随之改变的所有地方：那个声部、它的总线、混响尾巴和母带。
 
-每一首都由 Claude（Opus 5.5）用这个 skill 作曲、编曲和混音。每个示例文件夹都有写出曲子的脚本和项目文件；在 Windows 上用锁定版本的工具重新渲染，会得到相同的母带，差异仅在 24 位的舍入误差。[《Daybreak Signal》](examples/daybreak-signal) 是一首由钢琴主奏的动漫片头风格曲子，示范一首曲子如何一步步修改。[原版与修改版对照](examples/before-after) 把一首小曲改掉一个音，再用 `compare` 列出渲染里随之改变的所有地方：那个声部、它的总线、混响尾巴和母带。
-
-录音是 MP3 文件，可以从 release [examples-1](https://github.com/owoevan-dev/music-skill/releases/tag/examples-1) 下载。
+录音是 MP3 文件，可以从 release [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2) 下载。
 
 ## 快速开始
 
@@ -62,7 +58,7 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 
    > 给我的 RPG 写一首一分钟、可以循环的城镇主题：竖笛、竖琴和轻柔的弦乐。
 
-你会得到 MP3 和 WAV、MIDI、每个声部的分轨、加起来就是完整混音的总线与混响返回，以及项目文件。在一台 24 线程的笔记本电脑上，上面的示例从半分钟（爵士三重奏、chiptune 循环曲）到五分钟（用内置合成器做的浩室）就渲染完成；四分半的序曲用了三分钟。
+你会得到 MP3 和 WAV、MIDI、每个声部的分轨、加起来就是完整混音的总线与混响返回，以及项目文件。在一台 24 线程的笔记本电脑上，上面的示例从零开始渲染，每首用了半分钟（小赋格）到两分半（city pop）。
 
 ## 为什么不直接生成？
 

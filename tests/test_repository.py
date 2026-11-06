@@ -1,4 +1,4 @@
-"""Repository tests: packaging, links, privacy, the demo and the skill's own selfcheck.
+"""Repository tests: packaging, links, privacy, the examples and the skill's own selfcheck.
 
 Run from the repository root: python -m pytest -q tests
 Set MUSIC_SKILL_CONFIG to a renderer configuration written by bootstrap.py to include the render checks."""
@@ -14,13 +14,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / 'skills' / 'music-production'
 SCRIPTS = SKILL / 'scripts'
-EXAMPLE = ROOT / 'examples' / 'daybreak-signal'
-OVERTURE = ROOT / 'examples' / 'above-the-clouds'
-GENRES = ROOT / 'examples' / 'genre-demos'
 BEFORE_AFTER = ROOT / 'examples' / 'before-after'
-GENRE_DEMOS = ('signal_fire', 'late_set', 'midnight_coastline', 'tram_line_rain', 'paper_satellites', 'pixel_lantern')
+AGENT_PIECES = {  # folder: the agent's script and its arguments as the example's README gives them, {out} the output
+    'fughetta-on-a-lantern-theme': ('compose_baroque.py', ['{out}']),
+    'platform-in-the-snowmelt': ('compose.py', ['{out}', 'r6']),
+    'sodium-lights': ('compose.py', ['--output', '{out}', '--revision', 'r6']),
+    'sprinkle-satellite': ('compose.py', ['{out}']),
+}
 CONFIG = os.environ.get('MUSIC_SKILL_CONFIG')
-DEMOS = {'piano': ['1.1.r3p4', '--arr', 'r3', '--lead', 'piano', '--mix', 'bus']}
 
 
 def load(path):
@@ -155,41 +156,33 @@ def test_no_personal_data():
     assert not hits, '\n'.join(hits)
 
 
-def test_demo_projects():
-    sys.path.insert(0, str(SCRIPTS))
-    from musiclib.model import validate
-    for name in DEMOS:
-        p = load(EXAMPLE / f'{name}.json')
-        assert p['mix']['chain'] == 'bus' and 85 < validate(p)['seconds'] < 95
-
-
-@pytest.mark.parametrize('name', DEMOS)
-def test_demo_script_writes_the_published_project(tmp_path, name):
-    out = tmp_path / f'{name}.json'
-    r = subprocess.run([sys.executable, str(EXAMPLE / 'daybreak_signal.py'), str(out), *DEMOS[name]],
-                       capture_output=True, text=True, encoding='utf-8', errors='replace')
-    assert r.returncode == 0, r.stderr[-2000:]
-    assert load(out) == load(EXAMPLE / f'{name}.json')
-
-
 def test_example_projects():
     sys.path.insert(0, str(SCRIPTS))
     from musiclib.model import validate
-    for folder, name in [(OVERTURE, 'above_the_clouds')] + [(GENRES, n) for n in GENRE_DEMOS]:
-        assert validate(load(folder / f'{name}.json'))['seconds'] > 30, name
+    for folder in AGENT_PIECES:
+        assert validate(load(ROOT / 'examples' / folder / 'song.json'))['seconds'] > 60, folder
 
 
-RECORDINGS = 'https://github.com/owoevan-dev/music-skill/releases/download/examples-1/'
+@pytest.mark.parametrize('folder', AGENT_PIECES)
+def test_agent_piece_script_writes_the_published_project(tmp_path, folder):
+    """Each agent's script, run as its example's README says, writes the published project again."""
+    script, args = AGENT_PIECES[folder]
+    out = tmp_path / 'song.json'
+    r = subprocess.run([sys.executable, str(ROOT / 'examples' / folder / script), *(a.replace('{out}', str(out)) for a in args)],
+                       capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=tmp_path)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert load(out) == load(ROOT / 'examples' / folder / 'song.json')
+
+
+RECORDINGS = 'https://github.com/owoevan-dev/music-skill/releases/download/examples-2/'
 
 
 def test_recordings_are_release_assets():
-    """The example recordings are assets of the release examples-1: each README links its own recordings there (each
-    language's README the overture and the six genre demos, each example folder its pieces), and no recording is a
-    repository file."""
-    genres = {f'{n}.mp3' for n in GENRE_DEMOS}
-    expected = {**{f'README{s}.md': {'above_the_clouds.mp3', *genres} for s in ('', '.ja', '.ko', '.zh-CN', '.zh-TW')},
-                'examples/above-the-clouds/README.md': {'above_the_clouds.mp3'},
-                'examples/daybreak-signal/README.md': {'daybreak_signal_piano.mp3'}, 'examples/genre-demos/README.md': genres}
+    """The example recordings are assets of the release examples-2: each language's README links the four pieces there,
+    each example folder its own piece, and no recording is a repository file."""
+    pieces = {f'{folder}.mp3' for folder in AGENT_PIECES}
+    expected = {**{f'README{s}.md': pieces for s in ('', '.ja', '.ko', '.zh-CN', '.zh-TW')},
+                **{f'examples/{folder}/README.md': {f'{folder}.mp3'} for folder in AGENT_PIECES}}
     for name, recordings in expected.items():
         links = re.findall(r'\]\(([^)\s]+\.mp3)\)', (ROOT / name).read_text(encoding='utf-8'))
         assert all(link.startswith(RECORDINGS) for link in links) and {link[len(RECORDINGS):] for link in links} == recordings, name
@@ -205,22 +198,6 @@ def test_files_fit_the_plugin_directory():
         assert p.stat().st_size < 5 * 2**20, f'{p.relative_to(ROOT)} is 5 MiB or larger'
         if p.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.gif', '.webp'):
             assert b'\0' not in p.read_bytes(), f'{p.relative_to(ROOT)} is a binary file'
-
-
-def test_overture_script_writes_the_published_project(tmp_path):
-    out = tmp_path / 'above_the_clouds.json'
-    r = subprocess.run([sys.executable, str(OVERTURE / 'above_the_clouds.py'), str(out), '1.0.r7', '--engine-r7'],
-                       capture_output=True, text=True, encoding='utf-8', errors='replace')
-    assert r.returncode == 0, r.stderr[-2000:]
-    assert load(out) == load(OVERTURE / 'above_the_clouds.json')
-
-
-@pytest.mark.parametrize('name', GENRE_DEMOS)
-def test_genre_demo_script_writes_the_published_project(tmp_path, name):
-    r = subprocess.run([sys.executable, str(GENRES / f'{name}.py'), str(tmp_path / name)],
-                       capture_output=True, text=True, encoding='utf-8', errors='replace')
-    assert r.returncode == 0, r.stderr[-2000:]
-    assert load(tmp_path / name / 'song.json') == load(GENRES / f'{name}.json')
 
 
 def test_before_after_example(tmp_path):
