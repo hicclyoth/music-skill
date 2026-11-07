@@ -105,10 +105,10 @@ def write_wav(path,data,rate=RATE):
     data=np.asarray(data,dtype='<f4')
     if data.ndim==1:data=data[:,None]
     if not np.isfinite(data).all():raise ValueError('Nonfinite audio')
-    channels=data.shape[1];raw=data.tobytes()
+    channels=data.shape[1];data=np.ascontiguousarray(data);size=data.nbytes
     fmt=struct.pack('<HHIIHH',3,channels,rate,rate*channels*4,channels*4,32)
-    with Path(path).open('wb') as f:
-        f.write(b'RIFF'+struct.pack('<I',36+len(raw))+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',len(raw))+raw)
+    with Path(path).open('wb') as f:  # the samples straight from the array, not copied into one bytes object first
+        f.write(b'RIFF'+struct.pack('<I',36+size)+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',size));f.write(memoryview(data).cast('B'))
 
 def read_wav(path):
     path=Path(path)
