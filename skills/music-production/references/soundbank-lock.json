@@ -4112,19 +4112,16 @@
       "vsco_extra",
       "vsco_strings",
       "vcsl",
-      "organ_vcsl",
       "cello_bigcat",
+      "iowa_brass",
+      "iowa_strings",
       "rusty",
-      "fsbs_dist1",
-      "fsbs_dist2",
       "fsbs_clean",
-      "bass_pick",
-      "bass_sneaky",
-      "guitar_shiny",
+      "bass_darkblack",
       "piano_osiris",
       "vcsl_keys",
       "vcsl_winds",
-      "vocal_ah"
+      "vcsl_world"
     ]
   }
 }

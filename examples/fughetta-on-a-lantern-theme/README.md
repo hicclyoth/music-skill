@@ -22,14 +22,14 @@ is in [NOTES.md](NOTES.md).
 
 ## Run it
 
-In this folder, with the configuration written by `bootstrap.py`:
+In this folder, with the configuration `fetch_soundbanks.py` writes (`local-config.studio.json` in the repository's [install steps](../../README.md#install)):
 
 ```
 python compose_baroque.py new.json
-python ../../skills/music-production/scripts/studio.py render new.json --config <folder>/local-config.json --output render
+python ../../skills/music-production/scripts/studio.py render new.json --config <folder>/local-config.studio.json --output render
 ```
 
-The first command writes the same project as `song.json`. The render needs the sound banks `bootstrap.py` installs. Rendered again from scratch on the computer that made it, with the skill as published, every part and the master came out identical, sample for sample, to the render the recording comes from.
+The first command writes the same project as `song.json`. The render needs the sound banks `cello_bigcat`, `iowa_strings`, `vcsl_keys`, `vsco` and `vsco_extra`; `fetch_soundbanks.py --only examples` installs them with the other examples' banks. Rendered again from scratch on the computer that made it, with the skill as published, every part and the master came out identical, sample for sample, to the render the recording comes from.
 
 ## Credits and licence
 

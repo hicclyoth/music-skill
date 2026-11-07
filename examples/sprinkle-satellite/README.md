@@ -22,14 +22,14 @@ is in [NOTES.md](NOTES.md).
 
 ## Run it
 
-In this folder, with the configuration written by `bootstrap.py`:
+In this folder, with the configuration `fetch_soundbanks.py` writes (`local-config.studio.json` in the repository's [install steps](../../README.md#install)):
 
 ```
 python compose.py new.json
-python ../../skills/music-production/scripts/studio.py render new.json --config <folder>/local-config.json --output render
+python ../../skills/music-production/scripts/studio.py render new.json --config <folder>/local-config.studio.json --output render
 ```
 
-The first command writes the same project as `song.json`. The render needs the sound banks and Surge XT, both installed by `bootstrap.py`; without Surge XT its synth parts play their fallback presets on the built-in synthesizer, and the render's report says so. Rendered again from scratch on the computer that made it, with the skill as published, every part not played by Surge XT came out identical, sample for sample, to the render the recording comes from. Surge XT starts its oscillators at random phases, so each time it synthesizes a part it plays a new take of the same sound; the render cache, not the renderer, keeps a take.
+The first command writes the same project as `song.json`. The render needs the sound banks `vcsl_keys` and `vsco`; `fetch_soundbanks.py --only examples` installs them with the other examples' banks. Its synth parts play on Surge XT and its patches, which `bootstrap.py` installs; without Surge XT they play their fallback presets on the built-in synthesizer, and the render's report says so. Rendered again from scratch on the computer that made it, with the skill as published, every part not played by Surge XT came out identical, sample for sample, to the render the recording comes from. Surge XT starts its oscillators at random phases, so each time it synthesizes a part it plays a new take of the same sound; the render cache, not the renderer, keeps a take.
 
 ## Credits and licence
 

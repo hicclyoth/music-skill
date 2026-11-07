@@ -165,13 +165,25 @@ def test_example_projects():
 
 @pytest.mark.parametrize('folder', AGENT_PIECES)
 def test_agent_piece_script_writes_the_published_project(tmp_path, folder):
-    """Each agent's script, run as its example's README says, writes the published project again."""
+    """Each agent's script, run as its example's README says, writes a valid project equal to the published one."""
     script, args = AGENT_PIECES[folder]
     out = tmp_path / 'song.json'
     r = subprocess.run([sys.executable, str(ROOT / 'examples' / folder / script), *(a.replace('{out}', str(out)) for a in args)],
                        capture_output=True, text=True, encoding='utf-8', errors='replace', cwd=tmp_path)
     assert r.returncode == 0, r.stderr[-2000:]
-    assert load(out) == load(ROOT / 'examples' / folder / 'song.json')
+    sys.path.insert(0, str(SCRIPTS))
+    from musiclib.model import validate
+    made = load(out)
+    validate(made)  # the renderer's checks: a pitch written 60.0 equals 60 once parsed, but does not render
+    assert made == load(ROOT / 'examples' / folder / 'song.json')
+
+
+def test_examples_group_installs_the_examples_banks():
+    """`fetch_soundbanks.py --only examples`, as each example's README says, installs the sound banks the examples'
+    projects name, and only those."""
+    named = {t['soundfont'] for f in (ROOT / 'examples').glob('*/*.json') for t in load(f).get('tracks', [])
+             if t.get('soundfont') not in (None, 'default')}
+    assert set(load(SKILL / 'references' / 'soundbank-lock.json')['groups']['examples']) == named
 
 
 RECORDINGS = 'https://github.com/owoevan-dev/music-skill/releases/download/examples-2/'

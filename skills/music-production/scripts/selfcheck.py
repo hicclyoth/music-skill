@@ -219,9 +219,12 @@ def checks(work,config=None):
         assert outside_chord(q,Clock(q))['count']==0
         # A note struck again over the same held pitch adds no time: C4 sounds 0.6 beat into D (not enough to ask about)
         # or a whole beat in D and 0.3 into the next C (not held on, so unresolved), with or without the second note.
+        # One struck again just as the last ends keeps its attack: C4 struck where D starts is asked about, C4 held a
+        # quarter beat into D is not.
         for role in ('melody','harmony'):
             for notes,kinds in (([(0,60,1.6)],None),([(0,60,1.6),(.75,60,.85)],None),
-                                ([(0,60,2.3)],{'not resolved by step':1}),([(0,60,2.3),(1.9,60,.4)],{'not resolved by step':1})):
+                                ([(0,60,2.3)],{'not resolved by step':1}),([(0,60,2.3),(1.9,60,.4)],{'not resolved by step':1}),
+                                ([(0,60,1.25)],None),([(0,60,1),(1,60,.25)],{'not resolved by step':1})):
                 q=song([part('x',role,notes)],['C',{'bar':1,'beat':1,'symbol':'D'},{'bar':1,'beat':2,'symbol':'C'}],bars=1)
                 assert outside_chord(q,Clock(q))['tracks'].get('x',{}).get('outside_chord')==kinds,(role,notes)
         # 6/8 beats in dotted quarters: attacks on them are not syncopated, one an eighth before the second beat pushes it.

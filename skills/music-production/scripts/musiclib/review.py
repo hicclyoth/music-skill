@@ -94,14 +94,14 @@ def line_of(t):
 def _merge(notes):
     """[pitch, start, end, sounding] events from notes in onset order: a pitch repeated or held on across rests of a beat
     or less is one event, one gesture; `sounding` is the time the pitch sounds in it, its notes' (start, end) joined
-    where they overlap or meet, so a rest inside it is not taken for sound and a note struck again over the held pitch
-    is not counted twice."""
+    where they overlap, so a rest inside it is not taken for sound and a note struck again over the held pitch is not
+    counted twice.  Notes that only meet stay apart: a pitch struck again as the last one ends keeps its attack."""
     out=[]
     for n in notes:
         e=n['on']+n['duration']
         if out and out[-1][0]==n['pitch'] and n['on']-out[-1][2]<=1+1e-9:
             x=out[-1];x[2]=max(x[2],e)
-            if n['on']<=x[3][-1][1]+1e-9:x[3][-1]=(x[3][-1][0],max(x[3][-1][1],e))
+            if n['on']<x[3][-1][1]-1e-9:x[3][-1]=(x[3][-1][0],max(x[3][-1][1],e))
             else:x[3].append((n['on'],e))
         else:out.append([n['pitch'],n['on'],e,[(n['on'],e)]])
     return out
