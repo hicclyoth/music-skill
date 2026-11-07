@@ -434,7 +434,7 @@ def performed(track,clock,expressive=True):
         notes.append({'id':n['id'],'pitch':n['pitch'],'tick':tick,'end_tick':stop,'velocity':e['velocity'] if expressive else 80})
     def clash(a,b,what,fix):
         beat=b['tick']/TPQ;bar=int(beat//clock.beats_per_bar)+1
-        name='C C# D D# E F F# G G# A A# B'.split()[a['pitch']%12]+str(a['pitch']//12-1)
+        name='C C# D Eb E F F# G Ab A Bb B'.split()[a['pitch']%12]+str(a['pitch']//12-1)  # spelt as review spells them
         return ValueError(f'{track["id"]}: notes {a["id"]} and {b["id"]} {what} {name} near bar {bar} beat {round(beat%clock.beats_per_bar+1,2):g}'
                           f' {"as played" if expressive else "as written"}; {fix}')
     for pitch in {n['pitch'] for n in notes}:

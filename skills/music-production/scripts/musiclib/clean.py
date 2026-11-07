@@ -88,13 +88,18 @@ def clean(folder, keep, dry_run=False):
     listed = [f for _, f in remove]
     remove = [(kind, f) for kind, f in remove if not any(o in f.parents for o in listed)]
     report = {'folder': str(root), 'kept': [str(k) for k in kept], 'cache_entries_kept': len(used), 'dry_run': dry_run,
-              'removed': [], 'bytes': 0}
+              'removed': [], 'bytes': 0, 'not_removed': []}
     for kind, f in remove:
         size = _size(f)
+        if not dry_run:
+            try:
+                shutil.rmtree(f)
+            except OSError as e:
+                # A file another program holds open: the folder stays (in part), is named, and the rest goes on.
+                report['not_removed'].append({'kind': kind, 'path': str(f.relative_to(root)), 'error': str(e)})
+                continue
         report['removed'].append({'kind': kind, 'path': str(f.relative_to(root)), 'bytes': size})
         report['bytes'] += size
-        if not dry_run:
-            shutil.rmtree(f)
     return report
 
 
@@ -111,4 +116,6 @@ def describe(report):
     lines += [f'- {r["kind"]}: {r["path"]} ({r["bytes"] / 1e6:.0f} MB)' for r in report['removed'][:20]]
     if len(report['removed']) > 20:
         lines.append(f'- and {len(report["removed"]) - 20} more')
+    for r in report.get('not_removed', []):
+        lines.append(f'Not removed, {r["kind"]} {r["path"]}: {r["error"]} (close what holds it open and run clean again)')
     return '\n'.join(lines)

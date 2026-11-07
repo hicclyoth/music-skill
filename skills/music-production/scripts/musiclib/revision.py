@@ -25,12 +25,13 @@ def render_folder(path):
 
 
 def revision_round(project_file, output, config_file, previous=None, cache=None, spans=(), reference=None, jobs=None,
-                   show=print):
+                   show=print, clip=None):
     """Run a round into the new folder `output`, passing each step's summary to `show` as soon as the step is done (a
-    failed render still leaves the review shown); returns the round's record, also saved as round.json."""
+    failed render still leaves the review shown); returns the round's record, also saved as round.json.  With `clip`
+    (an MP3 path) and a previous round, the comparison also writes the change old then new at one loudness."""
     from .analysis import analyze, load_reference
     from .audio import load_config
-    from .compare import compare
+    from .compare import clip as make_clip, compare
     from .render import render
     from .review import review
     output = Path(output)
@@ -39,6 +40,9 @@ def revision_round(project_file, output, config_file, previous=None, cache=None,
     before = render_folder(previous) if previous else None
     if before is not None and not (before / 'report.json').is_file():
         raise ValueError(f'--previous {previous}: no render there (a round folder or a render folder)')
+    if clip is not None and (before is None or Path(clip).exists()):
+        raise ValueError('--clip needs --previous: the clip plays the previous round, then this one' if before is None
+                         else f'{clip} exists; outputs never overwrite, so choose a new path')
     started, seconds = time.monotonic(), {}
     mark = [started]
 
@@ -49,6 +53,9 @@ def revision_round(project_file, output, config_file, previous=None, cache=None,
 
     p = load_project(project_file)
     validation = validate(p)  # raises with the notes, bar and beat of what to change
+    for name, first, last in spans:  # analyze would refuse them after the render
+        if last > p['clock']['bars']:
+            raise ValueError(f'--span {name}:{first}-{last}: the piece has {p["clock"]["bars"]} bars')
     cfg = load_config(config_file)
     ref = load_reference(reference, cfg) if reference else None  # a bad reference fails before the render
     lap('validate')
@@ -78,6 +85,12 @@ def revision_round(project_file, output, config_file, previous=None, cache=None,
         compared = compare(before, output / 'render')
         name = before.parent.name if before.name == 'render' and (before.parent / 'round.json').is_file() else before.name
         compare_file = output / 'render' / f'compare_{name}.json'
+        if clip is not None:
+            # As compare --clip: if the clip cannot be made, the comparison is still written and says why.
+            try:
+                compared['clip'] = make_clip(cfg, compared, clip)
+            except (ValueError, OSError, RuntimeError) as e:
+                compared['clip'] = {'error': str(e)}
         save_json(compare_file, compared)
         record['compare'] = f'render/{compare_file.name}'
         lap('compare')

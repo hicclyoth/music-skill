@@ -26,7 +26,7 @@ Copy this checklist into the project's notes and tick it off. Each step ends on 
 - [ ] **3. Project file**: written to [schema.md](references/schema.md), usually by a composition script of your own in the project folder; `studio.py validate` passes and lists no warnings (an unknown field is a typo that does nothing).
 - [ ] **4. Performance**: velocities, gates and timing shaped by phrase; player-like deviation from `musiclib.expression`; legato on sustained sampled leads, bends on lead guitar ([performance-and-mix.md](references/performance-and-mix.md)).
 - [ ] **5. Revision rounds**: each round is one `studio.py round` into a new folder (`r1`, `r2`, ...), with `--previous` the round before. It validates the project, reviews the score with the configuration (so notes far from their samples are found), renders a draft (the same audio as a full render; `mix.chain` is `"bus"` for a finished mix), analyzes it (`--reference` where a genre reference fits, `--span` for a passage) and compares it with the previous round, printing each step's summary. Every review question has a musical decision (a prepared tension, a loop that now moves, or a fix); review also asks where nothing changes and where parts move as blocks or never push, about notes outside the written chord that are not resolved by step, parallel fifths and octaves between independent parts and close intervals under their low interval limits, and, with Surge XT installed, about built-in synth presets a Surge patch covers. Section levels, spectrum, tonal balance, stereo and lead presence are explained or fixed. The comparison shows that only the intended parts and bars changed; if anything else did, find out why first. One cause at a time, then a full-form pass; `studio.py profile` shows whether density, register, repetition and the melody's phrases follow the plan section by section.
-- [ ] **6. Listen**: the user heard the full piece; `studio.py compare <previous round> <round> --clip <file>.mp3 --config <config>` gives them a change old then new at equal loudness. Until then, say plainly that nobody has listened yet.
+- [ ] **6. Listen**: the user heard the full piece; a round's `--clip <file>.mp3` gives them its change old then new at equal loudness (`studio.py compare --clip` does it for any two renders). Until then, say plainly that nobody has listened yet.
 - [ ] **7. Deliver**: a full render (`studio.py render`, without `--draft`) completes with every check passed. Master, FLAC, MP3, MIDI, stems (and `returns/` for a remix) and project, and for a game loop `loop.wav`/`loop.ogg` with the loop points; a credit for any bank that needs one (the optional banks need none; MS Basic parts get its credit line); measured checks; what changed and what is still open. Then `studio.py clean <project> --keep <final render> --keep <last round>` removes the older renders and the cache entries those two do not use.
 
 ## Commands
@@ -35,13 +35,13 @@ Copy this checklist into the project's notes and tick it off. Each step ends on 
 
 ```text
 python <skill>/scripts/studio.py doctor   --config <config.json>
-python <skill>/scripts/studio.py round    <project>/song.json --config <config.json> --output <project>/r2 --previous <project>/r1
+python <skill>/scripts/studio.py round    <project>/song.json --config <config.json> --output <project>/r2 --previous <project>/r1 --clip <project>/r1_r2.mp3
 python <skill>/scripts/studio.py render   <project>/song.json --config <config.json> --output <project>/final
 python <skill>/scripts/studio.py clean    <project> --keep <project>/final --keep <project>/r6
 python <skill>/scripts/studio.py validate <project>/song.json
 python <skill>/scripts/studio.py review   <project>/song.json --output <project>/review_a --config <config.json>
 python <skill>/scripts/studio.py analyze  <project>/r2 --span chorus:17-24 --reference synthwave --output <project>/r2/synthwave.json
-python <skill>/scripts/studio.py compare  <project>/r1 <project>/r2 --clip <project>/r1_r2.mp3 --config <config.json>
+python <skill>/scripts/studio.py compare  <project>/r6 <project>/final --clip <project>/r6_final.mp3 --config <config.json>
 python <skill>/scripts/studio.py profile  <project>/song.json --output <project>/profile_r1.json
 python <skill>/scripts/studio.py sounds   --role pad --character warm,slow        # --id <id>: one patch's controls
 python <skill>/scripts/studio.py audition <project>/song.json --track lead --sounds surge:smooth_lead,synth:supersaw_lead --bars 21-24 --output <project>/audition_lead --config <config.json>
@@ -51,7 +51,7 @@ python <skill>/scripts/excerpt.py <project>/song.json --first-bar 17 --bars 8 --
 python <skill>/scripts/selfcheck.py --work <new empty folder> --config <config.json>
 ```
 
-`round` is the way to revise: one call per round, with one report. The other commands do what a round does not: `validate` and `review` check a project before anything is rendered; `render` makes the full render to deliver (`--draft` for a draft outside a round); `analyze` measures a render again, against another reference or passage; `compare` takes any two renders or rounds, with `--clip` for the user and `--differences` for the change alone; `clean` frees the disk at the end. Each command prints a short summary that ends with the file and the keys holding the full figures; `--json` prints the full JSON instead, and [outputs.md](references/outputs.md) lists the keys.
+`round` is the way to revise: one call per round, with one report. The other commands do what a round does not: `validate` and `review` check a project before anything is rendered; `render` makes the full render to deliver (`--draft` for a draft outside a round); `analyze` measures a render again, against another reference or passage; `compare` takes any two renders or rounds, with `--clip` for the user and `--differences` for the change alone; `clean` frees the disk at the end. `round`, `review`, `render`, `analyze`, `compare` and `audition` print a short summary that ends with the file and the keys holding the full figures; `--json` prints the full JSON instead, and [outputs.md](references/outputs.md) lists the keys.
 
 Errors go to stderr as `ERROR: ...` with exit code 2. Outputs never overwrite: use a new folder for every round, render and review, and a new file for every revision and report. Installing banks, rendering and the selfcheck can take several minutes; run them with a long timeout or in the background. `--resume` continues the same project in an existing render folder. Parts render in parallel, one per processor up to 8 and one per 2 GB of free memory (`--jobs` sets it); the result is the same for any number.
 

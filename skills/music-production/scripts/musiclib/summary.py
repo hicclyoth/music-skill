@@ -5,7 +5,7 @@ checks, the key figures beside their reference, what changed.  Long lists are cu
 summary ends with the file and the keys that hold the full figures, so a detail is fetched directly rather than
 explored (Anthropic, Writing effective tools for agents, 2025: concise responses with sensible defaults and
 truncation; Yang et al. 2024, SWE-agent: summarized results).  `--json` prints the full JSON instead.  The keys are
-documented in references/schema.md."""
+documented in references/outputs.md."""
 import os
 from pathlib import Path
 
@@ -40,8 +40,9 @@ def _more(items, shown=EXAMPLES):
 
 def review(r, folder):
     """Every review question in full, then where each counted finding is (its first examples)."""
-    lines = [f'Review of {r["title"]}: {len(r["tracks"])} parts, {len(r["sections"])} sections, '
-             f'{len(r["prompts"])} question{"s" if len(r["prompts"]) != 1 else ""}.']
+    count = lambda n, word: f'{n} {word}{"s" if n != 1 else ""}'
+    lines = [f'Review of {r["title"]}: {count(len(r["tracks"]), "part")}, {count(len(r["sections"]), "section")}, '
+             f'{count(len(r["prompts"]), "question")}.']
     lines += [f'{k}. {q}' for k, q in enumerate(r['prompts'], 1)] or ['No questions.']
     where = []
 
@@ -172,11 +173,13 @@ def compare(r, path):
     if not any(changed.values()):
         lines.append('No file changed.')
     same = s.get('identical') or {}
-    lines.append('Identical: ' + ', '.join(f'{n} {g}' for g, n in same.items() if n) + '.')
+    lines.append('Identical: ' + (', '.join(f'{n} {g}' for g, n in same.items() if n) or 'none') + '.')
     if s.get('note'):
         lines.append(s['note'])
-    if r.get('clip'):
-        lines.append(f'Clip: {r["clip"].get("error") or r["clip"].get("file") or r["clip"]}')
+    if 'clip' in r:
+        c = r['clip']
+        lines.append('Clip: ' + ('not made, the masters do not differ' if c is None else
+                                 f'not made: {c["error"]}' if c.get('error') else f'{_rel(c["file"])}, old then new'))
     lines += [f'Warning: {w}' for w in r.get('warnings') or []]
     lines.append(f'Full figures: {_rel(path)}: files.<stems|buses|returns|premix|master>.<name> (passages with seconds and '
                  'bar:beat, level_db, difference_db), project_changes, synthesis.')

@@ -2,7 +2,6 @@
 
 Read this to build an SF2 bank from recordings with `soundbank.py`: the spec, cutting notes, loops, levels, dynamic layers and legato, noise reduction and click repair. The banks already built are in [soundbanks.md](soundbanks.md).
 
-
 `soundbank.py build` reads a JSON spec (the ones in `references/soundbanks/` are worked examples) and writes an SF2 plus a receipt with every source file's hash and every decision. A spec has `name`, `comment`, `copyright`, `target_rms` (0.08) and `presets`; a preset has `name`, `program`, optional `bank`, and `layers`, each layer becoming one instrument.
 
 | Layer field | Meaning |

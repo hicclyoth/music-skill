@@ -63,6 +63,7 @@ def main():
     rnd.add_argument('--jobs',type=int,help='parts rendered at once (as render --jobs)')
     rnd.add_argument('--span',action='append',default=[],metavar='NAME:FIRST-LAST',help='also analyze bars FIRST to LAST (1-based) under NAME; repeatable')
     rnd.add_argument('--reference',help='analyze against a reference: a name in references/tonal-references.json, a render or round folder, or a WAV file')
+    rnd.add_argument('--clip',type=Path,metavar='MP3',help='with --previous: an old-then-new MP3 of 8 seconds around the first change in the master, both at the same loudness')
     cln=sub.add_parser('clean',help='Remove render and round folders other than those kept, and the cache entries the kept renders do not use')
     cln.add_argument('folder',type=Path,help="the project's folder")
     cln.add_argument('--keep',type=Path,action='append',required=True,help='a render or round folder that stays (repeatable): the final render and the previous round')
@@ -124,7 +125,7 @@ def main():
     if args.command=='round':
         from musiclib.revision import revision_round
         if args.jobs is not None and args.jobs<1:raise ValueError('--jobs is 1 or more')
-        revision_round(args.project,args.output,args.config,args.previous,args.cache,parse_spans(args.span),reference_of(args.reference),args.jobs,lambda text:print(text,end='\n\n',flush=True));return
+        revision_round(args.project,args.output,args.config,args.previous,args.cache,parse_spans(args.span),reference_of(args.reference),args.jobs,lambda text:print(text,end='\n\n',flush=True),args.clip);return
     if args.command=='analyze':
         from musiclib.analysis import analyze,load_reference
         from musiclib.audio import load_config
@@ -136,8 +137,13 @@ def main():
         from musiclib.compare import compare,clip
         from musiclib.audio import load_config
         if args.clip and not args.config:raise ValueError('--clip needs --config: FFmpeg measures and encodes the clip')
+        # A round's folder stands for its render, and names the default report: compare_<round>.json. A round wrote
+        # that file for its previous round already, so a second comparison of the two needs --output.
+        named=args.before.resolve().name if (args.before/'round.json').is_file() else None
         args.before,args.after=render_folder(args.before),render_folder(args.after)
-        out=args.output or args.after/f'compare_{args.before.resolve().name}.json';fresh(out)
+        out=args.output or args.after/f'compare_{named or args.before.resolve().name}.json'
+        if out.exists() and not args.output:raise ValueError(f'{out} exists (a round compares with its previous round); choose a path with --output')
+        fresh(out)
         if args.clip:fresh(args.clip)
         r=compare(args.before,args.after,args.differences)
         if args.clip:

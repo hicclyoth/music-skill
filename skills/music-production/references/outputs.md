@@ -13,7 +13,8 @@ Contents: [round.json](#roundjson) · [report.json](#reportjson-render) · [stem
 `studio.py round` writes `review/` and `render/` (a draft, with `analysis.json` and `compare_<previous>.json`) and
 `round.json`: `status` (the render's; `FAIL` if it did not finish), `questions` (how many review questions),
 `previous`, the relative paths `review`, `render`, `analysis`, `compare`, `seconds` per step and `runtime_seconds`.
-A round's folder can stand for its render wherever a command takes a render folder.
+With `--clip`, the comparison's `clip` names the old-then-new MP3 (or why it was not made). A round's folder can stand
+for its render wherever a command takes a render folder; `compare` of two rounds names its report after the first.
 
 ## report.json (render)
 
@@ -27,7 +28,7 @@ A round's folder can stand for its render wherever a command takes a render fold
 | `buses` | `assignment` (part to bus), `spaces` (part to reverb), `returns` (the files in `returns/`), `level_change_db` (each bus against the sum of its stems, also in bus_level_change_db.json), `sum_minus_premix_peak_dbfs` |
 | `sections` | per section: `start_seconds`, `end_seconds`, `rms_dbfs`, `side_mid_db`, `active_tracks` |
 | `mp3` | `mp3_lufs`, `mp3_true_peak_dbtp`, `matches` (within 0.2 LU of the master); none in a draft |
-| `loop` | a game loop: `start_sample`, `end_sample`, `length_samples`, `bpm`, `sections` (cue points), `files`, `gain_db`, `seam` (meter, timbre, pitch, abruptness and volume across the loop point), `layers` |
+| `loop` | a game loop: `start_sample`, `end_sample`, `length_samples`, `bpm`, `bar_beats` and `beat_count` (null where the tempo changes), `sections` (cue points), `files`, `gain_db`, `seam` (meter, timbre, pitch, abruptness and volume across the loop point), `layers` |
 | `cache_hits`, `stems_reused`, `stem_count` | parts whose raw synthesis, and whose processed stem, came from the cache |
 | `stage_seconds`, `process_seconds`, `runtime_seconds` | seconds per stage (they add up to the runtime) and in FFmpeg by kind |
 | `validation`, `dependencies`, `project_sha256`, `renderer_sha256` | the project's validation, the tools and banks with their hashes |

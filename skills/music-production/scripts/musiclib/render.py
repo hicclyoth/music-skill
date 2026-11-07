@@ -237,7 +237,10 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None,dra
         report['left_out']=['master.flac']+(['the check that preview.mp3 decodes to the master\'s loudness'] if chain_name=='bus' else [])+(['loop.ogg and the loop layers'] if 'loop' in p else [])
     if looped:report['loop']=looped
     save_json(output/'report.json',report)
-    if not passed:raise ValueError('Delivery checks failed ('+', '.join(k for k,ok in checks.items() if not ok)+f'); see {output/"report.json"}')
+    if not passed:
+        failed=[k for k,ok in checks.items() if not ok]
+        advice={'tail_quiet':'the master still sounds in its last 50 ms (above -60 dBFS): give the note releases and the reverb more time with clock.tail_seconds'}
+        raise ValueError('Delivery checks failed ('+', '.join(failed)+'); '+''.join(advice[k]+'; ' for k in failed if k in advice)+f'see {output/"report.json"}')
     return report
 
 def process_stem(p,t,clock,cfg,output,raw,stem,frames):
