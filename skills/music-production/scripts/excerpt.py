@@ -28,11 +28,21 @@ def extract(p,first_bar,bars):
         a=max(first_bar-1,sec['start_bar']);b=min(first_bar-1+bars,sec['start_bar']+sec['bars'])
         if a<b:q['sections'].append({**sec,'start_bar':a-first_bar+1,'bars':b-a})
     for t in q['tracks']:
-        notes=[]
+        notes=[];held={}
         for n in t['notes']:
             a=max(start,n['on']);b=min(end,n['on']+n['duration'])
             if a<b:
+                if n['on']<start:held.setdefault(n['pitch'],[]).append((n['on'],n['id']))
                 n['on']=a-start;n['duration']=b-a;notes.append(n)
+        # A key held at the cut is re-attacked there, as its last attack before the cut only (an earlier one of the same
+        # key ended at that attack: performed() trims a retrigger), and not at all when the key is struck again within
+        # the 100 ms a note's timing may move it, or the part's earlier offset: that re-attack would double the strike.
+        window=(.1+max(0,-t['performance'].get('offset_ms',0)/1000))*bpm/60
+        drop=set()
+        for pitch,starts in held.items():
+            starts.sort();drop|={i for _,i in starts[:-1]}
+            if any(n['pitch']==pitch and n['id'] not in {i for _,i in starts} and n['on']<=window for n in notes):drop.add(starts[-1][1])
+        notes=[n for n in notes if n['id'] not in drop]
         t['notes']=notes;ids={n['id'] for n in notes}
         t['performance']['notes']={k:v for k,v in t['performance']['notes'].items() if k in ids}
         cc=t['performance'].get('cc',[]);initial={}

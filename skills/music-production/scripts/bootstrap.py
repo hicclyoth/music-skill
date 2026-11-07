@@ -86,7 +86,9 @@ class Allowed(urllib.request.HTTPRedirectHandler):
     """Follows a redirect only to an allowed host over HTTPS, checked before the request is made."""
     def redirect_request(self,req,fp,code,msg,headers,newurl):
         parts=urllib.parse.urlsplit(newurl)
-        if parts.scheme!='https' or parts.hostname not in HOSTS:raise ValueError('Redirect to a host that is not allowed: '+newurl)
+        if parts.scheme!='https' or parts.hostname not in HOSTS:
+            fp.close()  # urllib closes the redirect's response only when it follows it
+            raise ValueError('Redirect to a host that is not allowed: '+newurl)
         return super().redirect_request(req,fp,code,msg,headers,newurl)
 
 def download(item,archive,offline):

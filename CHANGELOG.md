@@ -30,6 +30,11 @@ Faster revisions with the same music. In the nine 0.3.0 agent sessions most of t
 - The examples no longer carry the agents' notes. Each was a report for the maintainer, written when the piece was delivered and before anyone had listened, so on a public page it read as open doubts about a finished piece, and it named render folders the repository does not hold. The README no longer says how the four were picked.
 - Questions and ideas go to the repository's [Discussions](https://github.com/owoevan-dev/music-skill/discussions): the issue form for them is replaced by links to Q&A and Ideas, and the READMEs and CONTRIBUTING.md say so.
 
+### Fixed
+
+- An excerpt, and so an audition, of a passage that starts where a held key is struck again no longer strikes that key twice at once. A note held across the cut is re-attacked at the cut only as the key's last attack before it, and not when the key is struck again within the 100 ms a timing offset may move a note. Before, such a passage could not render. Found by random projects run through validate, review, profile, the MIDI export and excerpt.
+- A download redirect that the host check refuses now closes its connection.
+
 ## [0.3.0] - 2026-11-07
 
 Music that keeps changing and moves. Seven pieces that agents made with 0.2.0 were heard as not wrong, but at times dull or stiff; measured on their scores, the causes were loops held for 24 to 48 bars, choruses thinner than their pre-choruses and chord parts struck as blocks, not missing micro-timing.

@@ -1547,7 +1547,16 @@ def checks(work,config=None):
         for pts,a,b in (([[8,2],[12,2]],0,16),([[0,0],[4,0],[4,2],[8,2]],0,4),([[4,0],[4,2],[6,2]],4,8),([[2,0],[6,1.5],[9,-1]],4,12)):
             cut=crop(pts,a,b,bend=True)
             assert all(wheel(pts,a+k/8)==(wheel(cut,k/8) if cut else 8192) for k in range(int((b-a)*8))),(pts,a,b,cut)
-        return {'bend_points':len(u['performance']['bend'])}
+        # A key held across the cut and struck again right at it is not re-attacked as well (that would strike it twice
+        # at once); one held across the cut and struck again later is; of two held at once, only the later attack.
+        p=example();t=p['tracks'][0];bpb=Clock(p).beats_per_bar
+        t['notes']=[{'id':'held','on':bpb-1,'duration':2,'pitch':50},{'id':'again','on':bpb,'duration':1,'pitch':50},
+                    {'id':'long','on':bpb-2,'duration':4,'pitch':55},{'id':'later','on':bpb-1,'duration':4,'pitch':55},
+                    {'id':'ring','on':bpb-1,'duration':3,'pitch':60},{'id':'next','on':bpb+1,'duration':1,'pitch':60}]
+        t['performance']['notes']={n['id']:{'velocity':80} for n in t['notes']};validate(p)
+        kept=sorted(n['id'] for n in extract(p,2,2)['tracks'][0]['notes'])
+        assert kept==['again','later','next','ring'],kept
+        return {'bend_points':len(u['performance']['bend']),'held_notes_kept_at_the_cut':kept}
     check('excerpt_moves_bends_sweeps_and_dynamics',excerpt_curves)
     def mono_lines():
         from musiclib import synth

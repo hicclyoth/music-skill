@@ -51,6 +51,7 @@ class Allowed(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parts = urllib.parse.urlsplit(newurl)
         if parts.scheme != 'https' or parts.hostname not in HOSTS:
+            fp.close()  # urllib closes the redirect's response only when it follows it
             raise ValueError('Redirect to a host that is not allowed: ' + newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
