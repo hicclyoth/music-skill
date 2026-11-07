@@ -31,7 +31,7 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 
 ## 들어 보기
 
-여기 있는 곡은 모두 Claude(Opus 5.5, xhigh effort)가 이 스킬의 0.3.0 버전으로, 한 줄짜리 주제와 [모든 에이전트가 따른 규칙](examples/agent-rules.md)으로, 한 번의 실행에서 만들었습니다. 곡 제목, 형식, 악기, 음색을 스스로 정하고, 모든 음을 쓰고, 리뷰·렌더링·수정까지 직접 했습니다. 결과물을 사람이 고치지 않았습니다. 각 예제 폴더에는 프롬프트, 에이전트의 스크립트, 렌더링할 때의 프로젝트, 에이전트가 직접 쓴 제작 노트가 있습니다.
+여기 있는 곡은 모두 Claude(Opus 5.5, xhigh effort)가 이 스킬의 0.3.0 버전으로, 한 줄짜리 주제와 [모든 에이전트가 따른 규칙](examples/agent-rules.md)으로, 한 번의 실행에서 만들었습니다. 곡 제목, 형식, 악기, 음색을 스스로 정하고, 모든 음을 쓰고, 리뷰·렌더링·수정까지 직접 했습니다. 결과물을 사람이 고치지 않았습니다. 각 예제 폴더에는 프롬프트, 에이전트의 스크립트, 렌더링할 때의 프로젝트가 있습니다.
 
 **[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**(1:55). 주제는 "하프시코드와 현악을 위한 바로크풍 소품, 성부끼리 모방 대위법으로". 그라베 서주에 이어 D단조 푸게타에서 주제가 현악 네 성부에 차례로 들어옵니다([예제](examples/fughetta-on-a-lantern-theme)).
 
@@ -39,7 +39,7 @@ music-skill은 작곡가와 작은 스튜디오가 일하는 방식으로 오리
 - [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)(4:28). 주제는 "일본 시티팝, 밤 드라이브의 도시적인 느낌"([예제](examples/sodium-lights))
 - [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)(2:30). 주제는 "귀여운 퓨처 베이스, 밝은 코드와 경쾌한 드롭"([예제](examples/sprinkle-satellite))
 
-이 네 곡은 같은 방법으로 만든 아홉 곡 중에서 귀로 골랐습니다. [Before and after](examples/before-after)는 짧은 곡의 음 하나를 바꾸고, 렌더링에서 함께 바뀐 모든 것을 `compare`로 보여 줍니다. 그 파트, 그 버스, 리버브 꼬리, 마스터입니다.
+[Before and after](examples/before-after)는 짧은 곡의 음 하나를 바꾸고, 렌더링에서 함께 바뀐 모든 것을 `compare`로 보여 줍니다. 그 파트, 그 버스, 리버브 꼬리, 마스터입니다.
 
 녹음은 MP3 파일이며, 릴리스 [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2)에서 내려받을 수 있습니다.
 

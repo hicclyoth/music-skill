@@ -11,14 +11,12 @@ Listen: [Sodium Lights](https://github.com/owoevan-dev/music-skill/releases/down
 "Subject: Japanese city pop: the city feeling of a drive at night. Length and details are up to you." The prompt also told the agent to read [the rules every agent
 followed](../agent-rules.md) first. That was all it was given: it chose the title, the form, the instruments and the
 sounds, wrote every note in `compose.py`, checked the score with `review`, rendered, measured, and revised its own work
-before delivering. Nobody edited the result, and nobody listened until it was finished. Its own account of each round
-is in [NOTES.md](NOTES.md).
+before delivering. Nobody edited the result, and nobody listened until it was finished.
 
 ## Files
 
 - `compose.py`: the agent's script; it writes every note. One edit for this repository: the line that finds the skill's scripts.
 - `song.json`: the project as it was rendered.
-- [NOTES.md](NOTES.md): the agent's notes, as it wrote them, without the line naming the folder it worked in.
 
 ## Run it
 

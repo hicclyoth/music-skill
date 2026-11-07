@@ -31,7 +31,7 @@ music-skill 是一個 [Agent Skill](https://agentskills.io)，讓 AI agent 像�
 
 ## 試聽
 
-以下每一首都由 Claude（Opus 5.5，xhigh effort）用這個 skill 的 0.3.0 版，從一句題材和[所有 agent 共用的規則](examples/agent-rules.md)、單次執行做成。曲名、曲式、樂器和音色都由它自己決定，每個音都是它寫的，審查、渲染和修改也都由它自己完成，沒有人修改過成品。每個範例資料夾都有 prompt、agent 的腳本、渲染時的專案檔和 agent 自己的製作筆記。
+以下每一首都由 Claude（Opus 5.5，xhigh effort）用這個 skill 的 0.3.0 版，從一句題材和[所有 agent 共用的規則](examples/agent-rules.md)、單次執行做成。曲名、曲式、樂器和音色都由它自己決定，每個音都是它寫的，審查、渲染和修改也都由它自己完成，沒有人修改過成品。每個範例資料夾都有 prompt、agent 的腳本和渲染時的專案檔。
 
 **[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**（1:55），題材是「巴洛克風格的大鍵琴與弦樂小品，聲部之間要有模仿對位」：先是莊板（Grave）序奏，接著是 D 小調的小賦格，主題依序在四個弦樂聲部進入（[範例](examples/fughetta-on-a-lantern-theme)）。
 
@@ -39,7 +39,7 @@ music-skill 是一個 [Agent Skill](https://agentskills.io)，讓 AI agent 像�
 - [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)（4:28），題材是「日系 city pop，夜晚開車兜風的都會感」（[範例](examples/sodium-lights)）
 - [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)（2:30），題材是「可愛系 future bass，明亮的和弦和輕快的 drop」（[範例](examples/sprinkle-satellite)）
 
-這四首是從同樣方式做出的九首裡，用耳朵挑出來的。[原版與修改版對照](examples/before-after) 把一首小曲改掉一個音，再用 `compare` 列出渲染裡跟著變的所有地方：那個聲部、它的匯流排、殘響尾巴和母帶。
+[原版與修改版對照](examples/before-after) 把一首小曲改掉一個音，再用 `compare` 列出渲染裡跟著變的所有地方：那個聲部、它的匯流排、殘響尾巴和母帶。
 
 錄音是 MP3 檔，可以從 release [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2) 下載。
 

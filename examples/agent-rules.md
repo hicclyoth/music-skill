@@ -1,8 +1,9 @@
 # The rules every agent followed
 
-Each piece in these examples was made by one agent session from one short prompt in Chinese. The prompt named a subject
-and a folder, and told the agent to read these rules first. They are translated here from the Chinese, without the
-paths of the machine they ran on.
+Each piece in these examples was made by one agent session from a one-line prompt in Chinese. The prompt gave a code
+name (the piece's folder) and a subject, and told the agent to read these rules first. They are translated here from
+the Chinese, without the paths of the machine they ran on. The notes each agent delivered were a report for the
+maintainer, written before anyone had listened, and are not published.
 
 ## Skill and environment
 

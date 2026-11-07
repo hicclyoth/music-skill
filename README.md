@@ -31,7 +31,7 @@ No audio-generation model is involved. Besides the MP3 and WAV you get the MIDI,
 
 ## Listen
 
-Claude (Opus 5.5, xhigh effort) made each of these with this skill's version 0.3.0, in one run from a one-line subject and [the rules every agent followed](examples/agent-rules.md). It chose the title, the form, the instruments and the sounds, wrote every note, and reviewed, rendered and revised its own work; nobody edited the result. Each example folder has the prompt, the agent's script, the project as it was rendered and the agent's own notes.
+Claude (Opus 5.5, xhigh effort) made each of these with this skill's version 0.3.0, in one run from a one-line subject and [the rules every agent followed](examples/agent-rules.md). It chose the title, the form, the instruments and the sounds, wrote every note, and reviewed, rendered and revised its own work; nobody edited the result. Each example folder has the prompt, the agent's script and the project as it was rendered.
 
 **[Fughetta on a Lantern Theme](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)** (1:55), from "a baroque-style miniature for harpsichord and strings, with imitative counterpoint between the voices": a Grave, then a fughetta in D minor whose subject enters in each of the four string voices in turn ([the example](examples/fughetta-on-a-lantern-theme)).
 
@@ -39,7 +39,7 @@ Claude (Opus 5.5, xhigh effort) made each of these with this skill's version 0.3
 - [Sodium Lights](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3) (4:28), from "Japanese city pop: the city feeling of a drive at night" ([the example](examples/sodium-lights))
 - [Sprinkle Satellite](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3) (2:30), from "kawaii future bass: bright chords and a light, bouncy drop" ([the example](examples/sprinkle-satellite))
 
-These four were chosen by ear from nine pieces made the same way. [Before and after](examples/before-after) changes one note of a short piece, and `compare` shows everything in the render that changed with it: the part, its bus, the reverb's tail and the master.
+[Before and after](examples/before-after) changes one note of a short piece, and `compare` shows everything in the render that changed with it: the part, its bus, the reverb's tail and the master.
 
 The recordings download as MP3 files from the release [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2).
 
