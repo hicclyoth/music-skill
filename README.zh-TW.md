@@ -77,7 +77,7 @@ music-skill 是一個 [Agent Skill](https://agentskills.io)，讓 AI agent 像�
 5. **混音與母帶**：各聲部經過鼓、貝斯、節奏、合奏和主旋律匯流排，以及四種自動生成的殘響，最後由母帶處理做到 專案的目標響度（預設 −16 LUFS，串流常用 −14 LUFS），真峰值不超過 −1 dBTP。管弦樂與管風琴可以略過壓縮器，保留完整的強弱對比；電子音樂可以加上側鏈閃避、跟著速度走的延遲、濾波掃頻，以及俱樂部等級的響亮母帶。
 6. **量測**：`analyze` 會量出每個段落的響度、頻譜和立體聲、主旋律比伴奏大聲多少，並把母帶的音色平衡拿去和已發表的商業錄音量測，或同曲風的參考比較。這些數字能指出問題所在，但不能取代實際聆聽。
 
-只改一個音，就只會重新合成那一個聲部。每次渲染都會用所有聲部重新混音，所以共用殘響、殘響尾巴和母帶都會跟著改變；只改混音，則沿用所有已合成的聲部。`compare` 會列出兩次渲染之間的差異：哪些聲部重新合成，以及哪些分軌、匯流排和殘響回送有變、變在哪裡、差多少。
+只改一個音，就只會重新合成那一個聲部；音符和混音都沒變的聲部，會像 DAW 裡凍結的音軌一樣，直接使用快取中處理好的分軌。每次渲染都會用所有聲部重新混音，所以共用殘響、殘響尾巴和母帶都會跟著改變。每一輪修改用一次 `round`：檢查樂譜、渲染草稿（聲音相同，只省去交付才需要的檔案）、測量，再與上一輪比較，每一步都給出簡短摘要。`compare` 會列出兩次渲染之間的差異：哪些聲部重新合成，以及哪些分軌、匯流排和殘響回送有變、變在哪裡、差多少。
 
 遊戲用的專案可以設定循環：渲染時會把殘響尾巴折回循環開頭，並用 Godot 和 RPG Maker 讀取的格式，把循環點寫進 WAV 與 Ogg 檔，每個段落也標上提示點。循環還能拆成幾層，各層加起來就是完整混音，讓音樂隨著遊戲緊張程度逐層加厚。
 
@@ -169,7 +169,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 效果如何
 
-`selfcheck.py` 共有 93 項檢查（沒有渲染設定時為 75 項），從 MIDI 來回轉換、壓縮檔安全，到實際渲染都包括在內。例如：只改一個音時只會重新合成一個聲部，而 `compare` 只在受影響的檔案裡、從那個音開始找到差異；舊的單一殘響混音能逐位元重現先前的版本；響度量測對 BS.1770 的標準測試音讀出 −3.01 LUFS。CI 會跑完所有檢查（包括渲染），環境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 98 項檢查（沒有渲染設定時為 78 項），從 MIDI 來回轉換、壓縮檔安全，到實際渲染都包括在內。例如：只改一個音時只會重新合成一個聲部，而 `compare` 只在受影響的檔案裡、從那個音開始找到差異；舊的單一殘響混音能逐位元重現先前的版本；響度量測對 BS.1770 的標準測試音讀出 −3.01 LUFS。CI 會跑完所有檢查（包括渲染），環境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音樂好不好聽是另一回事，只有實際聆聽才知道。上面這些曲子是這個 repo 最好的證據。
 
@@ -200,8 +200,10 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | [SKILL.md](skills/music-production/SKILL.md) | agent 依循的工作流程，以及所有指令 |
 | [schema.md](skills/music-production/references/schema.md) | 專案檔：樂譜、演奏與混音 |
 | [arrangement.md](skills/music-production/references/arrangement.md) | 曲式、旋律、和聲配置與各聲部的職責 |
-| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏、匯流排混音，以及如何解讀 `analyze` |
-| [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色庫的特性與限制，以及如何加入自己的音色庫 |
+| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏與匯流排混音 |
+| [measuring.md](skills/music-production/references/measuring.md) | 如何解讀 `analyze` 與 `compare` |
+| [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色庫，以及如何加入自己的音色庫；預設音色、測得的特性與如何製作音色庫見其連結的檔案 |
+| [outputs.md](skills/music-production/references/outputs.md) | 各指令寫出的檔案，逐一說明每個鍵 |
 | [曲風指南](skills/music-production/references) | 電子音樂與 techno、嘻哈節拍與 trap、爵士、藍調、巴薩諾瓦與放克、搖滾與金屬、流行與抒情曲、電影配樂與恐怖、動漫片頭、遊戲與場景配樂、管弦樂、巴洛克、管風琴、鋼琴與室內樂 |
 | [setup.md](skills/music-production/references/setup.md) | 在 Windows、Linux 和 macOS 安裝渲染工具 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 使用外部樂譜、MIDI 與取樣的注意事項 |

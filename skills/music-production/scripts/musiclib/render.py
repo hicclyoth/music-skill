@@ -2,12 +2,22 @@
 
 The parts are synthesized and processed in parallel (`jobs` threads; the heavy work runs in FluidSynth and FFmpeg
 processes and in NumPy, which release the interpreter). Every part writes only its own files, and a lock per cache key
-keeps two identical parts from writing one cache entry, so the stems and the master are the same for any `jobs`."""
+keeps two identical parts from writing one cache entry, so the stems and the master are the same for any `jobs`.
+
+A part's cache entry also keeps its last processed stem.  When nothing the processing reads has changed, the render
+copies that stem instead of processing the part again, as a frozen track in a DAW plays its rendered file instead of
+computing its devices again (Ableton Live Reference Manual, Computer Audio Resources and Strategies).  Every render
+still mixes and masters all the parts.
+
+A draft (`draft=True`) is the same audio, stems, buses and returns as a full render, for revising: it leaves out what
+only delivery needs, master.flac, the MP3's decoded-loudness check and a game loop's Ogg copies and layers, as REAPER's
+dry-run render processes everything but writes no output files (REAPER 6.30)."""
 import json
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import shutil
 import threading
 import time
 import numpy as np
@@ -48,8 +58,34 @@ def synthesis_identity(p,clock,t,deps,renderer):
     dependencies and the synthesis code and preset files.  A mix edit leaves it unchanged and reuses the part."""
     return {'cache':2,'clock':p['clock'],'played_tempo':clock.tempo,'track':{k:v for k,v in t.items() if k!='mix'},'dependencies':deps,'renderer':renderer,'sample_rate':audio.RATE}
 
-def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
+def process_seconds(logs):
+    """Seconds spent in the FFmpeg processes a render logged, by kind: each run's own `seconds` from its
+    *.process.json (a part's synthesis logs into its cache folder, not here)."""
+    kinds={}
+    for f in sorted(Path(logs).glob('*.process.json')):
+        label=f.name[:-len('.process.json')]
+        kind=('part processing' if label.startswith('process_') else 'loudness measurement' if label.startswith('measure_')
+              else 'delivery limiter' if label.startswith('deliver') else label.split('.')[0])
+        kinds[kind]=kinds.get(kind,0)+json.loads(f.read_text(encoding='utf-8')).get('seconds',0)
+    return {k:round(v,3) for k,v in sorted(kinds.items(),key=lambda kv:-kv[1])}
+
+def stem_identity(p,t,key,raw_sha256,frames,code_hash,cfg):
+    """What a part's processed stem depends on, hashed into the key of the stem its cache entry keeps: its raw
+    synthesis (whose key holds the clock and the tempo as played), its mix, the song's length, the part a duck follows
+    (its notes as played), the renderer's code, FFmpeg and NumPy."""
+    by=(t['mix'].get('duck') or {}).get('by')
+    source=next((x for x in p['tracks'] if x['id']==by),None) if by else None
+    return {'stem':1,'synthesis':key,'raw_sha256':raw_sha256,'mix':t['mix'],'frames':frames,
+            'ducked_by':{k:v for k,v in source.items() if k!='mix'} if source else None,
+            'renderer':code_hash,'ffmpeg':cfg['ffmpeg']['sha256'],'numpy':np.__version__}
+
+def render(project_file,output,config_file,cache=None,resume=False,jobs=None,draft=False):
     started=time.monotonic();p=load_project(project_file);clock=Clock(p);cfg=audio.load_config(config_file)
+    # Seconds per stage, each from the end of the one before, so they add up to the runtime (profiling the stages
+    # before any is optimized: what a change saves shows here).
+    stages={};mark=[started]
+    def lap(name):
+        now=time.monotonic();stages[name]=round(now-mark[0],3);mark[0]=now
     output=Path(output).resolve();cache=Path(cache).resolve() if cache else output.parent/'cache'
     # Before anything is synthesized: every part's bank is configured and can play what the part asks of it.
     fonts={t['id']:audio.soundfont_for(cfg,t)[1] for t in p['tracks'] if t['engine']=='soundfont'}
@@ -66,6 +102,7 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
     for d in (output,cache,output/'logs',output/'stems',output/'midi',output/'returns'):d.mkdir(parents=True,exist_ok=True)
     save_json(marker,{'project_sha256':project_key,'renderer_sha256':code_hash})
     save_json(output/'project.json',p)
+    lap('prepare')
     route=midi.write(p,output/'composition.mid')
     midi.write(p,output/'score.mid',expressive=False)
     save_json(output/'midi_routing.json',route)
@@ -74,9 +111,11 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
     note_count=sum(len(t['notes']) for t in parsed['tracks'])
     expected=sum(len(t['notes']) for t in p['tracks'])
     if note_count!=expected:raise ValueError('MIDI note count mismatch')
+    lap('midi')
     duration=clock.end+clock.tail;frames=round(duration*audio.RATE)
     jobs=max(1,min(jobs or default_jobs(),len(p['tracks'])));locks={};guard=threading.Lock()
     def make_stem(t):
+        began=time.monotonic()
         font_name,font=audio.soundfont_for(cfg,t) if t['engine']=='soundfont' else (None,None)
         deps={'fluidsynth':cfg['fluidsynth']['sha256'],'soundfont':font['sha256'] if font else None}
         if t['engine']=='surge':deps['surge']=surge.dependencies(cfg,t)
@@ -87,10 +126,10 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
         midi.write(p,track_midi,[t],single_stem=True)
         with guard:lock=locks.setdefault(key,threading.Lock())
         with lock:
-            cached=False
+            cached=False;raw_sha=None
             if raw.is_file() and receipt.is_file():
-                old=json.loads(receipt.read_text(encoding='utf-8'))
-                cached=old['key']==key and audio.audio_hash(raw)==old['sha256']
+                old=json.loads(receipt.read_text(encoding='utf-8'));raw_sha=audio.audio_hash(raw)
+                cached=old['key']==key and raw_sha==old['sha256']
             if not cached:
                 if not t['notes']:audio.write_wav(raw,np.zeros((frames,2),dtype=np.float32))
                 elif t['engine']=='soundfont' and layered.wanted(t):layered.render(p,t,clock,cfg,font,folder,raw)
@@ -114,77 +153,71 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
                     save_json(folder/'surge.json',played)
                 elif t['engine']=='drum_synth':drums.render(p,t,raw,clock)
                 else:audio.noise_fx(p,t,raw)
-                save_json(receipt,{'key':key,'sha256':audio.audio_hash(raw),'track':t['id']})
-        ref=audio.reference_level(raw,t['mix'].get('level_mode','active_rms')) if t['notes'] else 0
-        gain=t['mix']['level_dbfs']-ref if t['notes'] else 0
-        if not -60<=gain<=45:raise ValueError(f'Unexpected instrument gain: {t["id"]}: {gain}')
-        fx=t['mix'];co=fx.get('compressor')
-        filters=[f'apad,atrim=end_sample={frames}',f'volume={gain:.9f}dB',f'highpass=f={fx.get("highpass",30)}',f'lowpass=f={fx.get("lowpass",18000)}']
-        filters += [f'equalizer=f={f}:t=q:w=1:g={g}' for f,g in fx.get('eq',[])]
-        for e in fx.get('effects',[]):
-            # Modulation and lo-fi effects after the EQ: the chorus in NumPy (production.chorus; FFmpeg's chorus steps
-            # its moving delay in whole samples, a buzz on sustained parts), FFmpeg's aphaser and acrusher.
-            if e['type']=='chorus':filters.append(('chorus',e.get('depth',.5)))
-            elif e['type']=='phaser':filters.append(f'aphaser=in_gain=0.8:out_gain=0.9:delay=3:decay={.2+.5*e.get("depth",.5):.3f}:speed={e.get("rate_hz",.5)}:type=t')
-            elif e['type']=='bitcrush':filters.append(f'acrusher=bits={e.get("bits",8)}:samples={e.get("downsample",4)}:mix={e.get("mix",1)}:mode=lin')
-        if co:filters.append(f'acompressor=threshold={10**(co["threshold_db"]/20):.9f}:ratio={co["ratio"]}:attack={co["attack_ms"]}:release={co["release_ms"]}:makeup=1')
-        pan=fx.get('pan',0);width=fx.get('width',1)
-        if width<1:
-            # Mid/side width before the pan: spaced-microphone samples (some piano and room recordings) are nearly
-            # uncorrelated left/right, which leaves a lead diffuse and off-centre and partly cancels in mono.
-            a,b=(1+width)/2,(1-width)/2
-            filters.append(f'pan=stereo|c0={a:.9f}*c0+{b:.9f}*c1|c1={b:.9f}*c0+{a:.9f}*c1')
-        depth=fx.get('depth_m')
-        # A part placed on the stage gets its pan with its early reflections (musiclib/stage.py), after the chain.
-        filters.extend(([] if depth is not None else [f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1'])+[audio.automation(fx.get('automation',[]),clock)])
-        filters.append(f'apad,atrim=end_sample={frames}')  # a chorus or phaser delays the signal and would lengthen the stem
+                raw_sha=audio.audio_hash(raw)
+                save_json(receipt,{'key':key,'sha256':raw_sha,'track':t['id']})
+        synthesized=time.monotonic()
         stem=output/'stems'/(t['id']+'.wav')
-        # One FFmpeg pass, or, around each chorus, a pass up to it, the chorus in NumPy on that file, and on. A later
-        # pass's log takes ".pass{k}": a part id cannot hold a dot, so the label never names another part's log.
-        src,run,k=raw,[],0
-        for f in filters+[None]:
-            if isinstance(f,str):run.append(f);continue
-            if run:
-                out=stem if f is None else output/'stems'/f'.{t["id"]}.pass{k}.wav'
-                audio.ffmpeg(cfg,['-i',src,'-af',','.join(run),'-ar',str(audio.RATE),'-c:a','pcm_f32le',out],output/'logs','process_'+t['id']+(f'.pass{k}' if k else ''))
-                if src!=raw:src.unlink()
-                src,run,k=out,[],k+1
-            if f is None:break
-            x,_=audio.read_wav(src);x,_=production.chorus(x,f[1]);audio.write_wav(src,x)
-        filters=[f if isinstance(f,str) else f'chorus(depth={f[1]}, production.chorus)' for f in filters]
-        placed=None
-        if depth is not None:
-            x,_=audio.read_wav(stem);x,placed=stage.place(x,pan,depth,fx.get('facing','front'));audio.write_wav(stem,x)
-        produced=None
-        if production.wanted(t):
-            # Sweeps, saturation, gates, tempo-synced delays and ducking (musiclib/production.py), on the placed stem.
-            x,_=audio.read_wav(stem);x,produced=production.process(x,p,t,clock);audio.write_wav(stem,x)
-        receipt_data={'track':t['id'],'soundfont':font_name,'cache_key':key,'cache_hit':cached,'raw_sha256':audio.audio_hash(raw),'stem_sha256':file_hash(stem),'reference_level_dbfs':ref,'gain_db':gain,'processed_stem':str(stem.relative_to(output)),'filter_chain':','.join(filters),'same_pitch_retrigger_trims':sum(n.get('retrigger_trimmed',False) for n in performed(t,clock))}
+        # The processed stem the cache entry keeps, used when nothing it depends on has changed (checked by its hash).
+        frozen,frozen_receipt=folder/'stem.wav',folder/'stem.json'
+        stem_key=digest(stem_identity(p,t,key,raw_sha,frames,code_hash,cfg))
+        kept=json.loads(frozen_receipt.read_text(encoding='utf-8')) if frozen.is_file() and frozen_receipt.is_file() else {}
+        reused=kept.get('key')==stem_key and file_hash(frozen)==kept.get('sha256')
+        if reused:
+            shutil.copyfile(frozen,stem);done,stem_sha=kept['processing'],kept['sha256']
+        else:
+            done=process_stem(p,t,clock,cfg,output,raw,stem,frames);stem_sha=file_hash(stem)
+            # Kept for the next render: copied beside the old one and swapped in whole, then described.
+            spare=folder/'stem.new.wav';shutil.copyfile(stem,spare);os.replace(spare,frozen)
+            save_json(frozen_receipt,{'key':stem_key,'sha256':stem_sha,'track':t['id'],'processing':done})
+        receipt_data={'track':t['id'],'soundfont':font_name,'cache_key':key,'cache_hit':cached,'stem_reused':reused,'raw_sha256':raw_sha,'stem_sha256':stem_sha,'reference_level_dbfs':done['reference_level_dbfs'],'gain_db':done['gain_db'],'processed_stem':str(stem.relative_to(output)),'filter_chain':done['filter_chain'],'same_pitch_retrigger_trims':sum(n.get('retrigger_trimmed',False) for n in performed(t,clock))}
         if (folder/'layered.json').is_file():receipt_data['expressive']=json.loads((folder/'layered.json').read_text(encoding='utf-8'))
         if t['engine']=='surge' and (folder/'surge.json').is_file():receipt_data['surge']=json.loads((folder/'surge.json').read_text(encoding='utf-8'))
-        if placed:receipt_data['stage']={'depth_m':depth,'facing':fx.get('facing','front'),**placed}
-        if produced:receipt_data['production']=produced
-        print('STEM',t['id'],'cached' if cached else 'rendered','gain',round(gain,2),flush=True)
+        if done.get('stage'):receipt_data['stage']=done['stage']
+        if done.get('production'):receipt_data['production']=done['production']
+        # Each part's own seconds (they overlap: parts run `jobs` at a time); synthesis includes the cache lookup.
+        receipt_data['seconds']={'synthesis':round(synthesized-began,3),'processing':round(time.monotonic()-synthesized,3)}
         return receipt_data,font_name,font
     with ThreadPoolExecutor(max_workers=jobs) as pool:results=list(pool.map(make_stem,p['tracks']))
     receipts=[r for r,_,_ in results];used_fonts={name:font for _,name,font in results if font}
     save_json(output/'stem_receipts.json',receipts)
+    lap('parts')
     chain_name=p['mix'].get('chain','room');buses=None;mp3=None
     if chain_name=='bus':
         from . import mixbus
         buses=mixbus.mix(p,clock,cfg,output,frames)
-        before,mastering=mixbus.master(p,cfg,output)
-    else:before,mastering=room_mix(p,clock,cfg,output,frames,duration)
+        lap('mix')
+        # The mix's checks read only what it wrote, so they run while the master is made (its loudness passes wait on
+        # FFmpeg). The last delivery pass measured master.wav as it is kept: that measurement is the master's.
+        with ThreadPoolExecutor(max_workers=1) as side:
+            verified=side.submit(mixbus.verify,p,output,buses)
+            before,mastering,after=mixbus.master(p,cfg,output)
+            lap('master')
+            buses.update(verified.result())
+        lap('mix_checks')
+    else:
+        before,mastering=room_mix(p,clock,cfg,output,frames,duration)
+        lap('mix_and_master')
     master=output/'master.wav'
-    after=audio.measure(cfg,master,output/'logs','measure_master')
-    if after['true_peak_dbtp']>-1 or after['clipped_samples'] or after['frames']!=frames:raise ValueError('Master delivery check failed')
-    audio.ffmpeg(cfg,['-i',master,'-c:a','libmp3lame','-b:a','256k',output/'preview.mp3'],output/'logs','mp3')
-    audio.ffmpeg(cfg,['-i',master,'-c:a','flac',output/'master.flac'],output/'logs','flac')
-    if chain_name=='bus':mp3=mixbus.mp3_check(cfg,output,after['integrated_lufs'])
-    looped=None
-    if 'loop' in p:
+    if chain_name!='bus':after=audio.measure(cfg,master,output/'logs','measure_master')
+    if after['true_peak_dbtp']>-1 or after['clipped_samples'] or after['frames']!=frames:
+        raise ValueError(f'Master delivery check failed: true peak {after["true_peak_dbtp"]:g} dBTP (at most -1), '
+                         f'{after["clipped_samples"]} clipped samples, {after["frames"]} of {frames} frames')
+    lap('master_check')
+    # The files made from the master do not depend on each other and are made at once: the MP3 (and in a full bus
+    # render the check that it decodes to the master's loudness), master.flac and a game loop.
+    def preview():
+        audio.ffmpeg(cfg,['-i',master,'-c:a','libmp3lame','-b:a','256k',output/'preview.mp3'],output/'logs','mp3')
+        return mixbus.mp3_check(cfg,output,after['integrated_lufs']) if chain_name=='bus' and not draft else None
+    def lossless():
+        audio.ffmpeg(cfg,['-i',master,'-c:a','flac',output/'master.flac'],output/'logs','flac')
+    def looping():
         from . import loop
-        looped=loop.deliver(p,clock,cfg,output,mastering)
+        return loop.deliver(p,clock,cfg,output,mastering,draft)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        made=[pool.submit(preview)]+([] if draft else [pool.submit(lossless)])+([pool.submit(looping)] if 'loop' in p else [])
+        results=[f.result() for f in made]
+    mp3,looped=results[0],(results[-1] if 'loop' in p else None)
+    lap('outputs')
     data,_=audio.read_wav(master);sections=[]
     for s in p['sections']:
         start=clock.seconds(s['start_bar']*clock.beats_per_bar);end=clock.seconds((s['start_bar']+s['bars'])*clock.beats_per_bar)
@@ -196,12 +229,64 @@ def render(project_file,output,config_file,cache=None,resume=False,jobs=None):
     if mp3:checks['mp3_loudness_matches_master']=mp3['matches']
     if buses:checks['buses_and_returns_add_up_to_premix']=buses['adds_up_to_premix']
     if looped:checks.update(looped.pop('checks'))
-    report={'status':'TECHNICAL_PASS_AUDITION_PENDING' if all(checks.values()) else 'FAIL','title':p['title'],'version':p.get('version'),'runtime_seconds':round(time.monotonic()-started,2),'jobs':jobs,'project_sha256':project_key,'renderer_sha256':code_hash,'validation':validate(p),'checks':checks,'chain':chain_name,'premaster':before,'master':after,'sections':sections,'mastering':mastering,'buses':buses,'mp3':mp3,'cache_hits':sum(r['cache_hit'] for r in receipts),'stem_count':len(receipts),'direct_audio_listening_performed':False,'perceptual_quality':'Not certified by numeric checks; user audition pending','dependencies':{**{k:{x:v for x,v in cfg[k].items() if x!='path'} for k in ('fluidsynth','ffmpeg')},'soundfonts':{n:{x:v for x,v in f.items() if x!='path'} for n,f in used_fonts.items()}}}
+    lap('sections_and_checks')
+    passed=all(checks.values())
+    report={'status':('DRAFT_PASS' if draft else 'TECHNICAL_PASS_AUDITION_PENDING') if passed else 'FAIL','title':p['title'],'version':p.get('version'),'draft':draft,'runtime_seconds':round(time.monotonic()-started,2),'stage_seconds':stages,'process_seconds':process_seconds(output/'logs'),'jobs':jobs,'project_sha256':project_key,'renderer_sha256':code_hash,'validation':validate(p),'checks':checks,'chain':chain_name,'premaster':before,'master':after,'sections':sections,'mastering':mastering,'buses':buses,'mp3':mp3,'cache_hits':sum(r['cache_hit'] for r in receipts),'stems_reused':sum(r['stem_reused'] for r in receipts),'stem_count':len(receipts),'direct_audio_listening_performed':False,'perceptual_quality':'Not certified by numeric checks; user audition pending','dependencies':{**{k:{x:v for x,v in cfg[k].items() if x!='path'} for k in ('fluidsynth','ffmpeg')},'soundfonts':{n:{x:v for x,v in f.items() if x!='path'} for n,f in used_fonts.items()}}}
+    if draft:
+        # The same audio as a full render; what only delivery needs is left out. Deliver a full render.
+        report['left_out']=['master.flac']+(['the check that preview.mp3 decodes to the master\'s loudness'] if chain_name=='bus' else [])+(['loop.ogg and the loop layers'] if 'loop' in p else [])
     if looped:report['loop']=looped
     save_json(output/'report.json',report)
-    if not all(checks.values()):raise ValueError('Delivery checks failed; inspect report')
-    print('COMPLETE',p['title'],round(after['seconds'],2),'seconds',after['integrated_lufs'],'LUFS',flush=True)
+    if not passed:raise ValueError('Delivery checks failed ('+', '.join(k for k,ok in checks.items() if not ok)+f'); see {output/"report.json"}')
     return report
+
+def process_stem(p,t,clock,cfg,output,raw,stem,frames):
+    """The part's raw synthesis to its processed stem: the gain to its level, filters, EQ, effects, compressor, width,
+    pan or stage position and automation, then the production tools.  Returns what the receipt records of it."""
+    ref=audio.reference_level(raw,t['mix'].get('level_mode','active_rms')) if t['notes'] else 0
+    gain=t['mix']['level_dbfs']-ref if t['notes'] else 0
+    if not -60<=gain<=45:raise ValueError(f'Unexpected instrument gain: {t["id"]}: {gain}')
+    fx=t['mix'];co=fx.get('compressor')
+    filters=[f'apad,atrim=end_sample={frames}',f'volume={gain:.9f}dB',f'highpass=f={fx.get("highpass",30)}',f'lowpass=f={fx.get("lowpass",18000)}']
+    filters += [f'equalizer=f={f}:t=q:w=1:g={g}' for f,g in fx.get('eq',[])]
+    for e in fx.get('effects',[]):
+        # Modulation and lo-fi effects after the EQ: the chorus in NumPy (production.chorus; FFmpeg's chorus steps
+        # its moving delay in whole samples, a buzz on sustained parts), FFmpeg's aphaser and acrusher.
+        if e['type']=='chorus':filters.append(('chorus',e.get('depth',.5)))
+        elif e['type']=='phaser':filters.append(f'aphaser=in_gain=0.8:out_gain=0.9:delay=3:decay={.2+.5*e.get("depth",.5):.3f}:speed={e.get("rate_hz",.5)}:type=t')
+        elif e['type']=='bitcrush':filters.append(f'acrusher=bits={e.get("bits",8)}:samples={e.get("downsample",4)}:mix={e.get("mix",1)}:mode=lin')
+    if co:filters.append(f'acompressor=threshold={10**(co["threshold_db"]/20):.9f}:ratio={co["ratio"]}:attack={co["attack_ms"]}:release={co["release_ms"]}:makeup=1')
+    pan=fx.get('pan',0);width=fx.get('width',1)
+    if width<1:
+        # Mid/side width before the pan: spaced-microphone samples (some piano and room recordings) are nearly
+        # uncorrelated left/right, which leaves a lead diffuse and off-centre and partly cancels in mono.
+        a,b=(1+width)/2,(1-width)/2
+        filters.append(f'pan=stereo|c0={a:.9f}*c0+{b:.9f}*c1|c1={b:.9f}*c0+{a:.9f}*c1')
+    depth=fx.get('depth_m')
+    # A part placed on the stage gets its pan with its early reflections (musiclib/stage.py), after the chain.
+    filters.extend(([] if depth is not None else [f'pan=stereo|c0={math.sqrt(1-pan):.9f}*c0|c1={math.sqrt(1+pan):.9f}*c1'])+[audio.automation(fx.get('automation',[]),clock)])
+    filters.append(f'apad,atrim=end_sample={frames}')  # a chorus or phaser delays the signal and would lengthen the stem
+    # One FFmpeg pass, or, around each chorus, a pass up to it, the chorus in NumPy on that file, and on. A later
+    # pass's log takes ".pass{k}": a part id cannot hold a dot, so the label never names another part's log.
+    src,run,k=raw,[],0
+    for f in filters+[None]:
+        if isinstance(f,str):run.append(f);continue
+        if run:
+            out=stem if f is None else output/'stems'/f'.{t["id"]}.pass{k}.wav'
+            audio.ffmpeg(cfg,['-i',src,'-af',','.join(run),'-ar',str(audio.RATE),'-c:a','pcm_f32le',out],output/'logs','process_'+t['id']+(f'.pass{k}' if k else ''))
+            if src!=raw:src.unlink()
+            src,run,k=out,[],k+1
+        if f is None:break
+        x,_=audio.read_wav(src);x,_=production.chorus(x,f[1]);audio.write_wav(src,x)
+    done={'reference_level_dbfs':ref,'gain_db':gain,'filter_chain':','.join(f if isinstance(f,str) else f'chorus(depth={f[1]}, production.chorus)' for f in filters)}
+    if depth is not None:
+        x,_=audio.read_wav(stem);x,placed=stage.place(x,pan,depth,fx.get('facing','front'));audio.write_wav(stem,x)
+        if placed:done['stage']={'depth_m':depth,'facing':fx.get('facing','front'),**placed}
+    if production.wanted(t):
+        # Sweeps, saturation, gates, tempo-synced delays and ducking (musiclib/production.py), on the placed stem.
+        x,_=audio.read_wav(stem);x,produced=production.process(x,p,t,clock);audio.write_wav(stem,x)
+        if produced:done['production']=produced
+    return done
 
 def room_mix(p,clock,cfg,output,frames,duration):
     """The original chain (mix.chain "room"): every stem dry, one shared noise room, a delay send and a limiter."""

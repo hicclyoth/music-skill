@@ -135,8 +135,8 @@ def space_ir(name, seed=20261101):
 
 def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
     """Mix the render's processed stems through the buses and spaces into premix.wav.  Each bus, reverb and delay
-    return and impulse response is kept in returns/; the buses and returns must add up to the premix, and
-    bus_level_change_db.json compares every bus with its stems' sum.
+    return and impulse response is kept in returns/; `verify` then checks that the buses and returns add up to the
+    premix and compares every bus with its stems' sum.
 
     With `tracks` (a layer of a game loop) only those parts go through the same buses and spaces into `premix`; the
     impulse responses of the full mix are reused and nothing else is written."""
@@ -213,26 +213,32 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
                        premix, *exports], output / 'logs', 'mix' if full else 'mix_' + premix.stem)
     if not full:
         return None
+    return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
+                                                                         if t['mix'].get('reverb_db') is not None},
+            'returns': [path.name for _, path in returned]}
 
+
+def verify(p, output, buses):
+    """What a full mix (`buses`, from `mix`) is checked against, written to bus_level_change_db.json and returned:
+    each bus's K-weighted level against the sum of its stems, and the buses and returns added up against the premix.
+    It reads only the files the mix wrote, so a render runs it while the master is made."""
+    returns = output / 'returns'
     change, total, mag = {}, 0.0, 0.0
     for b in BUSES:
-        members = [s for s, t in zip(stems, tracks) if bus_of(t) == b]
+        members = [output / 'stems' / f'{t["id"]}.wav' for t in p['tracks'] if bus_of(t) == b]
         if members:
             summed = sum(audio.read_wav(s)[0].astype(np.float64) for s in members)
             bus = np.asarray(audio.read_wav(returns / f'bus_{b}.wav')[0], dtype=np.float64)
             change[b] = round(k_level(bus) - k_level(summed), 2)
             total, mag = total + bus, mag + np.abs(bus)
-    for _, path in returned:
-        x = np.asarray(audio.read_wav(path)[0], dtype=np.float64)
+    for name in buses['returns']:
+        x = np.asarray(audio.read_wav(returns / name)[0], dtype=np.float64)
         total, mag = total + x, mag + np.abs(x)
     save_json(output / 'bus_level_change_db.json', change)
     # Summed, the buses and returns give the premix back up to float rounding (the premix fades in over its first 5 ms).
-    mixed = np.asarray(audio.read_wav(premix)[0], dtype=np.float64)
+    mixed = np.asarray(audio.read_wav(output / 'premix.wav')[0], dtype=np.float64)
     ok, worst, share = adds_up(total, mag, mixed, int(.01 * RATE))
-    return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
-                                                                         if t['mix'].get('reverb_db') is not None},
-            'level_change_db': change, 'returns': [path.name for _, path in returned],
-            'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1),
+    return {'level_change_db': change, 'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1),
             'sum_error_share_of_allowance': round(share, 4), 'adds_up_to_premix': ok}
 
 
@@ -269,7 +275,9 @@ def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):
 
 
 def master(p, cfg, output):
-    """premix.wav (or master_input.wav) -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit)."""
+    """premix.wav (or master_input.wav) -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit).
+    Returns the premix measurement, the mastering record and the measurement of master.wav as delivered (the last
+    delivery pass measured the file the render keeps, so it is not measured again)."""
     logs = output / 'logs'
     source_in = output / 'premix.wav'
     if p['mix'].get('wow_flutter') or p['mix'].get('mono_below_hz'):
@@ -298,10 +306,10 @@ def master(p, cfg, output):
             ranged = range_control(mixed, output / 'ranged.wav', p['mix']['range_lu'])
             mixed = output / 'ranged.wav'
             source = audio.measure(cfg, mixed, logs, 'measure_ranged')
-        delivered = wide_delivery(cfg, output, mixed, source, target, gain, chain)
+        delivered, measured = wide_delivery(cfg, output, mixed, source, target, gain, chain)
         if ranged:
             delivered['range'] = ranged
-        return before, delivered
+        return before, delivered, measured
     delivery, passes, ceiling = target - source['integrated_lufs'], [], LIMIT_DBFS
     loud = p['mix'].get('loudness') == 'loud'
     clipped = output / 'clipped.wav'
@@ -335,7 +343,7 @@ def master(p, cfg, output):
     return before, {'chain': 'bus', 'mix_gain_db': round(gain, 6), 'master_chain': chain,
                     'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')},
                     'target_lufs': target, 'limiter_dbfs': round(ceiling, 3), 'delivery_chain': limiter, 'passes': passes,
-                    'limiting_db': section_limiting(p, mixed, output / 'master.wav', applied)}
+                    'limiting_db': section_limiting(p, mixed, output / 'master.wav', applied)}, m
 
 
 def section_limiting(p, mixed, master, gain_db):
@@ -369,7 +377,7 @@ def wide_delivery(cfg, output, mixed, source, target, gain, chain):
     return {'chain': 'bus', 'dynamics': 'wide', 'mix_gain_db': round(gain, 6), 'master_chain': chain,
             'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')}, 'target_lufs': target,
             'peak_held_db': round(max(0.0, wanted - delivery), 2), 'lra_lu': m['lra_lu'],
-            'limiter_dbfs': -1.0, 'delivery_chain': guard, 'passes': passes}
+            'limiter_dbfs': -1.0, 'delivery_chain': guard, 'passes': passes}, m
 
 
 def short_term(x):

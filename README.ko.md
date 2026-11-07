@@ -77,7 +77,7 @@ Claude 같은 에이전트가 이미 영상을 편집하거나 게임을 만들�
 5. **믹싱과 마스터링**: 각 파트는 드럼, 베이스, 리듬, 앙상블, 멜로디 버스와 자동으로 만든 네 가지 리버브를 거쳐, 마스터 처리로 프로젝트의 목표 라우드니스(기본 −16 LUFS, 스트리밍용은 −14 LUFS), 트루 피크 −1 dBTP 이하로 마무리됩니다. 관현악과 오르간 음악은 컴프레서를 거치지 않고 셈여림의 폭을 그대로 살릴 수 있습니다. 일렉트로닉 음악에는 사이드체인 더킹, 템포에 맞춘 딜레이, 필터 스윕, 클럽용으로 크게 만든 마스터를 더할 수 있습니다.
 6. **측정**: `analyze`는 구간마다 음량, 스펙트럼, 스테레오 이미지, 멜로디가 반주보다 얼마나 앞에 있는지를 재고, 마스터의 음색 균형을 상업 녹음에 대해 공개된 측정값이나 같은 장르의 레퍼런스와 비교합니다. 숫자는 문제가 있는 곳을 가리킬 뿐, 듣는 일을 대신하지는 못합니다.
 
-음 하나를 바꾸면 그 파트만 다시 합성합니다. 렌더링할 때마다 모든 파트로 믹스를 다시 하므로, 공유 리버브와 그 꼬리, 마스터도 변경을 따라갑니다. 믹스만 바꾸면 이미 합성한 파트를 그대로 씁니다. `compare`는 두 렌더링의 차이를 보여 줍니다. 어떤 파트를 다시 합성했는지, 어떤 스템·버스·리버브 리턴이 어디서 얼마나 바뀌었는지입니다.
+음 하나를 바꾸면 그 파트만 다시 합성합니다. 음표도 믹스도 바뀌지 않은 파트는 DAW의 프리즈한 트랙처럼 캐시에 있는 처리된 스템을 그대로 씁니다. 렌더링할 때마다 모든 파트로 믹스를 다시 하므로, 공유 리버브와 그 꼬리, 마스터도 변경을 따라갑니다. 수정은 한 번마다 `round` 하나로 합니다. 악보를 검사하고, 드래프트(같은 소리에서 납품에만 필요한 파일을 뺀 것)를 렌더링하고, 측정하고, 이전 회차와 비교하며, 단계마다 짧은 요약을 냅니다. `compare`는 두 렌더링의 차이를 보여 줍니다. 어떤 파트를 다시 합성했는지, 어떤 스템·버스·리버브 리턴이 어디서 얼마나 바뀌었는지입니다.
 
 게임용 프로젝트는 루프로 만들 수 있습니다. 렌더링할 때 잔향 꼬리를 루프 시작 부분에 겹쳐 넣고, Godot와 RPG Maker가 읽는 형식으로 루프 지점을 WAV와 Ogg 파일에 기록하고, 섹션마다 큐 포인트를 붙입니다. 루프를 여러 레이어로 나눌 수도 있으며, 모든 레이어를 더하면 원래 믹스가 되므로 게임의 긴장감에 따라 소리를 겹쳐 쌓을 수 있습니다.
 
@@ -169,7 +169,7 @@ GPU도, 계정도, 오디오 모델도 필요 없습니다. 모든 파일은 배
 
 ## 어디까지 되나요
 
-`selfcheck.py`에는 93가지 검사(렌더링 설정이 없으면 75가지)가 있으며, MIDI 왕복 변환과 압축 파일 안전성부터 실제 렌더링까지 포함합니다. 예를 들어 음 하나를 고치면 그 파트만 다시 합성되고 `compare`가 그 음부터, 영향이 닿은 파일에서만 차이를 찾는지, 예전의 단일 리버브 믹스가 이전 릴리스를 비트 단위로 재현하는지, 라우드니스 측정이 BS.1770 기준 음을 −3.01 LUFS로 읽는지 확인합니다. CI에서는 Ubuntu(FluidSynth 2.3, FFmpeg 6.1)와 macOS(FluidSynth 2.6, FFmpeg 9.0)에서 렌더링을 포함한 모든 검사를 실행합니다.
+`selfcheck.py`에는 98가지 검사(렌더링 설정이 없으면 78가지)가 있으며, MIDI 왕복 변환과 압축 파일 안전성부터 실제 렌더링까지 포함합니다. 예를 들어 음 하나를 고치면 그 파트만 다시 합성되고 `compare`가 그 음부터, 영향이 닿은 파일에서만 차이를 찾는지, 예전의 단일 리버브 믹스가 이전 릴리스를 비트 단위로 재현하는지, 라우드니스 측정이 BS.1770 기준 음을 −3.01 LUFS로 읽는지 확인합니다. CI에서는 Ubuntu(FluidSynth 2.3, FFmpeg 6.1)와 macOS(FluidSynth 2.6, FFmpeg 9.0)에서 렌더링을 포함한 모든 검사를 실행합니다.
 
 음악으로서 좋은지는 다른 문제이고, 직접 들어 봐야만 알 수 있습니다. 위의 곡들이 이 저장소가 보여 줄 수 있는 가장 좋은 증거입니다.
 
@@ -200,8 +200,10 @@ GPU도, 계정도, 오디오 모델도 필요 없습니다. 모든 파일은 배
 | [SKILL.md](skills/music-production/SKILL.md) | 에이전트가 따르는 작업 순서와 모든 명령 |
 | [schema.md](skills/music-production/references/schema.md) | 프로젝트 파일: 악보, 연주, 믹스 |
 | [arrangement.md](skills/music-production/references/arrangement.md) | 구성, 멜로디, 보이싱, 각 파트의 역할 |
-| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 연주, 버스 믹싱, `analyze` 읽는 법 |
-| [soundbanks.md](skills/music-production/references/soundbanks.md) | 각 음원의 특징과 버릇, 직접 음원을 추가하는 방법 |
+| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 연주, 버스 믹싱 |
+| [measuring.md](skills/music-production/references/measuring.md) | `analyze`와 `compare` 읽는 법 |
+| [soundbanks.md](skills/music-production/references/soundbanks.md) | 각 음원과 직접 음원을 추가하는 방법. 프리셋, 측정한 버릇, 음원 만들기는 연결된 파일에 |
+| [outputs.md](skills/music-production/references/outputs.md) | 각 명령이 쓰는 파일, 키 하나하나 |
 | [장르별 가이드](skills/music-production/references) | 일렉트로닉과 테크노, 힙합 비트와 트랩, 재즈, 블루스, 보사노바와 펑크, 록과 메탈, 팝과 발라드, 영화 음악과 호러, 애니메이션 오프닝, 게임과 장면 음악, 오케스트라, 바로크, 오르간, 피아노와 실내악 |
 | [setup.md](skills/music-production/references/setup.md) | Windows, Linux, macOS에 렌더링 도구 설치하기 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 외부 악보, MIDI, 샘플을 쓸 때 주의할 점 |

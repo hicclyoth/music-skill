@@ -2,6 +2,10 @@
 
 All `on`, `duration`, CC times, tempo positions and mix automation positions use **quarter-note beats**, including compound meter. Bars in `sections.start_bar` are zero-based. Pitch and program are zero-based MIDI integers. Every count and MIDI value (bars, pitch, velocity, program, bank, CC values) is a JSON integer: `100`, not `100.0`, which validation refuses. Section ids are text. `validate` also lists, as warnings, any field it does not know with the nearest known name: a misspelt optional field would otherwise do nothing. The export uses 960 ticks per quarter.
 
+Contents: [The project](#the-project) · [The mix](#the-mix) · [Game loops](#game-loops) · [Tracks](#tracks) · [Revision and reproducibility](#revision-and-reproducibility)
+
+## The project
+
 ```json
 {
   "schema": "music-production/v1",
@@ -24,6 +28,8 @@ All `on`, `duration`, CC times, tempo positions and mix automation positions use
 
 `tracks` must contain 1–64 entries. Sections must cover the entire form without gaps. The fixed meter denominator may be 2, 4, 8 or 16. Tempo must begin at beat zero, be strictly increasing in time and stay within 30–300 quarter-note BPM. For 6/8 with dotted-quarter pulse 66, use quarter-note BPM 99. The bounds are 512 bars, 500,000 notes and 30 minutes; these are resource limits, not compositional targets.
 
+## The mix
+
 The project `mix`:
 - Bus chain only: `loudness: "loud"` for dense electronic genres: a soft clipper computed at four times the rate rounds peaks before the delivery limiter and `target_lufs` may go up to −8 (not with `dynamics: "wide"`). The report's `mastering.limiting_db` gives, per section, how much level clipper and limiter took, and `analyze` warns past 3 dB. `mono_below_hz` (40–250) makes the premix mono below that frequency (a zero-phase high-pass on the side channel, 48 dB per octave). `wow_flutter` (below) wobbles the whole premix as a worn tape would, before `mono_below_hz`.
 - `chain`: `"bus"` mixes through buses, four generated spaces, a master chain and a delivery limiter; `"room"` (the default, kept for older projects) sends every part dry into one shared room and limits once. See [performance-and-mix.md](performance-and-mix.md).
@@ -31,6 +37,8 @@ The project `mix`:
 - Bus chain only: `dynamics`, `"glue"` (the default) or `"wide"` for orchestral and organ music. With `"wide"` no bus compresses or saturates, the master keeps only its EQ, and one gain brings the mix to `target_lufs`, unless the true peak would then pass −1.2 dBTP: the master then stays quieter instead of being limited, by `mastering.peak_held_db` in the report. The report also gives the loudness range (`lra_lu`) of the mix and of the master.
 - With `dynamics: "wide"`, optional `range_lu` (3–30) brings the master's loudness range (EBU Tech 3342) down to that many LU by lifting the quieter passages, slowly and in proportion; passages at the 95th percentile of short-term loudness keep their level. `mastering.range` reports the range before and after and the largest lift. Not with `loop`, whose layers must add up to the master.
 - Room chain only: `peak_ceiling_db` (−8 to −1, default −1.6), `max_limit_db` (0–4, default 1.5: how far the limiter may reduce peaks; the master may finish below the target instead) and `room_seconds` (0.2–4, default 1.1).
+
+## Game loops
 
 The optional project `loop`, for music that repeats in a game: `{"start_bar": 0}` loops from the start of that bar (zero-based, like sections) to the end of the last bar. Bars before it play once as an intro. The render then also writes:
 - `loop.wav`: 24-bit, with the loop points in a `smpl` chunk;
@@ -40,6 +48,8 @@ The optional project `loop`, for music that repeats in a game: `{"start_bar": 0}
 In all three, everything that sounds after the last bar (note releases and reverb, up to `tail_seconds`) is folded back from the loop start. The WAV carries a cue point at every section start, labelled with the section id; `loop.json` lists them too, and with a constant tempo gives `bpm`, `bar_beats` and `beat_count`. `report.json` gains a `loop` entry with its checks and a description of the seam, and `review` asks about the seam. A loop from bar 1 gets no fade-in at the start of the file, because those frames replay on every repeat. See [game-music.md](game-music.md).
 
 Optional `loop.layers`, bus chain only, splits the loop into 2–8 layers for vertical layering: `{"start_bar": 0, "layers": {"base": ["strings", "harp", "bass"], "drive": ["drums", "timpani"], "lead": ["horn"]}}`. Every track belongs to exactly one layer. Each layer is also written as `layers/<id>.wav` and `.ogg`, mixed alone through the same buses and spaces with the master's gain and EQ but not its dynamics, and folded like the loop; together the layers add up to the mix before the master's compressor and limiters.
+
+## Tracks
 
 A track:
 

@@ -2,6 +2,8 @@
 
 Read this when the music is for a game: a loop for a place or a state, a battle, a menu, a jingle. Game music is heard while the player does something else, it is heard many times, and it meets other music at seams. Those three facts change the brief, the form and the delivery.
 
+Contents: [Brief](#brief) · [The loop point](#the-loop-point) · [Repetition](#repetition) · [Mood and scene](#mood-and-scene) · [Layers](#layers) · [Stingers, transitions and endings](#stingers-transitions-and-endings) · [Delivery](#delivery) · [Sources](#sources)
+
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:

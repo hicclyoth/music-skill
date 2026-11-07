@@ -2,6 +2,8 @@
 
 Read this when choosing the patch or instrument for a part, above all a synth part from the Surge XT catalog (3,008 factory and third-party patches). Each piece of guidance below names its source, and the steps under [With the tools](#with-the-tools) say what the commands do. Figures marked "measured here" are this skill's own measurements of its sounds, not general rules.
 
+Contents: [The part's job](#the-parts-job) · [What puts a sound in front or behind](#what-puts-a-sound-in-front-or-behind) · [By element](#by-element) · [Across a piece](#across-a-piece) · [With the tools](#with-the-tools) · [Sampled instruments and drums](#sampled-instruments-and-drums) · [Sources](#sources)
+
 A sound that impresses on its own is not thereby right for the piece. Flint (2007) explains that a synth patch which impresses without accompaniment was probably programmed to stand out that way, and that this does not make it suit a composition. White (2009) warns that shaping parts while they play solo tends to leave many big, bright sounds competing for the front of the mix. Senior (2024) sees little point in detailed mixing before sounds can be judged in their final context. So a sound is chosen for its job in this piece, and judged on the part's own notes with the other parts playing.
 
 ## The part's job
@@ -135,11 +137,11 @@ Before searching, write down for the part:
 3. **Shape the one you keep.** `studio.py sounds --id <id>` prints what a patch's mod wheel and macros move, from [surge-catalog.json](surge-catalog.json) (about 2 MB: search it with the command rather than reading it):
    - a CC1 value or curve on the part moves what the wheel moves;
    - labelled macros are set with `surge.macros`.
-4. **Check it in the mix.** `analyze` reports three things: the lead's level over its accompaniment, how much of it is masked, and the master's share in each band. Compare them with a reference of the style ([performance-and-mix.md](performance-and-mix.md)).
+4. **Check it in the mix.** `analyze` reports three things: the lead's level over its accompaniment, how much of it is masked, and the master's share in each band. Compare them with a reference of the style ([measuring.md](measuring.md)).
 
 ## Sampled instruments and drums
 
-[soundbanks.md](soundbanks.md) lists the sampled pianos, guitars, basses, orchestra, kits and other recordings, with what each was measured to do. Electric pianos also include the sampled TX81Z FM pianos ([beats.md](beats.md)). `studio.py audition` takes `soundfont:<bank>:<bank number>:<program>` to compare them on the part.
+[soundbanks.md](soundbanks.md) lists the sampled pianos, guitars, basses, orchestra, kits and other recordings, [soundbank-presets.md](soundbank-presets.md) their presets and [soundbank-measurements.md](soundbank-measurements.md) what each was measured to do. Electric pianos also include the sampled TX81Z FM pianos ([beats.md](beats.md)). `studio.py audition` takes `soundfont:<bank>:<bank number>:<program>` to compare them on the part.
 
 ## Sources
 

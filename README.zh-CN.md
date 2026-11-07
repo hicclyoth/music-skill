@@ -77,7 +77,7 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 项目的目标响度（默认 −16 LUFS，流媒体常用 −14 LUFS），真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
 6. **测量**：`analyze` 会测出每个段落的响度、频谱和立体声、主旋律比伴奏响多少，并把母带的音色平衡与已发表的商业录音测量，或同曲风的参考进行比较。这些数字能指出问题所在，但不能代替实际聆听。
 
-只改一个音，就只会重新合成那一个声部。每次渲染都会用所有声部重新混音，所以共用混响、混响尾巴和母带都会随之改变；只改混音，则沿用所有已合成的声部。`compare` 会列出两次渲染之间的差异：哪些声部重新合成，以及哪些分轨、总线和混响返回有变化、变在哪里、差多少。
+只改一个音，就只会重新合成那一个声部；音符和混音都没变的声部，会像 DAW 里冻结的音轨一样，直接使用缓存中处理好的分轨。每次渲染都会用所有声部重新混音，所以共用混响、混响尾巴和母带都会随之改变。每一轮修改用一次 `round`：检查乐谱、渲染草稿（声音相同，只省去交付才需要的文件）、测量，再与上一轮比较，每一步都给出简短摘要。`compare` 会列出两次渲染之间的差异：哪些声部重新合成，以及哪些分轨、总线和混响返回有变化、变在哪里、差多少。
 
 游戏用的项目可以设置循环：渲染时会把混响尾巴折回循环开头，并按 Godot 和 RPG Maker 读取的格式，把循环点写进 WAV 和 Ogg 文件，每个段落也标上提示点。循环还能拆成几层，各层相加就是完整混音，让音乐随着游戏紧张程度逐层加厚。
 
@@ -169,7 +169,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 效果如何
 
-`selfcheck.py` 共有 93 项检查（没有渲染配置时为 75 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 98 项检查（没有渲染配置时为 78 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音乐好不好听是另一回事，只有实际聆听才知道。上面这些曲子是这个仓库最好的证据。
 
@@ -200,8 +200,10 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | [SKILL.md](skills/music-production/SKILL.md) | agent 遵循的工作流程，以及所有命令 |
 | [schema.md](skills/music-production/references/schema.md) | 项目文件：乐谱、演奏与混音 |
 | [arrangement.md](skills/music-production/references/arrangement.md) | 曲式、旋律、和声配置与各声部的职责 |
-| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏、总线混音，以及如何解读 `analyze` |
-| [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色库的特性与局限，以及如何加入自己的音色库 |
+| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | 演奏与总线混音 |
+| [measuring.md](skills/music-production/references/measuring.md) | 如何解读 `analyze` 与 `compare` |
+| [soundbanks.md](skills/music-production/references/soundbanks.md) | 各音色库，以及如何加入自己的音色库；预设、测得的特性与如何制作音色库见其链接的文件 |
+| [outputs.md](skills/music-production/references/outputs.md) | 各命令写出的文件，逐个键说明 |
 | [曲风指南](skills/music-production/references) | 电子音乐与 techno、嘻哈节拍与 trap、爵士、布鲁斯、波萨诺瓦与放克、摇滚与金属、流行与抒情曲、电影配乐与恐怖、动漫片头、游戏与场景配乐、管弦乐、巴洛克、管风琴、钢琴与室内乐 |
 | [setup.md](skills/music-production/references/setup.md) | 在 Windows、Linux 和 macOS 上安装渲染工具 |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | 使用外部乐谱、MIDI 与采样的注意事项 |

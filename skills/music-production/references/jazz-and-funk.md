@@ -2,6 +2,8 @@
 
 Read this when the request is a jazz combo or big-band-flavoured cue (swing, ballad, bossa nova, jazz waltz), blues (a 12-bar, a shuffle, a slow blues), a cafe or bar scene, funk, pop-funk or city pop, or any piece whose harmony is built from sevenths and extensions. Both styles live in the rhythm section's time: jazz in the swing of the ride cymbal and the walking bass, funk in sixteenth-note parts locked to the downbeat. For lo-fi and hip-hop beats built on the same harmony see [beats.md](beats.md).
 
+Contents: [Brief](#brief) · [Swing and time](#swing-and-time) · [The rhythm section](#the-rhythm-section) · [Writing the head and the solos](#writing-the-head-and-the-solos) · [Funk](#funk) · [Blues](#blues) · [Bossa nova](#bossa-nova) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:

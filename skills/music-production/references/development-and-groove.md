@@ -4,6 +4,8 @@ Read this when planning the form (step 2), when writing the accompaniment (step 
 returns, arrivals, block chords or pushes (step 5). It builds on [arrangement.md](arrangement.md) (form, roles, vertical
 hygiene) and [climax-and-melody.md](climax-and-melody.md) (the high point, melodic shape).
 
+Contents: [Diagnose "dull" and "stiff"](#diagnose-dull-and-stiff) · [Plan the energy (step 2)](#plan-the-energy-step-2) · [Groove (steps 3 and 4)](#groove-steps-3-and-4) · [Voicings that move: musiclib.voicing](#voicings-that-move-musiclibvoicing) · [Sources](#sources)
+
 ## Diagnose "dull" and "stiff"
 
 Seven pieces that agents made with this skill (ballad, boom bap, film cue, horror cue, rock, techno, trap) were heard as
@@ -40,7 +42,7 @@ builds and breaks by its own routine ([electronic.md](electronic.md); Solberg 20
 | Rhythm | hats from eighths to sixteenths; half-time or double-time feel; a push into the chorus |
 | Harmony | the returning theme reharmonized; a pedal under changing chords; a borrowed chord at the turn ([harmony.md](harmony.md)) |
 | Melody | the motif varied, not repeated: its rhythm changed, its intervals widened or narrowed, sequenced, fragmented (Schoenberg 1967); fragments shortening toward the cadence (Caplin 1998) |
-| Transitions | a fill at the end of a phrase; a riser before a phrase downbeat and a falling sweep after it (Smith 2021; the risers in [electronic.md](electronic.md)); a stop before the chorus |
+| Transitions | a fill at the end of a phrase; a riser before a phrase downbeat and a falling sweep after it (Smith 2021; the risers in [electronic-sounds.md](electronic-sounds.md)); a stop before the chorus |
 
 Strong contrasts of register, texture and instrumentation mark section boundaries, and instruments added or taken away
 gradually or suddenly shape a longer span (McAdams, Goodchild and Soden 2022).

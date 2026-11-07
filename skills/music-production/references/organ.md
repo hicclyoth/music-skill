@@ -4,7 +4,7 @@ Read this when a part is for pipe organ: a chorale or hymn, a prelude, a solemn 
 
 ## The instrument in the bank
 
-`organ_vcsl` ([soundbanks.md](soundbanks.md)) holds three registrations of one pipe organ, each a preset of its own:
+`organ_vcsl` ([soundbank-presets.md](soundbank-presets.md)) holds three registrations of one pipe organ, each a preset of its own:
 
 | Preset (bank:program) | What it is | Sounding range |
 |---|---|---|

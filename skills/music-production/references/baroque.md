@@ -5,6 +5,8 @@ Read this when the request is any of these:
 - harpsichord music, a trio sonata, a concerto grosso, a fugue or a dance suite movement;
 - a period scene for a film, game or visual novel (a court, a church, a candlelit hall).
 
+Contents: [Brief](#brief) · [The continuo](#the-continuo) · [Counterpoint](#counterpoint) · [Patterns: sequences and schemata](#patterns-sequences-and-schemata) · [Forms](#forms) · [Performance on the banks](#performance-on-the-banks) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 Write in the style, never a known work: no borrowed subjects, ritornellos or ground basses ([sources-and-rights.md](sources-and-rights.md)).
 
 Related guides:
@@ -100,13 +102,13 @@ Eighteenth-century composers built phrases from stock patterns of bass and melod
 
 ## Performance on the banks
 
-- **Harpsichord.** `vcsl_keys` 0:6 French, 1:6 Flemish 8′, 2:6 Flemish 8′+4′, 3:6 English lute stop. Velocity changes nothing, as on the instrument ([soundbanks.md](soundbanks.md)).
+- **Harpsichord.** `vcsl_keys` 0:6 French, 1:6 Flemish 8′, 2:6 Flemish 8′+4′, 3:6 English lute stop. Velocity changes nothing, as on the instrument ([soundbank-measurements.md](soundbank-measurements.md)).
   - Shape a line by timing and articulation instead, as organists and harpsichordists do: [organ.md](organ.md) gives the measured means, from Gingras et al.
   - Change registration for contrast: the bank has 8′, 8′+4′ and lute-stop presets.
 - **Ornaments.** Write them as notes.
   - A trill on the penultimate note of a cadence. In the Baroque it starts on the upper note and may start slow and speed up; on a short note at a fast tempo it shrinks to three notes, close to a mordent (Wikipedia, Trill).
   - Appoggiaturas, reached by leap and left by step the other way, usually on a strong part of the beat (Open Music Theory, Embellishing Tones).
-- **Section strings in an allegro.** The `vsco_strings` sustained samples take about 400 ms to speak, a bowed swell ([soundbanks.md](soundbanks.md)). At allegro tempos, give notes under about a beat and a half to the spiccato presets (bank 1, `offset_ms` −35 to −40) and keep the sustained presets (`offset_ms` −90) for held notes and suspensions. Tied over the bar line, a suspension's swell lands on its dissonance. A note struck again on the strong beat is a rearticulated suspension.
+- **Section strings in an allegro.** The `vsco_strings` sustained samples take about 400 ms to speak, a bowed swell ([soundbank-measurements.md](soundbank-measurements.md)). At allegro tempos, give notes under about a beat and a half to the spiccato presets (bank 1, `offset_ms` −35 to −40) and keep the sustained presets (`offset_ms` −90) for held notes and suspensions. Tied over the bar line, a suspension's swell lands on its dissonance. A note struck again on the strong beat is a rearticulated suspension.
 - **The continuo cello.** The solo cello (`cello_bigcat` 0:42) speaks in 5–14 ms. Let it play the bass line throughout, as the continuo cellist does; the cello section and the double bass join it in the tutti.
 - **Contrast.** The harpsichord's velocity changes nothing, so its contrasts come from registration and texture; a concerto alternates tutti and solo (Ritornello form, above).
 - **The ensemble.**
@@ -118,7 +120,7 @@ Eighteenth-century composers built phrases from stock patterns of bass and melod
   | Winds | recorders `vcsl_winds` program 74 (soprano 0:74, alto 3:74, tenor 6:74, bass 9:74); flute `vsco` 0:73; oboe `vsco` 0:68; bassoon `vsco` 0:70 |
   | Brass and drums | trumpet `vsco` 0:56 in the high register; timpani `vcsl` 0:47 on tonic and dominant |
 
-- **The room.** A hall or church space with a moderate tail (`space: "hall"`; `"church"` for organ), `mix.dynamics: "wide"`; the skill's orchestral reference measured −17 LUFS ([performance-and-mix.md](performance-and-mix.md)).
+- **The room.** A hall or church space with a moderate tail (`space: "hall"`; `"church"` for organ), `mix.dynamics: "wide"`; the skill's orchestral reference measured −17 LUFS ([measuring.md](measuring.md)).
 
 ## Symptoms and causes
 

@@ -533,7 +533,7 @@ def review(p,out,config=None):
                 named=surge.catalog_counterparts(preset) if preset and full and not options else []
                 if (options or named) and t['notes']:
                     which=f'its patches for this role include {", ".join(options[:4])}' if options else f'its full patch set has patches named for this sound: {", ".join(named[:4])}'
-                    summary['prompts'].append(f'{t["id"]}: plays the built-in {preset}; Surge XT is installed, and {which}. Hear them on the part: studio.py audition --track {t["id"]} --sounds {",".join("surge:"+x for x in (options or named)[:3])} --bars FIRST-LAST (electronic.md, Sound design). Keep the built-in preset where a render must repeat exactly or the sound needs fields of its own.')
+                    summary['prompts'].append(f'{t["id"]}: plays the built-in {preset}; Surge XT is installed, and {which}. Hear them on the part: studio.py audition --track {t["id"]} --sounds {",".join("surge:"+x for x in (options or named)[:3])} --bars FIRST-LAST (electronic-sounds.md). Keep the built-in preset where a render must repeat exactly or the sound needs fields of its own.')
         st=summary['transposed_samples']=stretched(p,clock,sample_maps(p,config))
         if st['count']:
             worst=next(iter(st['by_track']))

@@ -5,6 +5,8 @@ Read this when the request is any of these:
 - a boom-bap or trap instrumental;
 - a background beat for a stream or a video.
 
+Contents: [Brief](#brief) · [Groove](#groove) · [Lo-fi and chillhop](#lo-fi-and-chillhop) · [Boom bap](#boom-bap) · [Trap](#trap) · [The worn sound](#the-worn-sound) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 These are loops first: a two-, four- or eight-bar figure of drums, bass and chords that has to feel good on its hundredth repeat, with a few changes over the top. Much of each style's character is in the groove (where each hit falls) and in the sound of the machines and media it grew up on. For dance music and synth styles see [electronic.md](electronic.md); for jazz harmony and voicings, [jazz-and-funk.md](jazz-and-funk.md).
 
 ## Brief

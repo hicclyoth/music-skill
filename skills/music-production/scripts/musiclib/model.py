@@ -408,6 +408,9 @@ def _track(p,t,c,total,clock,warnings):
         number(beat,0,total,f'{tid} automation beat');number(db,-60,12,f'{tid} automation dB')
         if beat<=prev:raise ValueError(f'{tid}: automation points must be ordered')
         prev=beat
+    # The notes as played and as written, on the MIDI grid the render and the exports use: a key struck twice at once
+    # stops the render, so it is found here, before anything is rendered (an error caught at once costs least).
+    for expressive in (True,False):performed(t,clock,expressive)
     return events
 
 def performed(track,clock,expressive=True):
@@ -429,13 +432,18 @@ def performed(track,clock,expressive=True):
         tick=max(0,round(clock.beat(start)*TPQ))
         stop=max(tick+1,min(round(clock.total_beats*TPQ),round(clock.beat(start+duration)*TPQ)))
         notes.append({'id':n['id'],'pitch':n['pitch'],'tick':tick,'end_tick':stop,'velocity':e['velocity'] if expressive else 80})
+    def clash(a,b,what,fix):
+        beat=b['tick']/TPQ;bar=int(beat//clock.beats_per_bar)+1
+        name='C C# D D# E F F# G G# A A# B'.split()[a['pitch']%12]+str(a['pitch']//12-1)
+        return ValueError(f'{track["id"]}: notes {a["id"]} and {b["id"]} {what} {name} near bar {bar} beat {round(beat%clock.beats_per_bar+1,2):g}'
+                          f' {"as played" if expressive else "as written"}; {fix}')
     for pitch in {n['pitch'] for n in notes}:
         group=sorted((n for n in notes if n['pitch']==pitch),key=lambda n:n['tick'])
         for a,b in zip(group,group[1:]):
-            if a['tick']==b['tick']:raise ValueError(f'Duplicate simultaneous same-key notes: {track["id"]} {a["id"]} {b["id"]}')
+            if a['tick']==b['tick']:raise clash(a,b,'both strike','one key cannot be struck twice at once: remove one, or change its pitch or onset')
             if a['end_tick']>=b['tick']:
                 a['end_tick']=b['tick']-1
-                if a['end_tick']<=a['tick']:raise ValueError('Cannot separate retrigger')
+                if a['end_tick']<=a['tick']:raise clash(a,b,'strike one tick apart on','the first cannot end before the second starts: move them apart or remove one')
                 a['retrigger_trimmed']=True
     for n in notes:
         n['start_seconds']=clock.seconds(n['tick']/TPQ)

@@ -24,9 +24,19 @@ def absolute_paths(config, base):
                 entry[key] = str((Path(base) / entry[key]).resolve())
     return config
 
-def load_config(path):
-    """Verify every configured executable and SoundFont by path and SHA-256. `soundfont` is the
-    default bank; optional `soundfonts` adds named banks that tracks select with `soundfont`."""
+VERIFIED=set()  # (path, sha256) of the named banks this process has hashed
+
+def _verify(key,entry,p):
+    # A system package update replaces the executable: the configuration then names a file that is gone or changed.
+    again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
+    if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
+    if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
+
+def load_config(path,all_banks=False):
+    """Verify the configured executables and the default SoundFont by path and SHA-256. `soundfont` is the default
+    bank; optional `soundfonts` adds named banks that tracks select with `soundfont`.  A named bank is found at load and
+    hashed the first time a part uses it (soundfont_for), or at once with `all_banks` (doctor): a full set is about 8 GB,
+    and hashing it all took a render's first five seconds for the few banks one piece plays."""
     path=Path(path).resolve()
     data=json.loads(path.read_text(encoding='utf-8'))
     extra=data.get('soundfonts',{})
@@ -36,10 +46,11 @@ def load_config(path):
         p=Path(entry['path'])
         if not p.is_absolute():p=path.parent/p
         p=p.resolve()
-        # A system package update replaces the executable: the configuration then names a file that is gone or changed.
-        again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
-        if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
-        if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
+        if key.startswith('soundfonts.') and not all_banks:
+            if not p.is_file():_verify(key,entry,p)
+        else:
+            _verify(key,entry,p)
+            if key.startswith('soundfonts.'):VERIFIED.add((str(p),entry['sha256']))
         entry['path']=str(p)
     return data
 
@@ -52,7 +63,10 @@ def soundfont_for(config,track):
         hint=(f' It is one of the optional banks: install it with fetch_soundbanks.py --only {name} (references/setup.md), then pass the configuration it writes.'
               if name in known else ' Configure it with studio.py add-soundfont, or choose a configured bank (studio.py doctor lists them).')
         raise ValueError(f'{track["id"]}: SoundFont "{name}" is not configured.'+hint)
-    return name,config['soundfonts'][name]
+    entry=config['soundfonts'][name]
+    if (entry['path'],entry.get('sha256')) not in VERIFIED:
+        _verify('soundfonts.'+name,entry,Path(entry['path']));VERIFIED.add((entry['path'],entry['sha256']))
+    return name,entry
 
 def run(argv,folder,label,timeout=600):
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)

@@ -36,7 +36,7 @@ Homebrew's `ffmpeg` is built without `libvorbis`, the Vorbis encoder the skill u
 
 ## Surge XT
 
-Unless you pass `--no-surge`, the bootstrap also sets up Surge XT for `surge` parts (its 3,008 patches, fifty of them curated: [sound-selection.md](sound-selection.md), [electronic.md](electronic.md)):
+Unless you pass `--no-surge`, the bootstrap also sets up Surge XT for `surge` parts (its 3,008 patches, fifty of them curated: [sound-selection.md](sound-selection.md), [electronic-sounds.md](electronic-sounds.md)):
 
 - Windows and Linux on x86-64, and macOS: the pinned plugin-only Surge XT 1.3.4 release for that system (Windows 49 MB, Linux 97 MB, macOS 187 MB and universal for Intel and Apple silicon; the archive and the plugin's binary checked by hash; only its VST3 is kept), the pinned pedalboard 0.9.26 wheel for your Python (about 4 MB, checked against the hashes PyPI publishes, installed into the runtime folder only, never into your Python), the fifty curated patches (1.8 MB) from Surge's pinned repository commit, each checked by hash, and every patch of the catalog (3,008, about 217 MB, eight downloads at a time) from the same commit, each checked by size and hash. `--no-surge-catalog` leaves the full set out: parts that name a catalog patch then play their fallback presets.
 - A Surge XT you installed yourself: pass `--surge-vst3 <bundle>`. On Linux on ARM, where no build is pinned, install Surge XT 1.3.4 from https://surge-synthesizer.github.io/ first, and the bootstrap finds `Surge XT.vst3` in the usual VST3 folders. Either way it records the plugin's hash, then installs pedalboard and the patches as above.

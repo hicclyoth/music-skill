@@ -1,0 +1,91 @@
+# What the commands write
+
+Read this when a command's summary points to a figure you need in full. Every command prints a short summary that
+ends with the file and the keys below; `--json` prints the whole file instead. Levels are dB, loudness LUFS (ITU-R
+BS.1770), true peak dBTP, positions bar:beat counted from 1 unless a key says seconds or samples.
+
+Contents: [round.json](#roundjson) · [report.json](#reportjson-render) · [stem_receipts.json](#stem_receiptsjson-render) ·
+[score_review.json](#score_reviewjson-review) · [analysis.json](#analysisjson-analyze) · [compare](#compare_namejson-compare) ·
+[audition.json](#auditionjson-audition)
+
+## round.json
+
+`studio.py round` writes `review/` and `render/` (a draft, with `analysis.json` and `compare_<previous>.json`) and
+`round.json`: `status` (the render's; `FAIL` if it did not finish), `questions` (how many review questions),
+`previous`, the relative paths `review`, `render`, `analysis`, `compare`, `seconds` per step and `runtime_seconds`.
+A round's folder can stand for its render wherever a command takes a render folder.
+
+## report.json (render)
+
+| Key | What it holds |
+|---|---|
+| `status` | `TECHNICAL_PASS_AUDITION_PENDING` (a full render), `DRAFT_PASS` (a draft: deliver a full render), `FAIL` |
+| `draft`, `left_out` | whether it is a draft, and what a draft leaves out (master.flac, the MP3 check, a loop's Ogg copies and layers) |
+| `checks` | every delivery check, true or false: finite audio, no clipping, the true-peak ceiling, the exact length, 48 kHz 24-bit stereo, a quiet tail, the MIDI note count, the MP3's loudness, the buses and returns adding up to the premix, the loop's points and cues |
+| `master`, `premaster` | the delivered master and the mix before mastering: `integrated_lufs`, `true_peak_dbtp`, `lra_lu` (loudness range, EBU Tech 3342), `sample_peak_dbfs`, `clipped_samples`, `frames`, `seconds`, `sha256` |
+| `mastering` | the bus chain's record: `target_lufs`, `mixed` (after the master chain), `passes` (each delivery pass: gain, limiter ceiling, loudness, true peak), `limiting_db` (level the clipper and limiter took per section), `limiter_dbfs`; with `dynamics: "wide"` also `peak_held_db`, `lra_lu` and `range` |
+| `buses` | `assignment` (part to bus), `spaces` (part to reverb), `returns` (the files in `returns/`), `level_change_db` (each bus against the sum of its stems, also in bus_level_change_db.json), `sum_minus_premix_peak_dbfs` |
+| `sections` | per section: `start_seconds`, `end_seconds`, `rms_dbfs`, `side_mid_db`, `active_tracks` |
+| `mp3` | `mp3_lufs`, `mp3_true_peak_dbtp`, `matches` (within 0.2 LU of the master); none in a draft |
+| `loop` | a game loop: `start_sample`, `end_sample`, `length_samples`, `bpm`, `sections` (cue points), `files`, `gain_db`, `seam` (meter, timbre, pitch, abruptness and volume across the loop point), `layers` |
+| `cache_hits`, `stems_reused`, `stem_count` | parts whose raw synthesis, and whose processed stem, came from the cache |
+| `stage_seconds`, `process_seconds`, `runtime_seconds` | seconds per stage (they add up to the runtime) and in FFmpeg by kind |
+| `validation`, `dependencies`, `project_sha256`, `renderer_sha256` | the project's validation, the tools and banks with their hashes |
+
+## stem_receipts.json (render)
+
+One entry per part: `track`, `cache_key` (its cache entry), `cache_hit` (raw synthesis from the cache), `stem_reused`
+(processed stem from the cache), `gain_db` and `reference_level_dbfs` (the gain that set its level), `filter_chain`,
+`raw_sha256`, `stem_sha256`, `same_pitch_retrigger_trims`, and where they apply `soundfont`, `expressive` (crossfaded
+dynamics), `surge` (`rendered_with`, the fallback and why), `stage` (depth and early reflections), `production`
+(what each production tool did) and `seconds` (synthesis and processing).
+
+## score_review.json (review)
+
+| Key | What it holds |
+|---|---|
+| `prompts` | every review question, as the summary prints them |
+| `tracks` | per part: notes, pitch range, duration values, velocity range, key gaps, step share, phrase labels |
+| `sections` | per section: seconds, active parts, onsets by role |
+| `vertical_minor_seconds_ninths` | `count`, `foreground_count`, `by_parts`, `examples` (each `at`, `parts`, `pitches`, `overlap_beats`) |
+| `outside_chord` | `count` and `examples` of the notes not resolved by step (each `at`, `track`, `note`, `chord`, `approach`, `departure`), `not_resolved_by_step` (by melody, bass and accompaniment), `tracks` (each part's notes outside the chord counted by kind: passing, neighbour, suspension and the rest), `unparsed_symbols` |
+| `parallel_fifths_octaves` | `count`, `by_pair`, `examples` (each `at`, `parts`, `interval`, `pitches`), `octaves_in_doublings` |
+| `low_intervals` | `count`, `by_parts`, `furthest_below`, `examples` (each `at`, `parts`, `interval`, `notes`, `limit`) |
+| `repetition` | `static_spans`, `part_loops`, `literal_returns`, `arrivals_thinner_than_before`, `sections_alike`, `energy` per section |
+| `stiffness` | `block_chord_parts`, `parts`, `no_pushes_anywhere` |
+| `melody_sections` | per section: phrases, the longest stretch without a breath, leaps, bars restated, the peak and where it falls |
+| `transposed_samples`, `cannot_render` | with `--config`: notes played from samples far from their pitch, notes outside a preset, parts the banks cannot play |
+| `loop_seam` | a game loop's seam from the score |
+
+`notes.csv` lists every note with its bar, beat, pitch, velocity, timing and performed seconds; `arrangement.md` is
+the sections, the authored decisions and the questions as a page.
+
+## analysis.json (analyze)
+
+| Key | What it holds |
+|---|---|
+| `sections` | per section of the master: `level_lufs_ungated`, `peak_dbfs`, `crest_db`, `band_share_pct` (six bands), `lr_correlation`, `mono_sum_change_db` |
+| `lead_presence` | per section and span: `lead_minus_accompaniment_level_db`, its band-wise `_db_median` and `_db_p10`, `masked_share_pct`; `lead_tracks`, `lead_source` (buses or stems) |
+| `melody_groups` | per section and span: `melody_group` (the melody and the parts doubling it), `melody_group_minus_rest_db`, `balance` (parts close to it: `level_minus_melody_db`, `suggested_cut_db`) |
+| `stem_levels_lufs_ungated` | each part's level per section and span |
+| `tonal_balance` | `slope_db_per_octave_100hz_4khz`, `low_end_vs_line_db`, `top_end_vs_line_db`, `third_octaves_db`, the published range it is read against |
+| `reference_comparison` | with `--reference`: the slope, low and top end, each octave, width, loudness, peak to loudness and loudness range minus the reference's |
+| `master`, `side_minus_mid_db`, `warnings` | `integrated_lufs`, `true_peak_dbtp`, `lra_lu`, `plr_db`; width per band; what the analysis flags |
+
+How to read these is in [measuring.md](measuring.md).
+
+## compare_<name>.json (compare)
+
+`summary` holds what the printed summary shows: `project` (the edits), `synthesized_again`, `same_inputs_new_take`
+(Surge XT parts with unchanged inputs, a new take), `changed` (one line per changed file) and `identical` (counts).
+`files.<stems|buses|returns|premix|master>.<name>` holds per file `identical`, or `level_db`, `passages` (each
+`start_s`, `end_s`, `from`, `to` and `follows_part_levels`), `difference_db` and `difference_peak_dbfs`;
+`project_changes` the edits field by field, `synthesis` per part, `master_lufs` both masters' loudness, and `clip`
+the A/B clip.
+
+## audition.json (audition)
+
+`versions` in playing order: `sound`, `engine`, `master_lufs`, `part_rms_dbfs`, `part_brightness` (`centroid_hz`,
+`above_2k_pct`, `above_5k_pct`), and where they apply `surge_character`, `surge_controls` (what the mod wheel and
+macros move), `rendered_with`, `fallback` and `reason`, `performance_left_out`. Also `bars`, `each_seconds`,
+`gap_seconds`, `loudness_lufs` and `fallbacks`. Each version's render is in its numbered folder.

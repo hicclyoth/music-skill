@@ -6,7 +6,9 @@ Read this when the request is any of these:
 - an emotional pop cue for a video or a game;
 - a song-like piece where an instrument carries the tune.
 
-A J-pop or J-rock band cue in TV size is in [anime-opening.md](anime-opening.md). Electronic dance pop production (sidechain, drops, presets) is in [electronic.md](electronic.md).
+Contents: [Brief](#brief) · [Form](#form) · [Harmony](#harmony) · [Melody for the lead](#melody-for-the-lead) · [Rhythm and drums](#rhythm-and-drums) · [Arrangement](#arrangement) · [The mix](#the-mix) · [Instruments](#instruments) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
+A J-pop or J-rock band cue in TV size is in [anime-opening.md](anime-opening.md). Electronic dance pop production (sidechain, drops) is in [electronic.md](electronic.md), its synth sounds in [electronic-sounds.md](electronic-sounds.md).
 
 This guide covers two things: a lead instrument that phrases like a voice, and a song form that builds to its chorus. Each piece of guidance names its source; the layouts and tables are example plans built from them, not norms.
 
@@ -92,7 +94,7 @@ An example plan, built from the points above: build by addition from verse to ch
 
 ## The mix
 
-- **The lead on top.** Read `lead_presence` in `analyze`. The finished pieces' values in [performance-and-mix.md](performance-and-mix.md) are data points, not targets.
+- **The lead on top.** Read `lead_presence` in `analyze`. The finished pieces' values in [measuring.md](measuring.md) are data points, not targets.
 - **Brightness.** It comes from the percussion and the upper octaves (Elowsson and Friberg 2017). A ballad without drums is darker in `analyze`, and that is expected. Measured here, the recording and the touch change a piano's brightness more than EQ does ([performance-and-mix.md](performance-and-mix.md), A bright pop piano).
 - **Width and centre.** The lead, the bass, the kick and the snare are conventionally centred, and other parts spread for width (Flint 2005).
 - **Loudness.** Spotify plays tracks at −14 LUFS; deliver at `target_lufs` −14 with the bus chain.
@@ -110,7 +112,7 @@ An example plan, built from the points above: build by addition from verse to ch
 | Lead | `cello_bigcat` 0:42 (a tenor voice, C2–C6); `iowa_strings` violin or cello; `vsco` solo violin 0:40; `sax_bear` (tenor sax); `vsco` flute 0:73; Surge `smooth_lead` or `butter` (warm), `notched_saws` (bright); synth `supersaw_lead` or a square with `glide_ms` |
 | Pads | Surge `juno_60_strings`, `sawteeth`, `bright_pad`; synth `warm_pad`, `pwm_strings` with `effects` `chorus` |
 
-Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)); choose synth patches by the part's job ([sound-selection.md](sound-selection.md)).
+Probe a preset before building a part on it ([soundbank-measurements.md](soundbank-measurements.md) has what each bank measured); choose synth patches by the part's job ([sound-selection.md](sound-selection.md)).
 
 ## Symptoms and causes
 

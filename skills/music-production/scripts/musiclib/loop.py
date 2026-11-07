@@ -228,8 +228,9 @@ def encode_ogg(cfg, wav, ogg, start_f, end_f, logs, name):
     return frames == end_f, tags == {'LOOPSTART': start_f, 'LOOPLENGTH': end_f - start_f}
 
 
-def deliver(p, clock, cfg, output, mastering=None):
-    """loop.wav, loop.ogg and loop.json from master.wav, and the layer loops; returns the report entry and its checks."""
+def deliver(p, clock, cfg, output, mastering=None, draft=False):
+    """loop.wav, loop.ogg and loop.json from master.wav, and the layer loops; returns the report entry and its checks.
+    A draft render makes loop.wav, its checks and the seam description, not the Ogg copies or the layers."""
     output = Path(output)
     logs = output / 'logs'
     start_s, end_s, start_f, end_f = bounds(p, clock)
@@ -251,19 +252,21 @@ def deliver(p, clock, cfg, output, mastering=None):
     loops = read_smpl(wav)
     checks = {'loop_length_exact': measured['frames'] == end_f, 'loop_points_in_wav': loops == [(0, start_f, end_f - 1)],
               'loop_true_peak_ceiling': measured['true_peak_dbtp'] <= -1, 'loop_cues_in_wav': read_cues(wav) == cues}
-    vorbis = has_vorbis(cfg)
+    vorbis = not draft and has_vorbis(cfg)
     entry = {'start_bar': p['loop'].get('start_bar', 0), 'end_bar': p['clock']['bars'], 'sample_rate': audio.RATE,
              'start_sample': start_f, 'end_sample': end_f, 'length_samples': end_f - start_f,
              'start_seconds': round(start_s, 6), 'end_seconds': round(end_s, 6), **tempo(clock),
              'sections': [{'id': label, 'start_sample': frame, 'start_seconds': round(frame / audio.RATE, 6)} for frame, label in cues],
              'files': {'wav': wav.name}, 'gain_db': round(gain, 3), 'integrated_lufs': measured['integrated_lufs'],
              'true_peak_dbtp': measured['true_peak_dbtp'], 'seam': seam(p, clock, folded, master)}
-    if vorbis:
+    if draft:
+        entry['left_out'] = 'A draft render: the Ogg copies and the layers come with the full render'
+    elif vorbis:
         checks['loop_ogg_length_exact'], checks['loop_ogg_tags'] = encode_ogg(cfg, wav, ogg, start_f, end_f, logs, 'loop_ogg')
         entry['files']['ogg'] = ogg.name
     else:
         entry['ogg_skipped'] = 'This FFmpeg has no libvorbis encoder'
-    if p['loop'].get('layers'):
+    if p['loop'].get('layers') and not draft:
         entry['layers'], layer_checks = layers(p, clock, cfg, output, mastering, start_f, end_f, cues, master, folded, vorbis)
         checks.update(layer_checks)
     keep = ('start_bar', 'end_bar', 'sample_rate', 'start_sample', 'end_sample', 'length_samples', 'start_seconds', 'end_seconds',

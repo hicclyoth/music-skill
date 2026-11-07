@@ -533,7 +533,7 @@ def render(project, track, clock, cfg, font, folder, raw):
     crossfade = (track['performance'].get('legato') or {}).get('mode') == 'crossfade'
     if not layers:
         raise ValueError(f'{track["id"]}: the bank has no dynamic layers for program {program} '
-                         '(build it with dynamic_layers; see references/soundbanks.md)')
+                         '(build it with dynamic_layers; see references/soundbank-building.md)')
     if crossfade and len(legato) != len(layers):
         raise ValueError(f'{track["id"]}: crossfade legato needs the bank\'s legato presets for program {program}')
     notes = plan(track, clock)

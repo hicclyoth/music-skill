@@ -148,7 +148,8 @@ def audition(project_file, track_id, sounds, first_bar, last_bar, output, config
             validate(q)
             save_json(folder / 'song.json', q)
             try:
-                render(folder / 'song.json', folder / 'render', config_file, cache)
+                # A draft: the audition plays the master and measures the stem, which a full render would only add to.
+                render(folder / 'song.json', folder / 'render', config_file, cache, draft=True)
                 break
             except ValueError:
                 report = folder / 'render' / 'report.json'

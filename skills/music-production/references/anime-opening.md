@@ -2,6 +2,8 @@
 
 Read this when the request is an anime opening, a J-rock or J-pop-style band cue, an energetic theme for a game or video in that style, or an instrumental version of a song like that. A TV opening typically holds a single verse–prechorus–chorus rotation in about 90 seconds (Li 2026). Each piece of guidance below names its source; the layouts and tables are example plans built from them, not norms. Instrumental here means an instrument carries the vocal line, so the melody has to be singable and the lead part has to phrase like a singer. Rock and metal outside this form, with riffs, palm-muted guitars and breakdowns, are in [rock-and-metal.md](rock-and-metal.md).
 
+Contents: [Brief](#brief) · [Form](#form) · [Harmony](#harmony) · [Melody for an instrumental lead](#melody-for-an-instrumental-lead) · [Rhythm and drums](#rhythm-and-drums) · [Arrangement](#arrangement) · [Performance](#performance) · [The mix](#the-mix) · [Instruments](#instruments) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:
@@ -128,7 +130,7 @@ The table is an example plan. Build by addition from verse to chorus (McAdams, G
 | Synths | Surge XT patches for pads, plucks and leads, chosen for the part's job ([sound-selection.md](sound-selection.md)) |
 | Colour | `vsco` Glockenspiel 0:9, `vcsl` Tubular Bells 0:14, `vcsl` Orchestra Kit 128:48 (clash cymbals, timed cymbal swells, mark tree), `vcsl` Timpani 0:47 for an orchestral intro |
 
-Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)).
+Probe a preset before building a part on it ([soundbank-measurements.md](soundbank-measurements.md) has what each bank measured).
 
 ## Symptoms and causes
 

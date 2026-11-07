@@ -43,7 +43,14 @@ def checks(work,config=None):
         p=example();p['clock']['tempo']=[[0,108],[0,120]];rejects(lambda:validate(p))
         p=example();p['tracks'][2]['instrument']={'harmonics':100000};rejects(lambda:validate(p))
         p=example();p['tracks'][0]['notes'][0]['pitch']=128;rejects(lambda:validate(p))
-        return {'invalid_cases_rejected':4}
+        # A key struck twice at once is found by validate, before any render, with both notes and where they are.
+        p=example();t=p['tracks'][0];n=copy.deepcopy(t['notes'][0]);n['id']+='_again';t['notes'].append(n)
+        t['performance']['notes'][n['id']]=dict(t['performance']['notes'][t['notes'][0]['id']])
+        try:
+            validate(p);raise AssertionError('a key struck twice at once passed validation')
+        except ValueError as e:
+            assert t['notes'][0]['id'] in str(e) and n['id'] in str(e) and ' bar ' in str(e),str(e)
+        return {'invalid_cases_rejected':5}
     check('malformed_projects_rejected',invalid)
     def midi_roundtrip():
         p=example();path=work/'roundtrip.mid';routing=midi.write(p,path);m=midi.read(path);clock=Clock(p)
@@ -336,6 +343,22 @@ def checks(work,config=None):
             assert any(f'plays the built-in {preset}; Surge XT is installed, and its full patch set has patches named for this sound' in x for x in prompts)==asked,prompts
         return {'flat':{k:len(v) for k,v in repetition(flat,Clock(flat)).items() if k!='energy'},'pushes_pct':s['parts']['lead']['downbeat_pushes_pct']}
     check('review_asks_about_loops_returns_arrivals_and_blocks',review_development)
+    def review_summary():
+        # The printed summary keeps every question word for word, shows where each counted finding is, and ends with
+        # the file and the keys of the full figures; --json prints the whole report instead.
+        from musiclib import summary
+        from musiclib.review import review
+        # The example with its first piano note a minor ninth under the lead's (B3 under C5), held as long.
+        p=example();lead=min(p['tracks'][2]['notes'],key=lambda n:n['on'])
+        p['tracks'][0]['notes'][0].update(on=lead['on'],duration=max(2,lead['duration']),pitch=lead['pitch']-13)
+        r=review(p,work/'review_summary');text=summary.review(r,work/'review_summary')
+        assert r['prompts'] and all(q in text for q in r['prompts']),text
+        assert 'vertical_minor_seconds_ninths (' in text and 'B3/C5 (foreground)' in text and text.splitlines()[-1].startswith('Full figures: ') and 'score_review.json' in text.splitlines()[-1],text
+        save_json(work/'summary_project.json',p);import subprocess,sys
+        out=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'review',str(work/'summary_project.json'),'--output',str(work/'review_summary_json'),'--json'],capture_output=True,text=True,encoding='utf-8')
+        assert out.returncode==0 and json.loads(out.stdout)['prompts']==r['prompts'],out.stderr[-600:]
+        return {'questions':len(r['prompts']),'summary_characters':len(text),'full_json_characters':len(out.stdout)}
+    check('review_summary_keeps_every_question',review_summary)
     def surge_catalog():
         # Any patch of the measured catalog is a Surge preset by its id: found by role and measured character (flagged
         # patches left out, dark to bright), falling back by its role, and played only from the full patch set, which
@@ -1760,7 +1783,15 @@ def checks(work,config=None):
             # Fresh syntheses of the same parts hash alike: the raw hash covers the audio, not the writer's timestamp.
             raws=lambda name:[x['raw_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))]
             assert raws('render_first')==raws('render_parallel')
-            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'parallel_jobs':parallel['jobs'],'checks':repeat['checks']}
+            # The repeat plays every part's processed stem from the cache (a frozen track), the same file to the bit.
+            stems=lambda name:[x['stem_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))]
+            assert first['stems_reused']==parallel['stems_reused']==0 and repeat['stems_reused']==len(p['tracks'])
+            assert stems('render_first')==stems('render_repeat')==stems('render_parallel')
+            # A draft is the same audio without what only delivery needs.
+            draft=render(work/'example.json',work/'render_draft',config,cache,draft=True)
+            assert draft['status']=='DRAFT_PASS' and draft['draft'] and draft['master']['sha256']==first['master']['sha256'],draft['status']
+            assert not (work/'render_draft'/'master.flac').exists() and (work/'render_first'/'master.flac').is_file() and draft['left_out'][0]=='master.flac'
+            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'stems_reused':repeat['stems_reused'],'parallel_jobs':parallel['jobs'],'draft_same_master':True,'checks':repeat['checks']}
         check('actual_render_repeat_is_sample_identical',integration)
         def local_edit():
             q=copy.deepcopy(p);q['tracks'][0]['notes'][0]['pitch']+=2;save_json(work/'edited.json',q)
@@ -1776,7 +1807,17 @@ def checks(work,config=None):
             r=render(work/'mix_edit.json',work/'render_mix_edit',config,cache)
             assert r['cache_hits']==len(q['tracks'])
             before=json.loads((work/'render_first'/'report.json').read_text(encoding='utf-8'));assert r['master']['sha256']!=before['master']['sha256']
-            return {'cache_hits':r['cache_hits'],'master_changed':True}
+            # Only the part whose mix changed is processed again; the others play their stems from the cache.
+            processed=[x['track'] for x in json.loads((work/'render_mix_edit'/'stem_receipts.json').read_text(encoding='utf-8')) if not x['stem_reused']]
+            assert processed==[q['tracks'][2]['id']],processed
+            # A kept stem that no longer matches its hash is not used: the part is processed again, to the same file.
+            # (A cache entry keeps its last stem, so the part whose mix was just edited is processed again too.)
+            entry=cache/next(x['cache_key'] for x in json.loads((work/'render_first'/'stem_receipts.json').read_text(encoding='utf-8')) if x['track']==q['tracks'][0]['id'])
+            data=bytearray((entry/'stem.wav').read_bytes());data[-8:]=bytes(8);(entry/'stem.wav').write_bytes(bytes(data))
+            again=render(work/'example.json',work/'render_after_damage',config,cache)
+            redone=[x['track'] for x in json.loads((work/'render_after_damage'/'stem_receipts.json').read_text(encoding='utf-8')) if not x['stem_reused']]
+            assert redone==[q['tracks'][0]['id'],q['tracks'][2]['id']] and again['master']['sha256']==before['master']['sha256'],(redone,again['master']['sha256'])
+            return {'cache_hits':r['cache_hits'],'master_changed':True,'processed_again':processed,'damaged_stem_processed_again':redone}
         check('mix_revision_reuses_all_synthesis',mix_edit)
         def bad_hash():
             cfg=json.loads(Path(config).read_text(encoding='utf-8'))
@@ -1873,6 +1914,11 @@ def checks(work,config=None):
             spaces=sorted(set(r['buses']['spaces'].values()));wanted=[f'{s}_return.wav' for s in spaces]+['delay_return.wav']
             assert sorted(r['buses']['returns'])==sorted(wanted) and all((out/'returns'/n).is_file() for n in wanted),r['buses']['returns']
             assert r['checks']['buses_and_returns_add_up_to_premix'] and r['buses']['sum_minus_premix_peak_dbfs']<-100,r['buses']
+            # A draft of the bus mix: the same premix, buses, returns and master, without the MP3 check and master.flac.
+            d=render(work/'bus.json',work/'render_bus_draft',config,cache,draft=True);od=work/'render_bus_draft'
+            assert d['status']=='DRAFT_PASS' and d['mp3'] is None and 'mp3_loudness_matches_master' not in d['checks'] and not (od/'master.flac').exists()
+            for f in ['premix.wav','master.wav']+[f'returns/{x.name}' for x in sorted((out/'returns').glob('*.wav'))]:
+                assert file_hash(od/f)==file_hash(out/f),f
             # The same with tape wobble and a mono low end on the mix: they act on master_input.wav, and the delivered
             # buses and returns, read back once the render is done, still add up to the delivered premix.wav.
             t=copy.deepcopy(q);t['mix'].update(mono_below_hz=150,wow_flutter={'wow_cents':8,'wow_hz':.5,'flutter_cents':2,'flutter_hz':8})
@@ -2179,6 +2225,37 @@ def checks(work,config=None):
             assert r['fallbacks']==['surge_bell_pad','surge_ghost_pad'] and 'not an A/B' in r['note'],r
             return {x['sound']:x['part_brightness'] for x in v}
         check('audition_plays_one_part_on_several_sounds',audition_part)
+        def revision_rounds_and_clean():
+            # Two rounds through the command: the second, after one note moved, names it, synthesizes only its part
+            # again and compares with the first. clean then keeps the second round and the cache entries it uses, and
+            # removes the first round and its own entry; the next render still reuses everything.
+            import subprocess,sys
+            from musiclib.revision import revision_round
+            from musiclib.clean import clean
+            proj=work/'rounds';proj.mkdir();q=example();save_json(proj/'song.json',q)
+            shown=[]
+            first=revision_round(proj/'song.json',proj/'r1',config,show=shown.append)
+            assert first['status']=='DRAFT_PASS' and first['compare'] is None and (proj/'r1'/'round.json').is_file() and (proj/'cache').is_dir(),first
+            assert len(shown)==5 and shown[0].startswith('Review of ') and shown[1].startswith('Render (draft) of ') and shown[2].startswith('Analysis of r1'),shown
+            q['tracks'][0]['notes'][0]['pitch']+=2;moved=q['tracks'][0]['notes'][0]['id'];save_json(proj/'song_r2.json',q)
+            run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'round',str(proj/'song_r2.json'),'--output',str(proj/'r2'),'--config',str(config),'--previous',str(proj/'r1')],capture_output=True,text=True,encoding='utf-8',errors='replace')
+            assert run.returncode==0 and 'Compare r1 -> r2' in run.stdout and f'note {moved}' in run.stdout and 'Synthesized again: '+q['tracks'][0]['id'] in run.stdout,run.stdout[-3000:]+run.stderr[-1500:]
+            second=json.loads((proj/'r2'/'round.json').read_text(encoding='utf-8'))
+            report=json.loads((proj/'r2'/'render'/'report.json').read_text(encoding='utf-8'))
+            assert second['compare']=='render/compare_r1.json' and report['cache_hits']==report['stems_reused']==len(q['tracks'])-1,(second,report['cache_hits'])
+            # A round's folder stands for its render in analyze and compare.
+            again=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'compare',str(proj/'r1'),str(proj/'r2'),'--output',str(proj/'r1_r2.json')],capture_output=True,text=True,encoding='utf-8',errors='replace')
+            assert again.returncode==0 and again.stdout.startswith('Compare r1 -> r2'),again.stderr[-800:]
+            entries=len([d for d in (proj/'cache').iterdir() if d.is_dir()])
+            done=clean(proj,[proj/'r2'])
+            assert not (proj/'r1').exists() and (proj/'r2'/'render'/'master.wav').is_file() and (proj/'song.json').is_file() and (proj/'r1_r2.json').is_file()
+            kinds=sorted(x['kind'] for x in done['removed']);left=len([d for d in (proj/'cache').iterdir() if d.is_dir()])
+            assert kinds==['cache entry','round'] and left==entries-1==len(q['tracks']),(kinds,entries,left)
+            assert rejects(lambda:clean(proj,[])) and rejects(lambda:clean(proj,[work/'render_first']))
+            after=render(proj/'song_r2.json',proj/'final',config)
+            assert after['cache_hits']==after['stems_reused']==len(q['tracks']) and after['status']=='TECHNICAL_PASS_AUDITION_PENDING'
+            return {'rounds':2,'removed':kinds,'cache_entries_kept':left,'final_reused_every_stem':True}
+        check('revision_rounds_and_clean',revision_rounds_and_clean)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
     save_json(work/'selfcheck_report.json',report);return report
 

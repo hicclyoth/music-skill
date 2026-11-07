@@ -32,6 +32,7 @@ from pathlib import Path
 import numpy as np
 
 from . import audio
+from .measure import fast_length
 from .model import Clock
 
 RATE = audio.RATE
@@ -193,13 +194,14 @@ def _biquad_gain(f, fc, high, q=.707):
 def _band(x, hp=None, lp=None):
     """x (frames, channels) through the gains of FFmpeg's highpass and lowpass filters at hp and lp Hz, without their
     phase."""
-    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    m = fast_length(len(x))  # zero-padded to a fast FFT length (measure.fast_length)
+    f = np.fft.rfftfreq(m, 1 / RATE)
     h = np.ones_like(f)
     if hp:
         h *= _biquad_gain(f, hp, True)
     if lp:
         h *= _biquad_gain(f, lp, False)
-    return np.fft.irfft(np.fft.rfft(x, axis=0) * h[:, None], n=len(x), axis=0)
+    return np.fft.irfft(np.fft.rfft(x, n=m, axis=0) * h[:, None], n=m, axis=0)[:len(x)]
 
 
 def _sent_change(before, after, unit, hp=None, lp=None, block=HOP * 1000, margin=HOP * 10):
