@@ -2,6 +2,10 @@
 
 Thanks for wanting to help. music-skill is maintained by one person and has a fairly fixed direction, so here is how help works best.
 
+## Questions and ideas: Discussions
+
+Questions about using or setting up the skill go to [Q&A](https://github.com/owoevan-dev/music-skill/discussions/categories/q-a), where an answer can be marked, and ideas to [Ideas](https://github.com/owoevan-dev/music-skill/discussions/categories/ideas). Music you made with the skill is welcome in [Show and tell](https://github.com/owoevan-dev/music-skill/discussions/categories/show-and-tell).
+
 ## Issues are welcome
 
 - **A render that went wrong.** Paste the command, the error or the `report.json` checks, and say what you expected. Attach the project file if you can share it.

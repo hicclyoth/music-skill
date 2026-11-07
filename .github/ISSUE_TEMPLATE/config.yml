@@ -1,1 +1,8 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Question
+    url: https://github.com/owoevan-dev/music-skill/discussions/categories/q-a
+    about: How to do something with the skill, or help with setup. Ask in Discussions' Q&A, where an answer can be marked.
+  - name: Idea
+    url: https://github.com/owoevan-dev/music-skill/discussions/categories/ideas
+    about: An idea for the skill. Share it in Discussions' Ideas.

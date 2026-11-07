@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - The examples no longer carry the agents' notes. Each was a report for the maintainer, written when the piece was delivered and before anyone had listened, so on a public page it read as open doubts about a finished piece, and it named render folders the repository does not hold. The README no longer says how the four were picked.
+- Questions and ideas go to the repository's [Discussions](https://github.com/owoevan-dev/music-skill/discussions): the issue form for them is replaced by links to Q&A and Ideas, and the READMEs and CONTRIBUTING.md say so.
 
 ## [0.3.0] - 2026-11-07
 
