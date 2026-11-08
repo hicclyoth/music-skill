@@ -29,6 +29,7 @@ import math
 
 import numpy as np
 
+from .measure import fast_length
 from .synth import RATE, biquad, resample_down, seed
 
 
@@ -61,14 +62,18 @@ def duck(stem, project, track, clock):
 
 
 def _band(x, lo, hi):
-    spec = np.fft.rfft(x, axis=0)
-    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    """x between `lo` and `hi` Hz, a zero-phase filter applied in the frequency domain.  The stem is zero-padded to a
+    fast FFT length (measure.fast_length): a stem's sample count often has a large prime factor, which made this
+    transform the slowest step of a part, and the padding also keeps the filter's decay from wrapping round."""
+    m = fast_length(len(x))
+    spec = np.fft.rfft(x, n=m, axis=0)
+    f = np.fft.rfftfreq(m, 1 / RATE)
     h = np.ones_like(f)
     if lo:
         h *= (f / lo) ** 2 / (1 + (f / lo) ** 2)
     if hi:
         h /= 1 + (f / hi) ** 2
-    return np.fft.irfft(spec * h[:, None], n=len(x), axis=0)
+    return np.fft.irfft(spec * h[:, None], n=m, axis=0)[:len(x)]
 
 
 def delay(stem, track, clock):
@@ -115,12 +120,14 @@ def saturate(stem, track):
     drive = track['mix']['saturate']
     k = 1 + 9 * drive
     n = len(stem)
+    m = fast_length(n)  # zero-padded to a fast FFT length, as in _band
     # One channel at a time: the four-times signal of a long stem is large (the result is the same either way).
     cols = []
     for c in range(stem.shape[1]):
-        up = np.fft.irfft(np.pad(np.fft.rfft(stem[:, c:c + 1], axis=0), ((0, n * 3 // 2), (0, 0))), n=n * 4, axis=0) * 4
+        spec = np.fft.rfft(stem[:, c:c + 1], n=m, axis=0)
+        up = np.fft.irfft(np.pad(spec, ((0, 2 * m + 1 - len(spec)), (0, 0))), n=m * 4, axis=0) * 4
         cols.append(resample_down(np.tanh(k * up) / math.tanh(k), 4)[:n])
-        del up
+        del up, spec
     out = np.concatenate(cols, axis=1)
     # Equal loudness in, equal loudness out: saturation adds density, not level.
     p_in, p_out = float(np.mean(stem ** 2)), float(np.mean(out ** 2))
@@ -133,7 +140,9 @@ def gate(stem, track, clock):
     n = len(stem)
     beats = np.array([clock.beat(x) for x in _times(n)[::48]])
     beats = np.interp(np.arange(n), np.arange(0, n, 48)[:len(beats)], beats)
-    idx = (np.floor(beats / step).astype(int)) % len(pattern)
+    # `phase_beats`: where the pattern stands at beat 0, which an excerpt sets so its passage gates as it did in the
+    # piece (it restarted the pattern there; found by GPT Pro's fourth review of 0.4.0).
+    idx = (np.floor((beats + spec.get('phase_beats', 0)) / step).astype(int)) % len(pattern)
     open_ = np.array([c == 'x' for c in pattern])[idx].astype(float)
     ramp = int(.003 * RATE)
     kernel = np.ones(ramp) / ramp
@@ -223,9 +232,10 @@ def mono_below(x, hz):
     """The side channel through a zero-phase high-pass falling 48 dB per octave under `hz`, so the low end is mono
     and nothing above it moves in time."""
     mid, side = (x[:, 0] + x[:, 1]) / 2, (x[:, 0] - x[:, 1]) / 2
-    f = np.fft.rfftfreq(len(side), 1 / RATE)
+    m = fast_length(len(side))  # zero-padded to a fast FFT length, as in _band
+    f = np.fft.rfftfreq(m, 1 / RATE)
     keep = 1 / (1 + (hz / np.maximum(f, 1e-6)) ** 8)
-    side = np.fft.irfft(np.fft.rfft(side) * keep, n=len(side))
+    side = np.fft.irfft(np.fft.rfft(side, n=m) * keep, n=m)[:len(side)]
     return np.stack([mid + side, mid - side], axis=1)
 
 
@@ -292,3 +302,4 @@ def validate(project, track):
         if not isinstance(g.get('pattern'), str) or not 1 <= len(g['pattern']) <= 64 or set(g['pattern']) - set('x.'):
             raise ValueError(f'{track["id"]}: gate.pattern is up to 64 steps of "x" and "."')
         number(g.get('step_beats', .25), .03125, 4, 'gate step beats');number(g.get('depth_db', 60), 3, 90, 'gate depth dB')
+        number(g.get('phase_beats', 0), 0, 256, 'gate phase beats')  # the pattern's longest cycle: 64 steps of 4 beats

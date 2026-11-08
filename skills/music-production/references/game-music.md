@@ -2,6 +2,8 @@
 
 Read this when the music is for a game: a loop for a place or a state, a battle, a menu, a jingle. Game music is heard while the player does something else, it is heard many times, and it meets other music at seams. Those three facts change the brief, the form and the delivery.
 
+Contents: [Brief](#brief) · [The loop point](#the-loop-point) · [Repetition](#repetition) · [Mood and scene](#mood-and-scene) · [Layers](#layers) · [Stingers, transitions and endings](#stingers-transitions-and-endings) · [Delivery](#delivery) · [Sources](#sources)
+
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:
@@ -80,7 +82,7 @@ The game can fade layers of one piece in and out (vertical layering), for exampl
 - it is delayed by the limiters' look-ahead (about 10 ms, measured on each render), so it lines up with `loop.wav`;
 - it is folded at the loop point like the full loop.
 
-All layers share one gain, so their balance stays as mixed. Played together they add up to the mix before the master's dynamics, a little louder than `loop.wav` (`loop.layers.sum_minus_loop_db` in the report): give the game's music bus a limiter.
+All layers share one gain, so their balance stays as mixed. Played together they add up to the mix before the master's dynamics, a little louder than `loop.wav` (`loop.layers.sum_minus_loop_db` in the report): give the game's music bus a limiter. They get the mix's `mono_below_hz` and `wow_flutter` as the mix does. A bus compresses or saturates the sum of its parts, which no split into layers can add back up to (every bus but `fx`), so `validate` refuses parts of one such bus in different layers: keep them in one layer, give some another bus (`mix.bus`), or set `mix.dynamics` to `"wide"`, which leaves the buses linear.
 
 `stems/` still holds every part processed before the buses, without its reverb, for a developer who builds the mix in the engine.
 

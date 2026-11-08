@@ -21,16 +21,18 @@ cut:     the notes of a split manifest cut again from the same sources and check
 Sample data is never executed.  The output inherits the sample set's license.
 """
 import argparse
+import contextlib
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path, PurePosixPath
 import numpy as np
-from musiclib import sf2, wavfile
+from musiclib import files, sf2, wavfile
 from musiclib.model import file_hash, save_json
 
 PCS = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
@@ -92,6 +94,7 @@ def _zones_for(notes, keys):
     return out
 
 AUDIO = ('.wav', '.flac', '.aif', '.aiff')
+MAX_SOURCE_SECONDS = 600  # the longest FLAC recording decoded; the sources the builds pin are 11 MB at most, a minute or two
 
 def audio_files(folder):
     return [f for f in sorted(Path(folder).iterdir()) if f.is_file() and f.suffix.lower() in AUDIO]
@@ -144,7 +147,8 @@ def write_float_wav(path, x, rate):
     ch = x.shape[1]
     fmt = (3).to_bytes(2, 'little') + ch.to_bytes(2, 'little') + int(rate).to_bytes(4, 'little') + (rate * ch * 4).to_bytes(4, 'little') + (ch * 4).to_bytes(2, 'little') + (32).to_bytes(2, 'little')
     body = b'WAVE' + b'fmt ' + len(fmt).to_bytes(4, 'little') + fmt + b'data' + len(data).to_bytes(4, 'little') + data
-    Path(path).write_bytes(b'RIFF' + len(body).to_bytes(4, 'little') + body)
+    with files.staged(path) as f:  # whole or not at all (musiclib.files)
+        f.write(b'RIFF' + len(body).to_bytes(4, 'little') + body)
 
 def pitch_track(mono, rate, fmin, fmax, hop, threshold=0.15, chunk=400, guide=None):
     """YIN (de Cheveigne and Kawahara 2002) on frames `hop` samples apart: f0 in Hz, nan where no period's
@@ -432,30 +436,50 @@ def save_manifest(path, manifest):
         lines.append(f' "{key}": [\n{rows}\n ]' + (',' if i < 2 else ''))
     lines.append('}')
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    Path(path).write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
+    with files.staged(path) as f:  # whole or not at all; bytes, so the lines end in LF on every system as before
+        f.write(('\n'.join(lines) + '\n').encode('utf-8'))
 
 def cut_sources(manifest, src_root, out_root):
     """Cut the notes a `split` manifest records (source, sample span, fade) from the same source files, each checked
     against its recorded SHA-256: an installer reproduces the intake's notes exactly without re-running the note finder,
-    whose floating-point decisions could differ by a frame on another platform."""
+    whose floating-point decisions could differ by a frame on another platform.  Each note is written under a name of
+    its own and takes its file's name only once it is checked; if any note fails, the notes this run cut are removed
+    again (they are its own: every one was a new file), so no note that does not match, nor half a set, is left."""
     src_root, out_root = Path(src_root), Path(out_root)
     by_source, targets = {}, {}
     for n in manifest['notes']:
         contained(src_root, n['source'], 'source')
         path = targets[n['file']] = contained(out_root, n['file'], 'note file')
-        if path.exists():
+        if files.occupied(path):
             raise ValueError(f'{n["file"]} exists; cut writes into a new folder')
         by_source.setdefault(n['source'], []).append(n)
     if len(targets) != len(manifest['notes']):
         raise ValueError('Two notes of the manifest write one file')
-    for source, notes in by_source.items():
-        x, info = read_audio(src_root / source)
-        x = np.asarray(x, dtype=np.float32)
-        for n in notes:
-            path = targets[n['file']]
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if _cut_note(x, n['start'], n['end'], n['fade'], info['rate'], path) != n['sha256']:
-                raise ValueError(f'{n["file"]}: the cut does not reproduce the recorded note')
+    made = []
+    try:
+        for source, notes in by_source.items():
+            x, info = read_audio(src_root / source)
+            x = np.asarray(x, dtype=np.float32)
+            for n in notes:
+                path = targets[n['file']]
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temp = files.stage_name(path, '.wav')
+                try:
+                    if _cut_note(x, n['start'], n['end'], n['fade'], info['rate'], temp) != n['sha256']:
+                        raise ValueError(f'{n["file"]}: the cut does not reproduce the recorded note (is {source} the '
+                                         'recording the manifest was made from?); no note was kept')
+                    files.fresh(path, 'cut writes into a new folder')
+                    files.replace(temp, path)
+                    made.append(path)
+                finally:
+                    with contextlib.suppress(OSError):
+                        os.unlink(temp)
+    except BaseException:
+        for path in made:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+        files.prune(out_root)
+        raise
     return len(manifest['notes'])
 
 def highpass(x, rate, hz, order=6):
@@ -601,12 +625,23 @@ def read_audio(path, ffmpeg=None):
         return wavfile.read(path)
     if not ffmpeg:
         raise ValueError(f'{path.name}: FLAC sources need --ffmpeg')
+    # A FLAC stream starts with the marker "fLaC" (RFC 9639); FFmpeg is held to its FLAC demuxer and to local files, so a file
+    # named .flac that is a playlist or another container cannot make it read anything else.
+    with open(path, 'rb') as f:
+        if f.read(4) != b'fLaC':
+            raise ValueError(f'{path.name}: not a FLAC file (no fLaC signature)')
     fd, tmp = tempfile.mkstemp(suffix='.wav')
     os.close(fd)
     try:
-        subprocess.run([str(ffmpeg), '-hide_banner', '-nostdin', '-v', 'error', '-y', '-i', str(path), '-c:a', 'pcm_f32le', tmp],
-                       check=True, stdin=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        return wavfile.read(tmp)
+        # Decoded to at most a second past MAX_SOURCE_SECONDS, so the temporary WAV stays bounded whatever the file
+        # claims; a longer recording is refused rather than cut.
+        subprocess.run([str(ffmpeg), '-hide_banner', '-nostdin', '-v', 'error', '-y', '-protocol_whitelist', 'file',
+                        '-f', 'flac', '-i', str(path), '-t', str(MAX_SOURCE_SECONDS + 1), '-c:a', 'pcm_f32le', tmp],
+                       check=True, stdin=subprocess.DEVNULL, timeout=600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        x, info = wavfile.read(tmp)
+        if len(x) > MAX_SOURCE_SECONDS * info['rate']:
+            raise ValueError(f'{path.name}: longer than {MAX_SOURCE_SECONDS // 60} minutes, more than a sample recording; cut it first')
+        return x, info
     finally:
         os.unlink(tmp)
 
@@ -1046,7 +1081,7 @@ def _derived_presets(pspec, contexts, stored, instruments, presets, receipt):
 
 def _split_pitches(root):
     """Each note file's measured offset in cents from its name, from the manifest `split` wrote beside the notes."""
-    manifest = json.loads((Path(root) / 'split.json').read_text(encoding='utf-8'))
+    manifest = files.read_object(Path(root) / 'split.json', 'a split manifest', needs=(('notes', list, 'the notes split cut'),))
     return {n['file'].replace('\\', '/'): n['cents'] for n in manifest['notes'] if n.get('cents') is not None}
 
 def _load_layer(layer, root, ffmpeg, loaded, receipt):
@@ -1084,11 +1119,13 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             measured = named + split_cents[rel] / 100
         # Every microphone recorded the same take in its own folder, under the same file name or one that differs by the
         # microphone's own tag (`name`: [text in the first microphone's file name, text in this one's]).
-        files = [f] + [root / mic['dir'] / (f.name.replace(*mic['name']) if mic.get('name') else f.name) for mic in (mics or [])[1:]]
-        for other in files[1:]:
+        # (Named takes, not files: a local `files` hid the module, and the denoise of notes cut by split, which reads
+        # their manifest with files.read_json, stopped every such build; found by GPT Pro's fourth review of 0.4.0.)
+        takes = [f] + [root / mic['dir'] / (f.name.replace(*mic['name']) if mic.get('name') else f.name) for mic in (mics or [])[1:]]
+        for other in takes[1:]:
             if not other.is_file():
                 raise ValueError(f'{other.relative_to(root)}: no take for this microphone')
-        entries.append({'file': f, 'files': files, 'named': named, 'dyn': dyn, 'rr': g.get('rr') or '1', 'measured': measured})
+        entries.append({'file': f, 'files': takes, 'named': named, 'dyn': dyn, 'rr': g.get('rr') or '1', 'measured': measured})
     if not entries:
         raise ValueError(f'No samples matched {folder.relative_to(root)}')
     # Load, trim, measure pitch and level.
@@ -1104,7 +1141,8 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
         # it was split (the manifest stores it, rounded, so every build gets the same numbers).  A recording played
         # without pauses borrows the median, band by band, of the recordings of the same layer and dynamic that have
         # one (one session, one setup), or of all the layer's.
-        manifest = json.loads((root / 'split.json').read_text(encoding='utf-8'))
+        manifest = files.read_object(root / 'split.json', 'a split manifest',
+                                     needs=(('notes', list, 'the notes split cut'), ('sources', list, 'the recordings it cut them from')))
         bands = {s['file']: s.get('noise_bands') for s in manifest['sources']}
         source_of = {n['file']: n['source'] for n in manifest['notes']}
         measured = {}
@@ -1137,17 +1175,24 @@ def _load_layer(layer, root, ffmpeg, loaded, receipt):
             if rows and sum(len(r) for r in rows) >= 20:
                 noise[dyn] = np.concatenate(rows).mean(axis=0)
     for e in entries:
-        key = (str(e['file']) if not mics and not looped and not dn and dc is None and not hpf else
-               json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), layer.get('ring_db'), looped,
-                           layer.get('loop_repair'), dn] + ([layer['loop'], layer.get('loop_window')] if layer.get('loop') == 'found' else [])
-                          + ([dc] if dc is not None else []) + ([hpf, e['named']] if hpf else [])))
+        # A take is loaded once per build and shared by the layers that use it alike: its key holds everything that
+        # changes what is kept of it (the files and microphones, the onset threshold, the ring and length cut, the
+        # level statistic, the loop, the noise profile it is cleaned with, the declick and the high-pass, the named
+        # note where the high-pass or the loop's pitch follows it, and the measured pitch where the partials the
+        # denoiser keeps follow it), so a layer that trims or measures it otherwise loads its own.
+        rel = e['file'].relative_to(root).as_posix()
+        cleaned_with = (per_take[rel] if dn and rel in per_take else
+                        hashlib.sha256(np.ascontiguousarray(noise[e['dyn']]).tobytes()).hexdigest() if dn and e['dyn'] in noise else None)
+        key = json.dumps([[str(f) for f in e['files']], mics, layer.get('onset_db'), layer.get('max_seconds'), layer.get('ring_db'),
+                          layer.get('level'), layer.get('loop'), layer.get('loop_window'), layer.get('loop_repair'), dn, cleaned_with, dc, hpf,
+                          e['named'] if looped or hpf else None,
+                          e['measured'] if dn and dn.get('keep_partials_below') else None])
         if key not in loaded:
             x, info = mic_mix(e['files'], mics, ffmpeg) if mics else read_audio(e['file'], ffmpeg)
             if hpf:
                 f0 = 440.0 * 2 ** ((e['named'] - 69) / 12)
                 x = highpass(x, info['rate'], min(hpf.get('max_hz', 120.0), hpf.get('ratio', 0.73) * f0))
             noise_db = noise_from = None
-            rel = e['file'].relative_to(root).as_posix()
             keep = (partial_bins(e['measured'], dn['keep_partials_below'], info['rate'])
                     if dn and dn.get('keep_partials_below') and e['measured'] is not None else None)
             if dn and rel in per_take:
@@ -1284,7 +1329,7 @@ def _across_levels(local, layer_med):
         common.setdefault(n, []).append(v / layer_med[dyn])
     return {(n, dyn): float(np.median(common[n])) * layer_med[dyn] for (n, dyn) in local}
 
-def build(spec, root, output, ffmpeg=None):
+def build(spec, root, output, ffmpeg=None, new=False):
     root = Path(root)
     samples, instruments, presets, receipt = [], [], [], {'spec': spec.get('name'), 'files': [], 'layers': []}
     loaded, stored = {}, {}
@@ -1463,7 +1508,7 @@ def build(spec, root, output, ffmpeg=None):
                 gens[48] = min(1440, int(round(gens[48] / sf2.EMU_ATTENUATION)))
             seen.add(id(gens))
     sf2.write(output, spec['name'], samples, instruments, presets, comment=spec.get('comment', ''),
-              copyright_notice=spec.get('copyright', ''))
+              copyright_notice=spec.get('copyright', ''), new=new)
     receipt['output'] = {'path': str(output), 'sha256': file_hash(output), 'bytes': output.stat().st_size,
                          'presets': sf2.inventory(sf2.read(output))}
     return receipt
@@ -1490,30 +1535,72 @@ def main():
     sp.add_argument('--output', type=Path, required=True)
     args = ap.parse_args()
     if args.command == 'inspect':
+        # An output never replaces anything, the bank it reads least of all (musiclib.files.fresh).
+        if args.output:
+            files.fresh(args.output)
         result = inspect(args.bank)
         if args.output:
-            save_json(args.output, result)
-        print(json.dumps(result['presets'], ensure_ascii=False, indent=1))
+            save_json(args.output, result, new=True)
+        print(json.dumps(result['presets'], ensure_ascii=True, indent=1))
         return
     if args.command == 'cut':
-        if args.output.exists():
-            raise ValueError('Choose a new output folder')
-        manifest = json.loads(args.manifest.read_text(encoding='utf-8'))
-        print(cut_sources(manifest, args.root, args.output), 'notes cut and verified')
-        save_manifest(args.output / 'split.json', manifest)
+        # The notes and their manifest are made in a private folder that becomes the output only when all of them
+        # are: a failure at any point, the manifest's write included, leaves no output folder.
+        files.fresh(args.output, 'choose a new output folder')
+        manifest = files.read_object(args.manifest, 'a cut manifest', needs=(('notes', list, 'the notes split cut, each with its source and span'),))
+        staging = files.staging_folder(args.output)
+        try:
+            count = cut_sources(manifest, args.root, staging)
+            save_manifest(staging / 'split.json', manifest)
+            files.replace(staging, args.output)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        print(count, 'notes cut and verified')
         return
     if args.command == 'split':
-        if args.output.exists():
-            raise ValueError('Choose a new output folder')
-        manifest = split_sources(json.loads(args.spec.read_text(encoding='utf-8'))['split'], args.root, args.output)
-        save_manifest(args.output / 'split.json', manifest)
-        print(json.dumps(manifest['groups'], ensure_ascii=False, indent=1))
+        # As cut: made in a private folder that becomes the output only when every note and the manifest are written.
+        files.fresh(args.output, 'choose a new output folder')
+        spec = files.read_object(args.spec, 'a split spec', needs=(('split', dict, 'the recordings to split, as {"groups": [...]}'),))
+        if not isinstance(spec['split'].get('groups'), list):
+            raise ValueError(f'{args.spec}: a split spec needs "split": {{"groups": [...]}}, the groups of recordings to split')
+        staging = files.staging_folder(args.output)
+        try:
+            manifest = split_sources(spec['split'], args.root, staging)
+            save_manifest(staging / 'split.json', manifest)
+            files.replace(staging, args.output)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        print(json.dumps(manifest['groups'], ensure_ascii=True, indent=1))
         return
-    if args.output.exists() or args.receipt.exists():
+    if files.occupied(args.output) or files.occupied(args.receipt):
         raise ValueError('Choose new output and receipt paths')
-    receipt = build(json.loads(args.spec.read_text(encoding='utf-8')), args.root, args.output, args.ffmpeg)
-    save_json(args.receipt, receipt)
-    print(json.dumps(receipt['output'], ensure_ascii=False, indent=1))
+    if os.path.normcase(str(args.output.resolve())) == os.path.normcase(str(args.receipt.resolve())):
+        raise ValueError('--output and --receipt name one file: the receipt would replace the bank; give each its own')
+    # The bank and its receipt are published only where nothing has taken their names since they were found free:
+    # a build takes minutes (GPT Pro's fourth review of 0.4.0).
+    spec = files.read_object(args.spec, 'a bank spec', needs=(('name', str, "the bank's name"), ('presets', list, 'the presets the bank holds')))
+    # Each preset's own fields, as build reads them (a spec without them stopped it with a traceback; found by GPT Pro's
+    # sixth review of 0.4.0).  A layer's own fields are read as each layer is loaded, unchecked there (a known limit).
+    for k, p in enumerate(spec['presets']):
+        if not (isinstance(p, dict) and isinstance(p.get('name'), str) and isinstance(p.get('layers'), list)
+                and isinstance(p.get('program'), int) and not isinstance(p.get('program'), bool) and 0 <= p['program'] <= 127):
+            raise ValueError(f'{args.spec}: presets[{k}] is an object with a text "name", a "program" 0-127 and a list of "layers"')
+    receipt = build(spec, args.root, args.output, args.ffmpeg, new=True)
+    # Two names for one file that the paths do not show (a case-insensitive volume, a link not yet resolvable): the
+    # receipt's path now holds the bank just built, which stays.
+    if files.occupied(args.receipt):
+        raise ValueError(f'--receipt {args.receipt} now names the bank just built (another name for --output); the bank is kept, '
+                         'its receipt is not written: give the receipt a path of its own')
+    save_json(args.receipt, receipt, new=True)
+    print(json.dumps(receipt['output'], ensure_ascii=True, indent=1))
 
 if __name__ == '__main__':
-    main()
+    import sys
+    files.escape_unprintable()
+    try:
+        main()
+    except (ValueError, OSError) as e:
+        print('ERROR:', e, file=sys.stderr)
+        sys.exit(2)

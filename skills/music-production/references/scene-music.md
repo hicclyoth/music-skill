@@ -2,6 +2,8 @@
 
 Read this when the music sits under scenes the player reads or watches: a visual novel, the dialogue and events of an RPG, a cutscene. Three things set this music apart. It shares the player's attention with text and voices. It comes back every time its kind of scene comes back. And the script, not the music, decides when a scene ends. Loops, layers, seams and file delivery are in [game-music.md](game-music.md); this guide covers what the scene adds.
 
+Contents: [Brief](#brief) · [Under text and voices](#under-text-and-voices) · [A set of cues and their themes](#a-set-of-cues-and-their-themes) · [Scene starting points](#scene-starting-points) · [Instruments and a scene's character](#instruments-and-a-scenes-character) · [Form for a scene cue](#form-for-a-scene-cue) · [Delivery in a visual novel engine](#delivery-in-a-visual-novel-engine) · [Instruments for scene music](#instruments-for-scene-music) · [Sources](#sources)
+
 ## Brief
 
 Settle these from the request, deciding what it leaves open and saying so:
@@ -84,7 +86,7 @@ The instrument alone changes the emotion heard. Hailstone et al. (2009) recorded
 
 ## Instruments for scene music
 
-- **Piano.** `piano_osiris` has a pedal-up and a pedal-down preset ([soundbanks.md](soundbanks.md)). For legato, ringing writing, use the pedal-down preset and lift the pedal at each harmony change with CC64 in `performance.cc` (`[beat, 64, 0]`, then `[beat + 0.05, 64, 127]`). Use the pedal-up preset for dry, detached figures.
+- **Piano.** `piano_osiris` has a pedal-up and a pedal-down preset ([soundbank-presets.md](soundbank-presets.md)). For legato, ringing writing, use the pedal-down preset and lift the pedal at each harmony change with CC64 in `performance.cc` (`[beat, 64, 0]`, then `[beat + 0.05, 64, 127]`). Use the pedal-up preset for dry, detached figures.
 - **Solo cello.** `cello_bigcat` sustains loop for as long as a note is held. A gentle vibrato starts after 0.35 s, and CC1 deepens it.
 - **Organ.** `organ_vcsl` does not respond to velocity, like a pipe organ. Shape its dynamics with CC11, as with a swell pedal, or by changing registration; [organ.md](organ.md) covers writing for it and the church it sounds in.
 - **Orchestra.** Strings, woodwinds, brass, harp and timpani come from `vsco`, `vsco_extra` and `vcsl`; [orchestration.md](orchestration.md) covers balance and the wide master.

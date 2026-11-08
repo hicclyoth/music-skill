@@ -77,7 +77,7 @@ If Claude or another agent is already cutting your video or building your game, 
 5. **Mix and master.** Parts go through drum, bass, rhythm, ensemble and lead buses and four generated reverbs, then a master chain to the project's loudness target (−16 LUFS by default, −14 for streaming) with the true peak at or below −1 dBTP. Orchestral and organ music can skip the compressors and keep their full dynamics; electronic music can add sidechain ducking, tempo-synced delays, filter sweeps and a loud club master.
 6. **Measure.** `analyze` reports each section's level, spectrum and stereo image, how far the melody sits above the accompaniment, and how the master's tonal balance compares with published measurements of commercial recordings or with a reference in its genre. The numbers point at problems; they do not replace listening.
 
-Changing one note synthesizes only that part again. Every render mixes all the parts again, so the shared reverbs, their tails and the master follow the change; changing only the mix reuses every part as it was synthesized. `compare` shows what changed between two renders: which parts were synthesized again, and which stems, buses and reverb returns changed, where and by how much.
+Changing one note synthesizes only that part again, and a part whose notes and mix did not change plays its processed stem from the cache, as a DAW plays a frozen track. Every render mixes all the parts again, so the shared reverbs, their tails and the master follow the change. Each revision is one `round`: it checks the score, renders a draft (the same audio, without the files only delivery needs), measures it and compares it with the previous round, with a short summary of each. `compare` shows what changed between two renders: which parts were synthesized again, and which stems, buses and reverb returns changed, where and by how much.
 
 For a game, a project can loop. The render folds the reverb tail back into the loop start and writes the loop points into a WAV and an Ogg file, in the forms Godot and RPG Maker look for, with a cue point at every section. It can also split the loop into layers that add up to the mix, for music that builds as play heats up.
 
@@ -169,7 +169,7 @@ Every recorded bank is CC0, free for any use without restrictions (the Iowa reco
 
 ## How well it works
 
-`selfcheck.py` runs 93 checks (75 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision synthesizes one part again, and `compare` finds the change from that note on, in every file it reached and nowhere else. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
+`selfcheck.py` runs 136 checks (109 without a renderer configuration), from MIDI round trips and archive safety to real renders. A one-note revision synthesizes one part again, and `compare` finds the change from that note on, in every file it reached and nowhere else. The older single-room mix reproduces an earlier release bit for bit. The loudness meter reads −3.01 LUFS for the BS.1770 reference tone. CI runs every check, renders included, on Ubuntu with FluidSynth 2.3 and FFmpeg 6.1 and on macOS with FluidSynth 2.6 and FFmpeg 9.0.
 
 Whether the music is good is another matter, and only listening can tell. The pieces above are the best evidence this repository has.
 
@@ -200,8 +200,10 @@ Whether the music is good is another matter, and only listening can tell. The pi
 | [SKILL.md](skills/music-production/SKILL.md) | The workflow the agent follows, and every command |
 | [schema.md](skills/music-production/references/schema.md) | The project file: score, performance and mix |
 | [arrangement.md](skills/music-production/references/arrangement.md) | Form, melody, voicing and the jobs of the parts |
-| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | Performance, the bus chain, and reading `analyze` |
-| [soundbanks.md](skills/music-production/references/soundbanks.md) | The sound banks, their quirks, and adding your own |
+| [performance-and-mix.md](skills/music-production/references/performance-and-mix.md) | Performance and the bus chain |
+| [measuring.md](skills/music-production/references/measuring.md) | Reading `analyze` and `compare` |
+| [soundbanks.md](skills/music-production/references/soundbanks.md) | The sound banks and adding your own; their presets, measured quirks and building a bank in the files it links |
+| [outputs.md](skills/music-production/references/outputs.md) | What each command writes, key by key |
 | [Genre guides](skills/music-production/references) | Electronic music and techno, hip-hop beats and trap, jazz, blues, bossa nova and funk, rock and metal, pop and ballads, film scores and horror, anime openings, game and scene music, orchestra, baroque, organ, piano and chamber music |
 | [setup.md](skills/music-production/references/setup.md) | Installing the renderer on Windows, Linux and macOS |
 | [sources-and-rights.md](skills/music-production/references/sources-and-rights.md) | Using outside scores, MIDI and samples |

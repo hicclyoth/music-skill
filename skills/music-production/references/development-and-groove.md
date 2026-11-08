@@ -4,6 +4,8 @@ Read this when planning the form (step 2), when writing the accompaniment (step 
 returns, arrivals, block chords or pushes (step 5). It builds on [arrangement.md](arrangement.md) (form, roles, vertical
 hygiene) and [climax-and-melody.md](climax-and-melody.md) (the high point, melodic shape).
 
+Contents: [Diagnose "dull" and "stiff"](#diagnose-dull-and-stiff) · [Plan the energy (step 2)](#plan-the-energy-step-2) · [Groove (steps 3 and 4)](#groove-steps-3-and-4) · [Voicings that move: musiclib.voicing](#voicings-that-move-musiclibvoicing) · [Sources](#sources)
+
 ## Diagnose "dull" and "stiff"
 
 Seven pieces that agents made with this skill (ballad, boom bap, film cue, horror cue, rock, techno, trap) were heard as
@@ -40,7 +42,7 @@ builds and breaks by its own routine ([electronic.md](electronic.md); Solberg 20
 | Rhythm | hats from eighths to sixteenths; half-time or double-time feel; a push into the chorus |
 | Harmony | the returning theme reharmonized; a pedal under changing chords; a borrowed chord at the turn ([harmony.md](harmony.md)) |
 | Melody | the motif varied, not repeated: its rhythm changed, its intervals widened or narrowed, sequenced, fragmented (Schoenberg 1967); fragments shortening toward the cadence (Caplin 1998) |
-| Transitions | a fill at the end of a phrase; a riser before a phrase downbeat and a falling sweep after it (Smith 2021; the risers in [electronic.md](electronic.md)); a stop before the chorus |
+| Transitions | a fill at the end of a phrase; a riser before a phrase downbeat and a falling sweep after it (Smith 2021; the risers in [electronic-sounds.md](electronic-sounds.md)); a stop before the chorus |
 
 Strong contrasts of register, texture and instrumentation mark section boundaries, and instruments added or taken away
 gradually or suddenly shape a longer span (McAdams, Goodchild and Soden 2022).
@@ -74,8 +76,11 @@ question is whether anything else moves.
   to that beat (Tan, Lustig and Temperley 2019). Such a note is the next chord's tone heard early, over the old chord
   (Open Music Theory, Embellishing Tones: the anticipation). The accompaniment can stay on the beat, or push with the
   melody where the arrangement wants a joint push or the early note rubs against the old chord (`review` lists minor
-  seconds and ninths; [arrangement.md](arrangement.md)). `review` asks when no melody or accompaniment attack
-  pushes a downbeat or half-bar at all; in a chorale or a baroque piece that is right.
+  seconds and ninths; [arrangement.md](arrangement.md)). `review` counts as a push an attack at most an eighth
+  before a downbeat or half-bar that its part holds over or rests through, with no attack of its own on that beat: the
+  syncopation Longuet-Higgins and Lee (1984) define, a note from a weaker position sounding over the stronger one
+  after it; a new note on the downbeat makes the earlier one a pickup instead. It asks when no melody or accompaniment
+  attack pushes a downbeat or half-bar at all; in a chorale or a baroque piece that is right.
 - **Accompaniment that moves.** Give each support part a job and a rhythm of its own. Owsinski's rhythm element plays
   against the foundation to add motion. Israels has the comping piano play commentary on the melody rather than its
   rhythms, with chords in answer to the bass's rhythm or ahead of it. Common figures:
@@ -159,6 +164,8 @@ chords as root-position blocks.
   Perception* 19(1), 1-64. https://doi.org/10.1525/mp.2001.19.1.1
 - Israels, C. [The Piano and the Art of Jazz Accompaniment](https://chuckisraelsjazz.com/blogs/news/the-piano-and-the-art-of-jazz-accompaniment).
   Chuck Israels Jazz Orchestra. The comping register; commentary on the melody, chords placed against the bass.
+- Longuet-Higgins, H. C. and Lee, C. S. (1984). The rhythmic interpretation of monophonic music. *Music Perception*
+  1(4), 424-441. https://doi.org/10.2307/40285271
 - Matthews, T. E., Witek, M. A. G., Heggli, O. A., Penhune, V. B. and Vuust, P. (2019). [The sensation of groove is
   affected by the interaction of rhythmic and harmonic complexity](https://doi.org/10.1371/journal.pone.0204539).
   *PLoS ONE* 14(1), e0204539.

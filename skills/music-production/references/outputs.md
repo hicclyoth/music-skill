@@ -1,0 +1,139 @@
+# What the commands write
+
+Read this when a command's summary points to a figure you need in full. Every command prints a short summary that
+ends with the file and the keys below; `--json` prints the whole file instead (`round` prints its round.json, `clean`
+its report). Levels are dB, loudness LUFS (ITU-R BS.1770), true peak dBTP, positions bar:beat counted from 1 unless a
+key says seconds or samples.
+
+Contents: [round.json](#roundjson) · [report.json](#reportjson-render) · [stem_receipts.json](#stem_receiptsjson-render) ·
+[score_review.json](#score_reviewjson-review) · [analysis.json](#analysisjson-analyze) · [compare](#compare_namejson-compare) ·
+[audition.json](#auditionjson-audition) · [clean](#clean-its-report) · [files.json](#filesjson-every-folder) ·
+[what stays local](#what-stays-local)
+
+## round.json
+
+`studio.py round` writes `review/` and `render/` (a draft, with `analysis.json` and `compare_<previous>.json`) and
+`round.json`, from the moment the round's folder is made: `kind` and `title` (what made the folder and of which piece),
+`status` (the render's; `FAIL` if it did not finish), `failed` (null, or the `step` that stopped the round and its
+`error`), `questions` (how many review questions), `project` and `previous` (relative to the round's folder), the
+relative paths `review`, `render`, `analysis`, `compare`, `seconds` per step and `runtime_seconds`. With `--clip`, the comparison's `clip` names the old-then-new MP3
+(or why it was not made). A round's folder can stand for its render wherever a command takes a render folder;
+`compare` of two rounds names its report after the first, and `analyze` of a round needs `--output` (the round wrote
+its `analysis.json`).
+
+## report.json (render)
+
+| Key | What it holds |
+|---|---|
+| `status` | `TECHNICAL_PASS_AUDITION_PENDING` (a full render), `DRAFT_PASS` (a draft: deliver a full render), `FAIL` |
+| `failed` | only in a render that stopped before its report: `after_stage` (the last stage it finished, as in `stage_seconds`), `part` (the first part that stopped, or null) and `error`; such a report holds `status`, `title`, `draft`, `stage_seconds` and `runtime_seconds` besides. `--previous`, `compare` and `analyze --reference` refuse it |
+| `draft`, `left_out` | whether it is a draft, and what a draft leaves out (master.flac, the MP3 check, a loop's Ogg copies and layers) |
+| `checks` | every delivery check, true or false: finite audio, no clipping, the true-peak ceiling, the exact length, 48 kHz 24-bit stereo, a quiet tail, the MIDI note count, the MP3's loudness, the buses and returns adding up to the premix, the loop's points and cues |
+| `master`, `premaster` | the delivered master and the mix before mastering: `integrated_lufs`, `true_peak_dbtp`, `lra_lu` (loudness range, EBU Tech 3342), `sample_peak_dbfs`, `clipped_samples`, `frames`, `seconds`, `sha256` |
+| `mastering` | the bus chain's record: `target_lufs`, `mixed` (after the master chain), `passes` (each delivery pass: gain, limiter ceiling, loudness, true peak), `limiting_db` (level the clipper and limiter took per section), `limiter_dbfs`; with `dynamics: "wide"` also `peak_held_db`, `lra_lu` and `range` |
+| `buses` | `assignment` (part to bus), `spaces` (part to reverb), `returns` (the files in `returns/`), `level_change_db` (each bus against the sum of its stems, also in bus_level_change_db.json), `sum_minus_premix_peak_dbfs` |
+| `sections` | per section: `start_seconds`, `end_seconds`, `rms_dbfs`, `side_mid_db`, `active_tracks` |
+| `mp3` | `mp3_lufs`, `mp3_true_peak_dbtp`, `matches` (within 0.2 LU of the master); none in a draft |
+| `loop` | a game loop: `start_sample`, `end_sample`, `length_samples`, `bpm`, `bar_beats` and `beat_count` (null where the tempo changes), `sections` (cue points), `files`, `gain_db`, `seam` (meter, timbre, pitch, abruptness and volume across the loop point), `layers` |
+| `cache_hits`, `stems_reused`, `stem_count` | parts whose raw synthesis, and whose processed stem, came from the cache |
+| `stage_seconds`, `process_seconds`, `runtime_seconds` | seconds per stage (they add up to the runtime) and in FFmpeg by kind |
+| `validation`, `dependencies`, `project_sha256`, `renderer_sha256` | the project's validation, the tools and banks with their hashes |
+
+## stem_receipts.json (render)
+
+One entry per part: `track`, `cache_key` (its cache entry), `cache_hit` (raw synthesis from the cache), `stem_reused`
+(processed stem from the cache), `gain_db` and `reference_level_dbfs` (the gain that set its level), `filter_chain`
+(the FFmpeg processing), `raw_sha256`, `stem_sha256`, `same_pitch_retrigger_trims`, and where they apply `soundfont`,
+`expressive` (crossfaded dynamics), `surge` (`rendered_with`, the fallback and why), `automation_points` (the
+automation, applied after the chain), `nearly_silent` (an audition's context part kept at its own level), `stage`
+(depth and early reflections), `production` (what each production tool did) and `seconds`: `waiting` (for another
+render's hold on the same cache entry, or for memory while other parts held it), `synthesis` and `processing`.
+
+## score_review.json (review)
+
+| Key | What it holds |
+|---|---|
+| `prompts` | every review question, as the summary prints them |
+| `tracks` | per part: notes, pitch range, duration values, velocity range, key gaps, step share, phrase labels |
+| `sections` | per section: seconds, active parts, onsets by role |
+| `vertical_minor_seconds_ninths` | `count`, `foreground_count`, `by_parts`, `examples` (each `at`, `parts`, `pitches`, `overlap_beats`) |
+| `outside_chord` | `count` and `examples` of the notes not resolved by step (each `at`, `track`, `note`, `chord`, `approach`, `departure`), `not_resolved_by_step` (by melody, bass and accompaniment), `tracks` (each part's notes outside the chord counted by kind: passing, neighbour, suspension and the rest), `unparsed_symbols` |
+| `parallel_fifths_octaves` | `count`, `by_pair`, `examples` (each `at`, `parts`, `interval`, `pitches`), `octaves_in_doublings` |
+| `low_intervals` | `count`, `by_parts`, `furthest_below`, `examples` (each `at`, `parts`, `interval`, `notes`, `limit`) |
+| `repetition` | `static_spans`, `part_loops`, `literal_returns`, `arrivals_thinner_than_before`, `sections_alike`, `energy` per section |
+| `stiffness` | `block_chord_parts`, `parts`, `no_pushes_anywhere` |
+| `melody_sections` | per section: phrases, the longest stretch without a breath, leaps, bars restated, the peak and where it falls |
+| `transposed_samples`, `cannot_render` | with `--config`: notes played from samples far from their pitch, notes outside a preset, parts the banks cannot play |
+| `loop_seam` | a game loop's seam from the score |
+
+`notes.csv` lists every note with its bar, beat, pitch, velocity, timing and performed seconds; `arrangement.md` is
+the sections, the authored decisions and the questions as a page.
+
+## analysis.json (analyze)
+
+| Key | What it holds |
+|---|---|
+| `sections` | per section of the master: `level_lufs_ungated`, `peak_dbfs`, `crest_db`, `band_share_pct` (six bands), `lr_correlation`, `mono_sum_change_db` |
+| `lead_presence` | per section and span: `lead_minus_accompaniment_level_db`, its band-wise `_db_median` and `_db_p10`, `masked_share_pct`; `lead_tracks`, `lead_source` (buses or stems) |
+| `melody_groups` | per section and span: `melody_group` (the melody and the parts doubling it), `melody_group_minus_rest_db`, `balance` (parts close to it: `level_minus_melody_db`, `suggested_cut_db`) |
+| `stem_levels_lufs_ungated` | each part's level per section and span |
+| `tonal_balance` | `slope_db_per_octave_100hz_4khz`, `low_end_vs_line_db`, `top_end_vs_line_db`, `third_octaves_db`, the published range it is read against |
+| `reference_comparison` | with `--reference`: the slope, low and top end, each octave, width, loudness, peak to loudness and loudness range minus the reference's |
+| `master`, `side_minus_mid_db`, `warnings` | `integrated_lufs`, `true_peak_dbtp`, `lra_lu`, `plr_db`; width per band; what the analysis flags |
+
+How to read these is in [measuring.md](measuring.md). At its peak `analyze` holds about ten float64 copies of the
+song (9.7 measured on songs of one to four minutes with 14 parts): about 0.46 GB a minute of music. `analyze` and
+`compare` read a render folder's own files only and refuse one holding links; no WAV longer than 31 minutes, the
+longest a render can be, is read, a reference included.
+
+## `compare_<name>.json` (compare)
+
+`summary` holds what the printed summary shows: `project` (the edits), `synthesized_again`, `same_inputs_new_take`
+(Surge XT parts with unchanged inputs, a new take), `changed` (one line per changed file) and `identical` (counts).
+`files.<stems|buses|returns|premix|master>.<name>` holds per file `identical`, or `level_db` (the one gain that
+matches the two files; null where matching by it leaves more than half the file's power, as in a part rewritten), `passages` (each
+`start_s`, `end_s`, `from`, `to` and `follows_part_levels`), `difference_db` and `difference_peak_dbfs`;
+`project_changes` the edits field by field, `synthesis` per part, `master_lufs` both masters' loudness, and `clip`
+the A/B clip. `before`, `after` and the clip's `file` are relative to the report's folder.
+
+## audition.json (audition)
+
+`versions` in playing order: `sound`, `engine`, `master_lufs`, `part_rms_dbfs`, `part_brightness` (`centroid_hz`,
+`above_2k_pct`, `above_5k_pct`), and where they apply `surge_character`, `surge_controls` (what the mod wheel and
+macros move), `rendered_with`, `fallback` and `reason`, `performance_left_out` (what the sound cannot take, and with
+`--solo` a duck on a part left out). Also `kind`, `title`, `project` (relative to the audition's folder), `track`,
+`bars`, `solo`, `status` (`RUNNING` from the start, then `PASS`, or `FAIL` with `failed`: the `version` that stopped it
+and its `error`), `each_seconds`, `gap_seconds`, `loudness_lufs` and `fallbacks`. Each version's render is in its
+numbered folder.
+
+## clean (its report)
+
+`studio.py clean` writes nothing of its own; `--json` prints its report: `dry_run` (true unless `--remove` was given),
+`listed` (each folder it takes files from, or would: `kind` render, round, audition or cache entry, `path`, `bytes`,
+`whole` whether the folder goes, and `kept_inside`, the first 20 of what stays in it: files no tool recorded or changed
+since, and the folders inside it that stay, ending in `/`),
+`bytes`, `kept` and `cache_entries_kept`, `left_alone` (folders of another piece, whose piece cannot be read, with no
+files.json (made before 0.4.0), a render, round or audition at work, or inside one, cache entries holding files renders
+do not write: `kind`, `path`, `title`, `why`) and `not_removed` (what was held open or in use by a render, with the
+`error`).  A render, round or audition holds its folder's lock file `work.lock` while it runs and removes it when it
+ends, `analyze` and `compare` hold the renders they read, and clean takes the same lock before it looks inside a
+folder, keeping it, and those of the tool folders holding it, until it is done there; its dry run looks at each lock
+without creating any.
+
+## files.json (every folder)
+
+Every folder a command writes holds `files.json`: `kind` (`music-production files`) and `files`, each file the tools
+wrote there by its path relative to the folder, with its size, modification time and file number (`st_ino`). `clean`
+removes a file only while that record lists it unchanged, as Ninja's clean tool removes only the outputs its build log
+names (Ninja manual); a file put in such a folder, or changed since, stays, and so does a copy put in a file's place,
+even one that keeps its size and time. A folder copied elsewhere, rather than moved, is so not the tools' any more:
+`clean` leaves it and `--resume` refuses it. Installed banks and tools keep one in the runtime folder: an installer
+replaces only what it recorded there and sets anything else aside as `<name>.replaced-<time>`.
+
+## What stays local
+
+The records meant to be shared name files relative to their folders: round.json, the comparisons, audition.json and
+the receipts. The logs (`logs/`, and each process's `*.process.json` with its command line) and the configuration
+hold the full local paths, which can include your user name: share a render folder without them. Delivered audio
+carries no tags from the files it was made from (every FFmpeg output is written with `-map_metadata -1`), only
+FFmpeg's encoder tag and, in a loop's OGG, its `LOOPSTART` and `LOOPLENGTH`.

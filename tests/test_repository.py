@@ -108,6 +108,37 @@ def test_markdown_links_resolve():
     assert not bad, bad
 
 
+def heading_anchor(heading):
+    """GitHub's anchor for a heading, from its text as rendered: inline code kept as its text, raw HTML tags outside
+    it dropped (GFM renders `<name>` written bare as a tag, so a heading's text loses it), link markup dropped, then
+    lower case, punctuation other than hyphens and underscores removed, spaces to hyphens."""
+    parts = re.split(r'(`[^`]+`)', heading.strip())
+    text = ''.join(part[1:-1] if part.startswith('`') else re.sub(r'</?[A-Za-z][A-Za-z0-9-]*(\s[^<>]*)?/?>', '', part)
+                   for part in parts)
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text).lower()
+    return re.sub(r'[^\w\- ]', '', text).replace(' ', '-')
+
+
+def test_markdown_section_links_resolve():
+    """Links to a section (file.md#anchor, or #anchor within a file) in the skill name a heading that exists."""
+    def anchors(path):
+        seen, found, code = {}, set(), False
+        for line in path.read_text(encoding='utf-8').splitlines():
+            code = code ^ line.startswith('```')
+            if not code and re.match(r'#{1,6} ', line):
+                a = heading_anchor(line.lstrip('#'))
+                found.add(a if a not in seen else f'{a}-{seen[a]}')
+                seen[a] = seen.get(a, 0) + 1
+        return found
+    bad = []
+    for md in SKILL.rglob('*.md'):
+        for target, anchor in re.findall(r'\]\(([^)#\s]*)#([^)\s]+)\)', md.read_text(encoding='utf-8')):
+            dest = md.parent / target if target else md
+            if not re.match(r'[a-z]+:', target) and dest.suffix == '.md' and anchor not in anchors(dest):
+                bad.append(f'{md.relative_to(ROOT)} -> {target}#{anchor}')
+    assert not bad, bad
+
+
 def test_readmes_offer_every_language():
     """Each README links to every other one, so a reader can switch from any of them."""
     readmes = sorted(p.name for p in ROOT.glob('README*.md'))
@@ -201,6 +232,22 @@ def test_recordings_are_release_assets():
     assert not [p for p in repository_files() if p.is_file() and p.suffix.lower() in ('.mp3', '.wav', '.flac', '.ogg')]
 
 
+def test_requirements_pin_numpy_by_hash():
+    """requirements.txt names NumPy with the SHA-256 of every file PyPI publishes for the pinned version (pip's
+    hash-checking mode), one pinned version per Python range and nothing else, so pip installs NumPy only as published."""
+    lines = [l.strip() for l in (SKILL / 'requirements.txt').read_text(encoding='utf-8').splitlines() if l.strip() and not l.lstrip().startswith('#')]
+    entries, current = [], []
+    for line in lines:
+        current.append(line.rstrip('\\').strip())
+        if not line.endswith('\\'):
+            entries.append(' '.join(current))
+            current = []
+    assert not current and len(entries) == 2, entries
+    for entry in entries:
+        assert re.match(r'numpy==\d+\.\d+\.\d+; python_version [<>]=? "3\.\d+" ', entry), entry[:80]
+        assert len(re.findall(r'--hash=sha256:[0-9a-f]{64}', entry)) >= 20, entry[:80]
+
+
 def test_files_fit_the_plugin_directory():
     """The repository root is the plugin folder the Claude plugin directory checks: every file under 5 MiB, and nothing
     binary but images (its pre-submission checklist)."""
@@ -241,4 +288,4 @@ def test_selfcheck(tmp_path):
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
     report = load(work / 'selfcheck_report.json')
     assert report['status'] == 'PASS' and all(c['passed'] for c in report['checks'])
-    assert len(report['checks']) == (96 if CONFIG else 77), [c['name'] for c in report['checks']]
+    assert len(report['checks']) == (136 if CONFIG else 109), [c['name'] for c in report['checks']]

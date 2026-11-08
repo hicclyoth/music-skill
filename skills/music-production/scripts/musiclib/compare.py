@@ -26,13 +26,15 @@ length of the space or delay after it.
 """
 import json
 import math
+import os
 import shutil
 from pathlib import Path
 
 import numpy as np
 
-from . import audio
-from .model import Clock
+from . import audio, files
+from .measure import fast_length
+from .model import Clock, load_project
 
 RATE = audio.RATE
 HOP = 480               # 10 ms windows
@@ -46,13 +48,39 @@ GROUPS = ('stems', 'buses', 'returns', 'premix', 'master')
 
 
 def load(folder):
+    """A finished render's records.  Its project is read as any project is (model.load_project: its size bounded, then
+    validated), so a render folder from elsewhere cannot name stems outside it or ask for an unbounded length."""
     folder = Path(folder)
     for name in ('report.json', 'project.json', 'stem_receipts.json'):
         if not (folder / name).is_file():
             raise ValueError(f'{folder} is not a finished render ({name} is missing)')
-    read = lambda name: json.loads((folder / name).read_text(encoding='utf-8'))
-    return {'folder': folder, 'report': read('report.json'), 'project': read('project.json'),
+    odd = files.links_in(folder)
+    if odd:
+        raise ValueError(f'{folder} holds links ({", ".join(str(p.relative_to(folder)) for p in odd[:5])}); a render '
+                         'folder holds its own files only, so compare reads none through a link')
+
+    def read(name):
+        return files.read_json(folder / name)  # bounded (files.MAX_RECORD), and never through a link
+    report = read('report.json')
+    if isinstance(report.get('failed'), dict):
+        raise ValueError(f'{folder} is not a finished render (it stopped: {report["failed"].get("error")})')
+    return {'folder': folder, 'report': report, 'project': load_project(folder / 'project.json'),
             'receipts': {r['track']: r for r in read('stem_receipts.json')}}
+
+
+def portable(result, folder):
+    """The comparison as it is saved: the renders and the clip named relative to the folder that holds the report, so
+    a file that may be shared does not carry the local folders and the user name (across two Windows drives no relative
+    path exists, and the full one is kept)."""
+    def rel(path):
+        try:
+            return os.path.relpath(Path(path).resolve(), Path(folder).resolve()).replace(os.sep, '/')
+        except ValueError:
+            return str(path)
+    out = {**result, 'before': rel(result['before']), 'after': rel(result['after'])}
+    if isinstance(result.get('clip'), dict) and result['clip'].get('file'):
+        out['clip'] = {**result['clip'], 'file': rel(result['clip']['file'])}
+    return out
 
 
 def bar_beat(clock, beats, step=.01):
@@ -193,13 +221,14 @@ def _biquad_gain(f, fc, high, q=.707):
 def _band(x, hp=None, lp=None):
     """x (frames, channels) through the gains of FFmpeg's highpass and lowpass filters at hp and lp Hz, without their
     phase."""
-    f = np.fft.rfftfreq(len(x), 1 / RATE)
+    m = fast_length(len(x))  # zero-padded to a fast FFT length (measure.fast_length)
+    f = np.fft.rfftfreq(m, 1 / RATE)
     h = np.ones_like(f)
     if hp:
         h *= _biquad_gain(f, hp, True)
     if lp:
         h *= _biquad_gain(f, lp, False)
-    return np.fft.irfft(np.fft.rfft(x, axis=0) * h[:, None], n=len(x), axis=0)
+    return np.fft.irfft(np.fft.rfft(x, n=m, axis=0) * h[:, None], n=m, axis=0)[:len(x)]
 
 
 def _sent_change(before, after, unit, hp=None, lp=None, block=HOP * 1000, margin=HOP * 10):
@@ -293,10 +322,20 @@ def compare_audio(before, after, clock, mix=False):
     if abs(level) < .005:
         gain, level = 1.0, 0.0
     r = b - gain * a
-    pr, louder = _power(r * r), np.maximum(gain * gain * pa, pb)
+    pr = _power(r * r)
+    # One gain describes the file only where matching by it leaves at most half the file's power.  Where more of the
+    # file changed than moved in level (a part rewritten, a return of rewritten parts) the windows' gains scatter and
+    # their median means nothing (it gave a rewritten harp -332 dB): no level is reported, and the change is the plain
+    # difference.
+    either = active | (pb > max(pa.max(), pb.max()) * 1e-6)
+    if either.any() and pr[either].sum() > .5 * pb[either].sum():
+        gain, level = 1.0, None
+        r = b - a
+        pr = _power(r * r)
+    louder = np.maximum(gain * gain * pa, pb)
     level_ref = _near_max(louder) if mix else louder
     counted = (_db(pr) > FLOOR_DB) & (_db(pr) > _db(level_ref) - UNDER_SIGNAL_DB)
-    out['level_db'] = round(level, 2)
+    out['level_db'] = None if level is None else round(level, 2)
     out['passages'] = _passages(clock, counted)
     if counted.any():
         _difference(out, pr, louder, counted)
@@ -449,7 +488,9 @@ def describe(entry):
     real = [p for p in passages if not p.get('follows_part_levels')]
     follow = [p for p in passages if p.get('follows_part_levels')]
     level = entry.get('level_db')
-    if level and passages:
+    if level is None and 'level_db' in entry:
+        parts.append('no overall level (more of it changed than one gain matches)')
+    elif level and passages:
         parts.append(f'overall level {level:+.2f} dB')
     if real:
         d = entry['difference_db']
@@ -542,7 +583,7 @@ def clip(cfg, result, out, seconds=8.0, lead_in=1.5):
     master is silent or ends), brought to the same integrated loudness by one gain where both can be measured, 0.8 s
     apart, as an MP3 (FFmpeg measures and encodes it)."""
     out = Path(out)
-    if out.exists():
+    if files.occupied(out):  # in any form, a dangling link included
         raise ValueError(f'{out} exists; outputs never overwrite, so choose a new path')
     start = first_change(result)
     if start is None:
@@ -578,8 +619,12 @@ def clip(cfg, result, out, seconds=8.0, lead_in=1.5):
         if peak > .89:
             both *= .89 / peak
         audio.write_wav(work / 'clip.wav', both.astype(np.float32))
+        # Encoded in its own folder, then given the clip's name only if nothing has taken it since it was found free
+        # (it took the name whatever held it; found by GPT Pro's fourth review of 0.4.0).
+        encoded = work / ('clip' + out.suffix)
+        audio.ffmpeg(cfg, ['-i', work / 'clip.wav', '-c:a', 'libmp3lame', '-b:a', '256k', encoded], work, 'clip_mp3')
         out.parent.mkdir(parents=True, exist_ok=True)
-        audio.ffmpeg(cfg, ['-i', work / 'clip.wav', '-c:a', 'libmp3lame', '-b:a', '256k', out], work, 'clip_mp3')
+        files.publish_new(encoded, out)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return {'file': str(out), 'start_s': round(start, 2), 'seconds': round(seconds, 2),

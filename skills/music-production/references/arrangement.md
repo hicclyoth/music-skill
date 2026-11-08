@@ -2,6 +2,8 @@
 
 Each piece of guidance below names its source. Findings marked "measured here" come from this skill's own test pieces and corpus analyses; they are observations, not general rules.
 
+Contents: [Diagnose the "one finger" complaint](#diagnose-the-one-finger-complaint) · [Form before surface detail](#form-before-surface-detail) · [Melody and harmony](#melody-and-harmony) · [Roles and playability](#roles-and-playability) · [Vertical hygiene across parts](#vertical-hygiene-across-parts) · [Describe the score: studio.py profile](#describe-the-score-studiopy-profile) · [Articulation and sampled instruments](#articulation-and-sampled-instruments) · [Applied evidence from the first corpus](#applied-evidence-from-the-first-corpus) · [Sources](#sources)
+
 ## Diagnose the "one finger" complaint
 
 Separate three possibilities. A melody may lack an arc despite flawless timing. A good line may be rendered as disconnected taps by short gates, inappropriate attacks or excessive gaps. A reasonable melody and performance may still sit over an accompaniment that does not support it. Fix the responsible layer and keep the others unchanged while you compare.
@@ -117,7 +119,7 @@ Compare the profiles of two versions to see what a revision changed. A figure ou
 
 ## Articulation and sampled instruments
 
-- **Sampled strings.** Measured here, sampled section strings start slowly ([soundbanks.md](soundbanks.md) lists each patch's measured attack), and their sustain recordings blur eighth-note lines. Give short notes to a spiccato or staccato patch and long notes to sustain, as separate parts. Start each part early by its measured attack (`offset_ms`).
+- **Sampled strings.** Measured here, sampled section strings start slowly ([soundbank-measurements.md](soundbank-measurements.md) lists each patch's measured attack), and their sustain recordings blur eighth-note lines. Give short notes to a spiccato or staccato patch and long notes to sustain, as separate parts. Start each part early by its measured attack (`offset_ms`).
 - **Open hats.** Kits without a hi-hat choke group cannot cut an open hat short. In those kits, write closed hats on the offbeats and let an open hat lead into a crash.
 
 ## Applied evidence from the first corpus

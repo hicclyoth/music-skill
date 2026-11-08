@@ -2,11 +2,12 @@
 import bisect
 from collections import Counter, defaultdict
 import csv
+import heapq
 import json
 import math
 from pathlib import Path
 import statistics
-from . import harmony
+from . import files, harmony
 from .model import Clock, performed, save_json, validate
 
 FOREGROUND = ('melody', 'countermelody')
@@ -45,27 +46,37 @@ def unpitched(t):
 def vertical(p,clock,limit=40):
     """Minor seconds/ninths between a sustained note (>=0.75 beat) and any note of another pitched
     part (or inside one part's chord) overlapping >=0.5 beat.  Major sevenths are not flagged.  Unpitched parts
-    (unpitched()) are left out."""
-    notes=[];by_bar=defaultdict(list)
+    (unpitched()) are left out.  The notes are indexed by pitch and onset, so only notes 1, 13, 25... semitones away
+    that overlap in time are looked at: the work follows the collisions there are, not the square of the notes, and the
+    first `limit` examples by beat are kept while the rest are counted."""
+    items=[]
     for t in p['tracks']:
         if unpitched(t):continue
-        for n in t['notes']:
-            item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],t.get('role') in FOREGROUND)
-            notes.append(item)
-            for b in range(int(n['on']//clock.beats_per_bar),int((item[1]-1e-9)//clock.beats_per_bar)+1):by_bar[b].append(item)
-    seen=set();found=[]
-    for a in notes:
+        for n in t['notes']:items.append((n['on'],n['on']+n['duration'],n['pitch'],t['id'],t.get('role') in FOREGROUND))
+    by_pitch=defaultdict(list)
+    for it in items:by_pitch[it[2]].append(it)
+    starts,longest={},{}
+    for q,lst in by_pitch.items():
+        lst.sort();starts[q]=[x[0] for x in lst];longest[q]=max(x[1]-x[0] for x in lst)
+    count=fg=seq=0;pairs=Counter();kept=[]
+    for a in items:
         if a[1]-a[0]<.75:continue
-        for b in sorted({x for bar in range(int(a[0]//clock.beats_per_bar),int((a[1]-1e-9)//clock.beats_per_bar)+1) for x in by_bar[bar]}):
-            if b is a or abs(a[2]-b[2])%12!=1:continue
-            ov=min(a[1],b[1])-max(a[0],b[0])
-            key=tuple(sorted([a,b]))
-            if ov<.5 or key in seen:continue
-            seen.add(key)
-            found.append({'at':where(clock,max(a[0],b[0])),'beat':round(max(a[0],b[0]),4),'parts':sorted({a[3],b[3]}),'pitches':sorted([a[2],b[2]]),'overlap_beats':round(ov,3),'involves_foreground':a[4] or b[4],'same_part':a[3]==b[3]})
-    found.sort(key=lambda x:x['beat'])
-    pairs=Counter(' / '.join(x['parts']) for x in found)
-    return {'count':len(found),'foreground_count':sum(x['involves_foreground'] for x in found),'by_parts':dict(pairs.most_common()),'examples':found[:limit]}
+        for q in [a[2]+d*s for d in range(1,128,12) for s in (1,-1)]:
+            lst=by_pitch.get(q)
+            if not lst:continue
+            # Notes of that pitch starting before a ends and late enough to still sound when it starts.
+            for b in lst[bisect.bisect_left(starts[q],a[0]-longest[q]):bisect.bisect_left(starts[q],a[1])]:
+                ov=min(a[1],b[1])-max(a[0],b[0])
+                # A pair of two sustained notes is found from both; it counts once, from the earlier one.
+                if ov<.5 or (b[1]-b[0]>=.75 and b<a):continue
+                count+=1;fg+=a[4] or b[4];pairs[' / '.join(sorted({a[3],b[3]}))]+=1;seq+=1
+                beat=max(a[0],b[0])
+                heapq.heappush(kept,(-beat,-seq,(a,b,ov)))
+                if len(kept)>limit:heapq.heappop(kept)
+    found=[]
+    for beat,_,(a,b,ov) in sorted(kept,key=lambda k:(-k[0],-k[1])):
+        found.append({'at':where(clock,-beat),'beat':round(-beat,4),'parts':sorted({a[3],b[3]}),'pitches':sorted([a[2],b[2]]),'overlap_beats':round(ov,3),'involves_foreground':a[4] or b[4],'same_part':a[3]==b[3]})
+    return {'count':count,'foreground_count':fg,'by_parts':dict(pairs.most_common()),'examples':found}
 
 def note_name(pitch):
     return f'{NAMES[pitch%12]}{pitch//12-1}'
@@ -229,27 +240,35 @@ def low_intervals(p,clock,limit=40):
     lower note lies under that interval's low interval limit, where voicings turn muddy (Hoffmann's chart,
     voicing.LOW_INTERVAL_LIMITS); one finding per interval sounding at a moment, whichever parts play it.  The fourth
     or fifth of a power chord (a part's root and fifth, with octaves) is left out, also where another part doubles
-    it: rock and metal voice it low (rock-and-metal.md)."""
+    it: rock and metal voice it low (rock-and-metal.md).  As in vertical(), the notes are indexed by pitch and onset: only
+    the pitches an interval puts above a note low enough for its limit, and only their notes overlapping it, are looked
+    at, not every note of the bars it spans."""
     from .voicing import LOW_INTERVAL_LIMITS
-    bpb=clock.beats_per_bar;by_bar=defaultdict(list);notes=[];top=max(LOW_INTERVAL_LIMITS.values())
+    notes=[];top=max(LOW_INTERVAL_LIMITS.values())
     for t in p['tracks']:
         if unpitched(t):continue
         pcs=defaultdict(set)
         for n in t['notes']:pcs[round(n['on'],4)].add(n['pitch']%12)
         for n in t['notes']:
-            c=frozenset(pcs[round(n['on'],4)]);item=(n['on'],n['on']+n['duration'],n['pitch'],t['id'],c if len(c)==2 and max(c)-min(c) in (5,7) else None)
-            notes.append(item)
-            for b in range(int(n['on']//bpb),int((item[1]-1e-9)//bpb)+1):by_bar[b].append(item)
+            c=frozenset(pcs[round(n['on'],4)])
+            notes.append((n['on'],n['on']+n['duration'],n['pitch'],t['id'],c if len(c)==2 and max(c)-min(c) in (5,7) else None))
+    by_pitch=defaultdict(list)
+    for it in notes:by_pitch[it[2]].append(it)
+    starts,longest={},{}
+    for q,lst in by_pitch.items():
+        lst.sort();starts[q]=[x[0] for x in lst];longest[q]=max(x[1]-x[0] for x in lst)
     found={}
     for a in notes:
         if a[2]>=top:continue
-        for b in {x for bar in range(int(a[0]//bpb),int((a[1]-1e-9)//bpb)+1) for x in by_bar[bar]}:
-            d=b[2]-a[2]
-            if d<=0 or a[2]>=LOW_INTERVAL_LIMITS.get(d,0) or min(a[1],b[1])-max(a[0],b[0])<.5-1e-9:continue
-            if d in (5,7) and any(x[4] and {a[2]%12,b[2]%12}<=x[4] for x in (a,b)):continue
-            at=round(max(a[0],b[0]),4)
-            f=found.setdefault((at,a[2],b[2]),{'parts':set(),'at':where(clock,at),'beat':at,'interval':INTERVAL_NAMES[d],'notes':[note_name(a[2]),note_name(b[2])],'limit':note_name(LOW_INTERVAL_LIMITS[d]),'below_limit':LOW_INTERVAL_LIMITS[d]-a[2]})
-            f['parts']|={a[3],b[3]}
+        for d,low in LOW_INTERVAL_LIMITS.items():
+            q=a[2]+d
+            if a[2]>=low or q not in by_pitch:continue
+            for b in by_pitch[q][bisect.bisect_left(starts[q],a[0]-longest[q]):bisect.bisect_left(starts[q],a[1])]:
+                if min(a[1],b[1])-max(a[0],b[0])<.5-1e-9:continue
+                if d in (5,7) and any(x[4] and {a[2]%12,b[2]%12}<=x[4] for x in (a,b)):continue
+                at=round(max(a[0],b[0]),4)
+                f=found.setdefault((at,a[2],b[2]),{'parts':set(),'at':where(clock,at),'beat':at,'interval':INTERVAL_NAMES[d],'notes':[note_name(a[2]),note_name(b[2])],'limit':note_name(LOW_INTERVAL_LIMITS[d]),'below_limit':LOW_INTERVAL_LIMITS[d]-a[2]})
+                f['parts']|={a[3],b[3]}
     found=[{**f,'parts':sorted(f['parts'])} for _,f in sorted(found.items())]
     worst=max(found,key=lambda x:(x['below_limit'],-x['beat']),default=None)
     return {'count':len(found),'by_parts':dict(Counter(' / '.join(x['parts']) for x in found).most_common()),'furthest_below':worst,'examples':found[:limit]}
@@ -533,7 +552,7 @@ def review(p,out,config=None):
                 named=surge.catalog_counterparts(preset) if preset and full and not options else []
                 if (options or named) and t['notes']:
                     which=f'its patches for this role include {", ".join(options[:4])}' if options else f'its full patch set has patches named for this sound: {", ".join(named[:4])}'
-                    summary['prompts'].append(f'{t["id"]}: plays the built-in {preset}; Surge XT is installed, and {which}. Hear them on the part: studio.py audition --track {t["id"]} --sounds {",".join("surge:"+x for x in (options or named)[:3])} --bars FIRST-LAST (electronic.md, Sound design). Keep the built-in preset where a render must repeat exactly or the sound needs fields of its own.')
+                    summary['prompts'].append(f'{t["id"]}: plays the built-in {preset}; Surge XT is installed, and {which}. Hear them on the part: studio.py audition --track {t["id"]} --sounds {",".join("surge:"+x for x in (options or named)[:3])} --bars FIRST-LAST (electronic-sounds.md). Keep the built-in preset where a render must repeat exactly or the sound needs fields of its own.')
         st=summary['transposed_samples']=stretched(p,clock,sample_maps(p,config))
         if st['count']:
             worst=next(iter(st['by_track']))
@@ -550,14 +569,24 @@ def review(p,out,config=None):
         if pc['not_before']:summary['prompts'].append(f'Loop seam: {", ".join(pc["not_before"])} sound in the first second after the loop point but not in the five seconds before it. Check that the last bar leads into the first.')
         moves=[x for x in (f'entering: {", ".join(tb["entering"])}' if tb['entering'] else '',f'leaving: {", ".join(tb["leaving"])}' if tb['leaving'] else '') if x]
         if moves:summary['prompts'].append('Loop seam: parts '+'; '.join(moves)+'. Confirm the change of instruments at the loop point is meant.')
-    save_json(out/'score_review.json',summary)
-    if csv_rows:
-        with (out/'notes.csv').open('w',encoding='utf-8',newline='') as f:
-            w=csv.DictWriter(f,fieldnames=csv_rows[0].keys());w.writeheader();w.writerows(csv_rows)
+    # Everything is composed before the first file is written, and what was written is recorded whatever stops the
+    # review, so clean can take it (a failure part way left two files and no record; found by GPT Pro's third review).
     lines=[f'# {p["title"]}', '',p.get('brief',''),'', '| Section | Bars (1-based) | Time | Function |','|---|---:|---:|---|']
     for s in summary['sections']:
         lines.append(f'| {s["id"]} | {s["start_bar"]+1}–{s["start_bar"]+s["bars"]} | {s["start_seconds"]:.1f}–{s["end_seconds"]:.1f}s | {s.get("intent","")} |')
     lines+=['','## Authored musical decisions','']+[f'- {x}' for x in p.get('decisions',[])]+['','## Review questions','']+['- '+x for x in summary['prompts']]
     lines+=['','Metrics do not establish whether a piece sounds good. Key gaps exclude pedal/release tails. Different durations and more tracks are not quality scores.']
-    (out/'arrangement.md').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    arrangement='\n'.join(lines)+'\n'
+    try:
+        save_json(out/'score_review.json',summary)
+        if csv_rows:
+            # A text cell a spreadsheet would read as a formula (one starting with =, +, -, @, a tab or a carriage
+            # return) gets a leading apostrophe, as OWASP's CSV injection guidance advises: a project's names stay text.
+            safe=lambda v:"'"+v if isinstance(v,str) and v[:1] in ('=','+','-','@','\t','\r') else v
+            with files.staged(out/'notes.csv','w',encoding='utf-8',newline='') as f:  # whole or not at all
+                w=csv.DictWriter(f,fieldnames=csv_rows[0].keys());w.writeheader();w.writerows({k:safe(v) for k,v in r.items()} for r in csv_rows)
+        with files.staged(out/'arrangement.md','w',encoding='utf-8') as f:
+            f.write(arrangement)
+    finally:
+        files.register(out,[out/n for n in ('score_review.json','notes.csv','arrangement.md') if (out/n).is_file()])
     return summary

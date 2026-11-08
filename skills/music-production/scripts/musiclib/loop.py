@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, measure
+from . import audio, files, measure
 from .model import TPQ, performed, save_json
 
 BEFORE, AFTER = 5.0, 1.0
@@ -80,7 +80,8 @@ def write_wav(path, data, loop_start, loop_end, cues=()):
         labels = b''.join(chunk(b'labl', struct.pack('<I', k + 1) + label.encode('utf-8') + b'\0')
                           for k, (_, label) in enumerate(cues))
         body += chunk(b'cue ', struct.pack('<I', len(cues)) + points) + chunk(b'LIST', b'adtl' + labels)
-    Path(path).write_bytes(b'RIFF' + struct.pack('<I', len(body)) + body)
+    with files.staged(path) as f:  # whole or not at all (musiclib.files)
+        f.write(b'RIFF' + struct.pack('<I', len(body)) + body)
 
 
 def chunks(path):
@@ -93,10 +94,13 @@ def chunks(path):
 
 
 def read_smpl(path):
-    """The loops of a WAV's `smpl` chunk as [(type, start, end)], end being the last frame played."""
+    """The loops of a WAV's `smpl` chunk as [(type, start, end)], end being the last frame played; a chunk shorter
+    than the loops it counts is refused (ValueError)."""
     for cid, body in chunks(path):
         if cid == b'smpl':
-            count = struct.unpack_from('<I', body, 28)[0]
+            count = struct.unpack_from('<I', body, 28)[0] if len(body) >= 32 else -1
+            if count < 0 or len(body) < 36 + 24 * count:
+                raise ValueError(f'{path}: its smpl chunk is shorter than the loops it counts')
             return [struct.unpack_from('<6I', body, 36 + 24 * i)[1:4] for i in range(count)]
     return []
 
@@ -106,14 +110,17 @@ def read_cues(path):
     frames, labels = {}, {}
     for cid, body in chunks(path):
         if cid == b'cue ':
-            for k in range(struct.unpack_from('<I', body, 0)[0]):
+            count = struct.unpack_from('<I', body, 0)[0] if len(body) >= 4 else -1
+            if count < 0 or len(body) < 4 + 24 * count:
+                raise ValueError(f'{path}: its cue chunk is shorter than the points it counts')
+            for k in range(count):
                 name, _, _, _, _, offset = struct.unpack_from('<II4sIII', body, 4 + 24 * k)
                 frames[name] = offset
         elif cid == b'LIST' and body[:4] == b'adtl':
             pos = 4
             while pos + 8 <= len(body):
                 sub, size = struct.unpack_from('<4sI', body, pos)
-                if sub == b'labl':
+                if sub == b'labl' and pos + 12 <= len(body):
                     labels[struct.unpack_from('<I', body, pos + 8)[0]] = body[pos + 12:pos + 8 + size].split(b'\0')[0].decode('utf-8', 'replace')
                 pos += 8 + size + (size & 1)
     return [(frames[k], labels.get(k, '')) for k in sorted(frames)]
@@ -149,8 +156,14 @@ def ogg_check(cfg, ogg, logs):
     """Decoded length and loop comments of the Ogg file just written (its own output, never an outside file)."""
     decoded, meta = ogg.with_name('loop_ogg_decoded.wav'), ogg.with_name('loop_ogg_tags.txt')
     base = [cfg['ffmpeg']['path'], '-hide_banner', '-nostdin', '-y', '-protocol_whitelist', 'file', '-f', 'ogg', '-i', ogg]
-    audio.run(base + ['-c:a', 'pcm_f32le', '-f', 'wav', decoded], logs, 'loop_ogg_decode')
-    audio.run(base + ['-map_metadata', '0:s:a:0', '-f', 'ffmetadata', meta], logs, 'loop_ogg_tags')
+    before = {p: files.stamp(p) for p in (decoded, meta)}
+    try:
+        audio.run(base + ['-c:a', 'pcm_f32le', '-f', 'wav', decoded], logs, 'loop_ogg_decode')
+        audio.run(base + ['-map_metadata', '0:s:a:0', '-f', 'ffmetadata', meta], logs, 'loop_ogg_tags')
+    finally:
+        for p, was in before.items():  # FFmpeg writes both there itself: files of the run once it has changed them
+            if files.stamp(p) != was:
+                files.wrote(p)
     frames = audio.read_wav(decoded)[1]['frames']
     tags = dict(re.findall(r'^(LOOPSTART|LOOPLENGTH)=(\d+)$', meta.read_text(encoding='utf-8', errors='replace'), re.M | re.I))
     decoded.unlink()
@@ -228,8 +241,9 @@ def encode_ogg(cfg, wav, ogg, start_f, end_f, logs, name):
     return frames == end_f, tags == {'LOOPSTART': start_f, 'LOOPLENGTH': end_f - start_f}
 
 
-def deliver(p, clock, cfg, output, mastering=None):
-    """loop.wav, loop.ogg and loop.json from master.wav, and the layer loops; returns the report entry and its checks."""
+def deliver(p, clock, cfg, output, mastering=None, draft=False):
+    """loop.wav, loop.ogg and loop.json from master.wav, and the layer loops; returns the report entry and its checks.
+    A draft render makes loop.wav, its checks and the seam description, not the Ogg copies or the layers."""
     output = Path(output)
     logs = output / 'logs'
     start_s, end_s, start_f, end_f = bounds(p, clock)
@@ -251,19 +265,21 @@ def deliver(p, clock, cfg, output, mastering=None):
     loops = read_smpl(wav)
     checks = {'loop_length_exact': measured['frames'] == end_f, 'loop_points_in_wav': loops == [(0, start_f, end_f - 1)],
               'loop_true_peak_ceiling': measured['true_peak_dbtp'] <= -1, 'loop_cues_in_wav': read_cues(wav) == cues}
-    vorbis = has_vorbis(cfg)
+    vorbis = not draft and has_vorbis(cfg)
     entry = {'start_bar': p['loop'].get('start_bar', 0), 'end_bar': p['clock']['bars'], 'sample_rate': audio.RATE,
              'start_sample': start_f, 'end_sample': end_f, 'length_samples': end_f - start_f,
              'start_seconds': round(start_s, 6), 'end_seconds': round(end_s, 6), **tempo(clock),
              'sections': [{'id': label, 'start_sample': frame, 'start_seconds': round(frame / audio.RATE, 6)} for frame, label in cues],
              'files': {'wav': wav.name}, 'gain_db': round(gain, 3), 'integrated_lufs': measured['integrated_lufs'],
              'true_peak_dbtp': measured['true_peak_dbtp'], 'seam': seam(p, clock, folded, master)}
-    if vorbis:
+    if draft:
+        entry['left_out'] = 'A draft render: the Ogg copies and the layers come with the full render'
+    elif vorbis:
         checks['loop_ogg_length_exact'], checks['loop_ogg_tags'] = encode_ogg(cfg, wav, ogg, start_f, end_f, logs, 'loop_ogg')
         entry['files']['ogg'] = ogg.name
     else:
         entry['ogg_skipped'] = 'This FFmpeg has no libvorbis encoder'
-    if p['loop'].get('layers'):
+    if p['loop'].get('layers') and not draft:
         entry['layers'], layer_checks = layers(p, clock, cfg, output, mastering, start_f, end_f, cues, master, folded, vorbis)
         checks.update(layer_checks)
     keep = ('start_bar', 'end_bar', 'sample_rate', 'start_sample', 'end_sample', 'length_samples', 'start_seconds', 'end_seconds',
@@ -299,6 +315,10 @@ def layers(p, clock, cfg, output, mastering, start_f, end_f, cues, master, mix_f
     for lid, members in p['loop']['layers'].items():
         premix, processed = folder / f'{lid}_premix.wav', folder / f'{lid}_processed.wav'
         mixbus.mix(p, clock, cfg, output, frames, [t for t in p['tracks'] if t['id'] in members], premix)
+        if mixbus.premix_production(p):  # the wobble and mono lows the full mix gets before its master, on this layer too
+            x, _ = audio.read_wav(premix)
+            x = x.astype('float64')  # releases the mapped file, which is written again (Windows refuses to replace it)
+            audio.write_wav(premix, mixbus.premix_production(p, x).astype('float32'))
         audio.ffmpeg(cfg, ['-i', premix, '-af', linear, '-ar', str(audio.RATE), '-c:a', 'pcm_f32le', processed], logs, f'layer_{lid}')
         raw[lid] = np.asarray(audio.read_wav(processed)[0], dtype=np.float64)
         premix.unlink()

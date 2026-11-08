@@ -24,6 +24,7 @@ every requested bank is verified, what was downloaded to make them (archives, pr
 and cut notes) is deleted; the banks stay, but installing one again downloads it again.
 """
 import argparse
+import contextlib
 import fnmatch
 import hashlib
 import http.client
@@ -39,6 +40,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from musiclib import files
 from musiclib.model import file_hash, save_json
 
 HOSTS = {'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com', 'raw.githubusercontent.com',
@@ -51,6 +53,7 @@ class Allowed(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         parts = urllib.parse.urlsplit(newurl)
         if parts.scheme != 'https' or parts.hostname not in HOSTS:
+            fp.close()  # urllib closes the redirect's response only when it follows it
             raise ValueError('Redirect to a host that is not allowed: ' + newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -71,57 +74,86 @@ def fetch(url, dest, size=None, max_bytes=2_000_000_000, tries=4, check=None):
         try:
             return _fetch_once(url, dest, size, max_bytes, check)
         except (OSError, http.client.HTTPException) as e:
-            final = isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
+            # A name another run or the user took meanwhile is not tried again (FileExistsError: the download is
+            # published only where nothing holds its name; GPT Pro's fourth review of 0.4.0).
+            final = isinstance(e, FileExistsError) or isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
             if final or attempt == tries - 1:
                 raise
             print(f'retrying {url} after {type(e).__name__}', flush=True)
             time.sleep(3 * 2 ** attempt)
 
 def _fetch_once(url, dest, size, max_bytes, check):
+    """One download into a new file of its own beside `dest` (musiclib.files.staged_path), which takes `dest`'s place
+    only when complete and checked, and is removed otherwise: two runs never share it."""
     req = urllib.request.Request(url, headers={'User-Agent': 'MusicProductionSkill/2.0'})
-    temp = dest.with_name(dest.name + '.partial')
-    try:
-        with OPENER.open(req, timeout=120) as r:
-            if urllib.parse.urlsplit(r.url).hostname not in HOSTS:
-                raise ValueError('Unexpected redirect to ' + r.url)
-            # A connection the server closes early ends the reads without an error: the length tells.
-            announced = r.headers.get('Content-Length')
-            expected = size if size is not None else int(announced) if announced and announced.isdigit() else None
-            count = 0
+    with OPENER.open(req, timeout=120) as r:
+        if urllib.parse.urlsplit(r.url).hostname not in HOSTS:
+            raise ValueError('Unexpected redirect to ' + r.url)
+        # A connection the server closes early ends the reads without an error: the length tells.
+        announced = r.headers.get('Content-Length')
+        expected = size if size is not None else int(announced) if announced and announced.isdigit() else None
+        count = 0
+        with files.staged_path(dest, new=True) as temp:
             with temp.open('wb') as out:
                 while chunk := r.read(1 << 20):
                     count += len(chunk)
                     if count > (size or max_bytes):
                         raise ValueError('Download exceeds locked size')
                     out.write(chunk)
-        if expected is not None and count != expected:
-            raise Damaged(f'{url}: {count} of {expected} bytes arrived')
-        if check and not check(temp):
-            raise Damaged(f'{url}: the download does not match the lock')
-        temp.replace(dest)
-    finally:
-        temp.unlink(missing_ok=True)
+            if expected is not None and count != expected:
+                raise Damaged(f'{url}: {count} of {expected} bytes arrived')
+            if check and not check(temp):
+                raise Damaged(f'{url}: the download does not match the lock')
 
 def cached(url, dest, offline, size=None, check=None, max_bytes=2_000_000_000):
-    """`dest` from an earlier run if it still passes `check`; otherwise (a file left damaged, or none) downloaded."""
-    if dest.exists():
-        if (size is None or dest.stat().st_size == size) and (check is None or check(dest)):
+    """`dest` from an earlier run if it still passes `check`; otherwise (a file left damaged, or none) downloaded.  A
+    file at `dest` that does not match is set aside, never removed (musiclib.files.aside): it may not be the
+    installer's."""
+    if files.occupied(dest):
+        if files.regular_file(dest) and (size is None or dest.stat().st_size == size) and (check is None or check(dest)):
             return
         if offline:
             raise ValueError(f'Offline, and the cached {dest} does not match the lock')
-        print(f'{dest.name}: the cached copy does not match the lock; downloading it again', flush=True)
-        dest.unlink()
+        print(f'{dest.name}: the cached copy does not match the lock; set aside as {files.aside(dest).name}, downloading it again', flush=True)
     elif offline:
         raise ValueError('Offline cache missing ' + str(dest))
     dest.parent.mkdir(parents=True, exist_ok=True)
     fetch(url, dest, size, max_bytes, check=check)
+
+def json_is(path, expected):
+    """Whether `path` holds `expected` as JSON, read within the record limit and never through a link; False for
+    anything else (too large, a link, not JSON)."""
+    try:
+        return files.read_json(path) == expected
+    except (OSError, ValueError):
+        return False
 
 def sha256_is(expected):
     return lambda path: file_hash(path) == expected
 
 def safe_member(name):
     p = PurePosixPath(name)
-    return not (p.is_absolute() or '..' in p.parts or ':' in name or '\\' in name)
+    return not (p.is_absolute() or '..' in p.parts or ':' in name or '\\' in name or '\0' in name)
+
+def sample_digest(entries):
+    """The SHA-256 the lock pins a source build's samples by: each file's path, git blob hash and size, one a line,
+    sorted (`samples_sha256`)."""
+    return hashlib.sha256(''.join(f'{p}\t{s}\t{n}\n' for p, s, n in sorted(entries)).encode('utf-8')).hexdigest()
+
+def pinned_samples(item, tree):
+    """The samples a build takes from its source listing, [(path, blob hash, size)], only when they are exactly the
+    files the lock pins: the listing comes from the host, and a path in it decides where a download is written, so a
+    listing that names other files, other paths (a folder's name followed by `..`), other hashes or sizes is refused
+    before anything is fetched."""
+    if not isinstance(tree.get('tree'), list) or tree.get('truncated'):
+        raise ValueError(f'{item["name"]}: the source listing is incomplete')
+    entries = [(e['path'], e.get('sha'), e.get('size')) for e in tree['tree']
+               if isinstance(e, dict) and e.get('type') == 'blob' and isinstance(e.get('path'), str) and locked(e['path'], item['paths'])]
+    if len(entries) != item['samples'] or sample_digest(entries) != item['samples_sha256']:
+        raise ValueError(f'{item["name"]}: the source listing does not name the samples the lock pins; nothing was fetched')
+    if not all(safe_member(p) for p, _, _ in entries):
+        raise ValueError(f'{item["name"]}: the source listing names a path outside its folder')
+    return entries
 
 def archive_tool():
     """A reader for the .7z banks (LZMA-compressed): a libarchive tar built with liblzma (Windows 11's own tar.exe,
@@ -171,30 +203,39 @@ def inside(target, name):
     return dest
 
 def extract(archive, fmt, members, target):
+    """The wanted members, written into a new private folder first (by tarfile, or by bsdtar or 7-Zip), then put in
+    `target` (musiclib.files.install_tree): a file the installer did not put there is set aside, never written through.
+    Returns the files set aside."""
     target.mkdir(parents=True, exist_ok=True)
     for name in members:
         inside(target, name)
-    if fmt == 'tar.xz':
-        # Each wanted member must be a plain file with a safe name; it is copied through extractfile, which every Python
-        # 3.10 has (extract's `filter` came only in 3.10.12 and 3.11.4), into a new file that then takes its place.
-        with tarfile.open(archive, 'r:xz') as t:
-            for name in members:
-                m = t.getmember(name)
-                if not m.isfile() or not safe_member(name):
-                    raise ValueError('Unsafe archive member: ' + name)
-                inside(target, name).parent.mkdir(parents=True, exist_ok=True)
-                dest = inside(target, name)
-                partial = dest.with_name(dest.name + '.partial')
-                partial.unlink(missing_ok=True)
-                with t.extractfile(m) as src, partial.open('xb') as out:
-                    shutil.copyfileobj(src, out, 1 << 20)
-                os.replace(partial, dest)
-        return
-    kind, tool = archive_tool()
-    if kind == '7z':
-        _run([tool, 'x', '-y', f'-o{target}', str(archive), *members])
-    else:
-        _run([tool, '-xf', str(archive), '-C', str(target), *members])
+    staging = files.staging_folder(target)
+    try:
+        if fmt == 'tar.xz':
+            # Each wanted member must be a plain file with a safe name; it is copied through extractfile, which every
+            # Python 3.10 has (extract's `filter` came only in 3.10.12 and 3.11.4).
+            with tarfile.open(archive, 'r:xz') as t:
+                for name in members:
+                    m = t.getmember(name)
+                    if not m.isfile() or not safe_member(name):
+                        raise ValueError('Unsafe archive member: ' + name)
+                    out = staging.joinpath(*PurePosixPath(name).parts)
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    with t.extractfile(m) as src, out.open('xb') as dst:
+                        shutil.copyfileobj(src, dst, 1 << 20)
+        else:
+            kind, tool = archive_tool()
+            if kind == '7z':
+                _run([tool, 'x', '-y', f'-o{staging}', str(archive), *members])
+            else:
+                _run([tool, '-xf', str(archive), '-C', str(staging), *members])
+            odd = files.foreign(staging)
+            if odd:
+                raise ValueError(f'The archive tool wrote links ({odd[0].name}); the archive is not used')
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return files.install_tree(staging, target)
 
 def git_blob_sha1s(path):
     """Blob hashes a file may match: as stored, and for text files also with CRLF -> LF (a Windows
@@ -232,7 +273,8 @@ def _install_archive(item, runtime, cache, offline, local=None):
     if missing:
         raise ValueError(f'Archive lacks {missing}')
     target = runtime / item['name']
-    extract(archive, item['format'], wanted, target)
+    for moved in extract(archive, item['format'], wanted, target):
+        print('SET ASIDE', moved, '| the installer did not put it there; it is kept under this name', flush=True)
     bank = target / item['member']
     if file_hash(bank) != item['member_sha256']:
         raise ValueError('Extracted bank hash mismatch: ' + item['name'])
@@ -264,8 +306,8 @@ def install_prebuilt(item, asset, runtime, cache, release, offline, local=None):
     if packed.stat().st_size != asset['bytes'] or file_hash(packed) != asset['sha256']:
         raise ValueError('Prebuilt asset does not match the lock: ' + asset['file'])
     target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(target.name + '.partial')
     digest, count = hashlib.sha256(), 0
+    partial = files.stage_name(target, '.sf2')
     try:
         with lzma.open(packed, 'rb') as src, partial.open('wb') as out:
             while chunk := src.read(1 << 22):
@@ -276,11 +318,19 @@ def install_prebuilt(item, asset, runtime, cache, release, offline, local=None):
                 out.write(chunk)
         if count != asset['sf2_bytes'] or digest.hexdigest() != item['output_sha256']:
             raise ValueError('Prebuilt bank does not have the locked hash: ' + item['name'])
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
-    partial.replace(target)
+        publish(partial, target)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(partial)  # gone once published; left only by a failure
     return target
+
+def publish(new, target):
+    """A checked new file takes `target`'s place in the build folder, recorded there as the installer's
+    (musiclib.files.place): what is at `target` and is not the installer's own unchanged file (a bank or receipt of the
+    user's, one edited since) is renamed aside and named, never written over."""
+    for moved in (files.place(new, target, target.parent), files.register(target.parent, [target])):
+        if moved is not None:
+            print('SET ASIDE', moved, '| the installer did not put it there; it is kept under this name', flush=True)
 
 def requested(lock, only):
     """The bank names that --only asks for: names and groups, comma-separated (None for every bank)."""
@@ -305,25 +355,26 @@ def install_build(item, runtime, source, offline, ffmpeg=None):
     tree_file.parent.mkdir(parents=True, exist_ok=True)
     def listing(path):
         try:
-            t = json.loads(path.read_text(encoding='utf-8'))
-        except ValueError:
+            t = files.read_json(path, 20_000_000)  # bounded, as the download is (found by GPT Pro's fourth review)
+        except (OSError, ValueError):
             return False
-        return t.get('sha') == commit or t.get('url', '').endswith(commit)
+        return isinstance(t, dict) and (t.get('sha') == commit or str(t.get('url', '')).endswith(commit))
     cached(f'https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1', tree_file, offline, check=listing, max_bytes=20_000_000)
-    tree = json.loads(tree_file.read_text(encoding='utf-8'))
-    if tree.get('sha') != commit and not tree.get('url', '').endswith(commit):
+    tree = files.read_json(tree_file, 20_000_000)
+    if not isinstance(tree, dict) or (tree.get('sha') != commit and not str(tree.get('url', '')).endswith(commit)):
         raise ValueError('Tree listing does not belong to the pinned commit')
-    blobs = {e['path']: e['sha'] for e in tree['tree'] if e['type'] == 'blob'}
-    wanted = [p for p in blobs if locked(p, item['paths'])]
+    wanted = pinned_samples(item, tree)
     root = runtime / 'sources' / f'{repo.split("/")[1]}-{commit[:12]}'
-    for path in wanted:
-        dest = root / path
-        matches = lambda f, sha=blobs[path]: sha in git_blob_sha1s(f)
+    root.mkdir(parents=True, exist_ok=True)
+    for path, sha, size in wanted:
+        dest = inside(root, path)
+        matches = lambda f, sha=sha: sha in git_blob_sha1s(f)
         local = Path(source) / path if source else None
-        if not dest.exists() and local and local.exists():
+        if not files.occupied(dest) and local and local.is_file():
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(local, dest)
-        cached(f'https://raw.githubusercontent.com/{repo}/{commit}/{urllib.parse.quote(path)}', dest, offline, check=matches, max_bytes=200_000_000)
+            files.replace(files.stage_copy(local, dest), dest)
+        # At most the locked size: a download is the blob as stored.
+        cached(f'https://raw.githubusercontent.com/{repo}/{commit}/{urllib.parse.quote(path)}', dest, offline, check=matches, max_bytes=size)
     output = runtime / 'build' / f'{item["name"]}-{item["version"].split()[-1]}.sf2'
     build_bank(item, json.loads((SKILL / 'references' / item['spec']).read_text(encoding='utf-8')), root, output, ffmpeg)
     return {'path': str(output), 'sha256': item['output_sha256'], 'license': item['license'],
@@ -331,11 +382,13 @@ def install_build(item, runtime, source, offline, ffmpeg=None):
             'verified_samples': len(wanted)}
 
 def build_bank(item, spec, root, output, ffmpeg):
-    """Build into a .partial file that becomes the bank only with the locked hash, so a failed build is never kept."""
+    """Build into a new file of its own that becomes the bank only with the locked hash, so a failed build is never
+    kept; the bank and its receipt then take their places as publish() places a file."""
     from soundbank import build
-    if output.exists() and file_hash(output) == item['output_sha256']:
+    if files.regular_file(output) and file_hash(output) == item['output_sha256']:
         return
-    partial = output.with_name(output.stem + '.partial.sf2')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    partial = files.stage_name(output, '.sf2')
     try:
         receipt = build(spec, root, partial, ffmpeg)
         if file_hash(partial) != item['output_sha256']:
@@ -343,10 +396,19 @@ def build_bank(item, spec, root, output, ffmpeg):
             raise ValueError(f'Rebuilt bank does not reproduce the locked hash: {item["name"]}.  The lock was built with '
                              f'NumPy {NUMPY_BUILD} (this is NumPy {numpy.__version__}); a different NumPy can round a few '
                              'samples differently.  Install the prebuilt bank instead (leave out --from-source).')
-        partial.replace(output)
-        save_json(output.with_suffix('.receipt.json'), receipt)
+        publish(partial, output)
     finally:
-        partial.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            os.unlink(partial)
+    receipt['output']['path'] = str(output)  # it was built under a temporary name
+    sidecar = output.with_suffix('.receipt.json')
+    written = files.stage_name(sidecar, '.json')
+    try:
+        save_json(written, receipt)
+        publish(written, sidecar)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(written)
 
 def install_split(item, runtime, offline, ffmpeg=None):
     from soundbank import cut_sources, save_manifest
@@ -362,15 +424,19 @@ def install_split(item, runtime, offline, ffmpeg=None):
     spec = json.loads((SKILL / 'references' / item['spec']).read_text(encoding='utf-8'))
     version = item['version'].split()[-1]
     notes = runtime / 'sources' / f'{item["name"]}-{version}-notes'
-    if not (notes / 'split.json').exists():
-        # The notes are cut where the locked manifest says (soundbank.py split recorded each cut and its hash).
+    if not files.regular_file(notes / 'split.json'):
+        # The notes are cut where the locked manifest says (soundbank.py split recorded each cut and its hash), into a
+        # new private folder that becomes the notes folder only when every cut is verified.
         manifest = json.loads((SKILL / 'references' / item['notes']).read_text(encoding='utf-8'))
-        partial = notes.with_name(notes.name + '.partial')
-        if partial.exists():
-            shutil.rmtree(partial)
-        cut_sources(manifest, source, partial)
-        save_manifest(partial / 'split.json', manifest)
-        partial.replace(notes)
+        files.fresh(notes, 'a notes folder without its split.json is not this installer\'s; move it away and run again')
+        partial = files.staging_folder(notes)
+        try:
+            cut_sources(manifest, source, partial)
+            save_manifest(partial / 'split.json', manifest)
+            files.replace(partial, notes)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
     output = runtime / 'build' / f'{item["name"]}-{version}.sf2'
     build_bank(item, spec, notes, output, ffmpeg)
     return {'path': str(output), 'sha256': item['output_sha256'], 'license': item['license'],
@@ -392,16 +458,17 @@ def main():
     ap.add_argument('--delete-sources', action='store_true',
                     help='after every requested bank is verified, delete the downloads they were made from')
     args = ap.parse_args()
-    if args.output.exists():
-        raise ValueError('Choose a new configuration path')
+    files.check_config_path(args.output, '--output')
     lock = json.loads((SKILL / 'references' / 'soundbank-lock.json').read_text(encoding='utf-8'))
     only = requested(lock, args.only)
     prebuilt = {} if args.from_source else lock.get('prebuilt', {}).get('assets', {})
+    # The configuration is read before anything is made, so one refused leaves no folder behind.
+    from musiclib.audio import absolute_paths, config_shape
+    config = config_shape(files.read_json(args.config), args.config, needs=('ffmpeg',))
+    config = absolute_paths(config, args.config.resolve().parent, args.config)
     runtime = args.runtime.resolve()
     cache = (args.archive_cache or runtime / 'archives').resolve()
     cache.mkdir(parents=True, exist_ok=True)
-    from musiclib.audio import absolute_paths
-    config = absolute_paths(json.loads(args.config.read_text(encoding='utf-8')), args.config.resolve().parent)
     fonts = config.setdefault('soundfonts', {})
     failed = {}
     mirrors = {} if args.from_source else lock.get('prebuilt', {}).get('archives', {})
@@ -443,7 +510,7 @@ def main():
                 failed[item['name']] = str(e)
                 print('FAILED', item['name'], '|', e, flush=True)
     # The banks that did install are written to the configuration either way; a failure is listed and ends in exit 2.
-    save_json(args.output.resolve(), config)
+    files.save_config(args.output, config, '--output')  # never over a bank or record this run put at that path
     print('Saved', args.output.resolve())
     if failed:
         raise ValueError(f'{len(failed)} bank(s) failed: ' + '; '.join(f'{k}: {v}' for k, v in failed.items()) +
@@ -452,46 +519,93 @@ def main():
         delete_sources(lock, only, runtime, cache)
 
 
-def source_paths(lock, only, runtime, cache):
-    """What the installer downloaded or cut for the requested banks: archives, sample checkouts, recordings, notes."""
-    paths = set()
+def source_files(lock, only, runtime, cache):
+    """What the installer downloaded or cut for the requested banks, each with how to tell it is still the installer's
+    own file: [(archive, check)] for the archives and prebuilt assets in the cache (their locked size and SHA-256), and
+    [(folder, {relative path: check})] for the sample trees, recordings and cut notes in runtime/sources (each file's
+    git blob hash, locked SHA-256 or recorded SHA-256).  A sample tree whose listing is gone has no checks: nothing in it
+    can be shown to be the installer's."""
+    def sha(expected, size=None):
+        return lambda p: (size is None or p.stat().st_size == size) and file_hash(p) == expected
+    archives, folders = [], []
     for item in lock['archives']:
         if only is None or item['name'] in only:
-            paths.add(cache / Path(urllib.parse.urlsplit(item['url']).path).name)
+            archives.append((cache / Path(urllib.parse.urlsplit(item['url']).path).name, sha(item['sha256'], item['bytes'])))
             mirror = lock.get('prebuilt', {}).get('archives', {}).get(item['name'])
             if mirror:
-                paths.add(cache / mirror['file'])
+                archives.append((cache / mirror['file'], sha(mirror['sha256'], mirror['bytes'])))
     for item in lock['builds']:
         if only is not None and item['name'] not in only:
             continue
         asset = lock.get('prebuilt', {}).get('assets', {}).get(item['name'])
         if asset:
-            paths.add(cache / asset['file'])
+            archives.append((cache / asset['file'], sha(asset['sha256'], asset['bytes'])))
+        sources = runtime / 'sources'
         if item.get('kind') == 'split':
-            paths.add(runtime / 'sources' / item['source_folder'])
-            paths.add(runtime / 'sources' / f'{item["name"]}-{item["version"].split()[-1]}-notes')
+            folders.append((sources / item['source_folder'], {f['path']: sha(f['sha256'], f['bytes']) for f in item['files']}))
+            manifest = json.loads((SKILL / 'references' / item['notes']).read_text(encoding='utf-8'))
+            notes = {n['file']: sha(n['sha256']) for n in manifest['notes']}
+            notes['split.json'] = lambda p, m=manifest: json_is(p, m)
+            folders.append((sources / f'{item["name"]}-{item["version"].split()[-1]}-notes', notes))
         else:
-            paths.add(runtime / 'sources' / f'{item["repository"].split("/")[1]}-{item["commit"][:12]}')
-    return sorted(paths)
+            repo, commit = item['repository'], item['commit']
+            listing = sources / f'{repo.replace("/", "_")}_{commit}_tree.json'
+            try:
+                tree = files.read_json(listing, 20_000_000) if files.regular_file(listing) else {}
+            except (OSError, ValueError):
+                tree = {}
+            tree = tree if isinstance(tree, dict) else {}
+            # Only a listing that names exactly the pinned samples says which files are the installer's.
+            try:
+                pinned = pinned_samples(item, tree) if tree.get('sha') == commit or tree.get('url', '').endswith(commit) else []
+            except (ValueError, KeyError, TypeError):
+                pinned = []
+            folders.append((sources / f'{repo.split("/")[1]}-{commit[:12]}',
+                            {p: (lambda f, s=s: s in git_blob_sha1s(f)) for p, s, _ in pinned}))
+    return archives, folders
 
 
 def delete_sources(lock, only, runtime, cache):
-    freed = 0
-    for path in source_paths(lock, only, runtime, cache):
-        if path.is_dir():
-            freed += sum(f.stat().st_size for f in path.rglob('*') if f.is_file())
-            shutil.rmtree(path)
-        elif path.is_file():
+    """Delete what the installer downloaded or cut for the requested banks, and only that: a file goes when it is
+    still the installer's (source_files: its locked or recorded hash), then the folders left empty.  Anything else in
+    those folders (a file put there, a changed one) stays and is named; nothing is reached through a link."""
+    files.no_links(runtime / 'sources', below=runtime.parent)
+    archives, folders = source_files(lock, only, runtime, cache)
+    freed, kept = 0, []
+    for path, check in archives:
+        if not files.occupied(path):
+            continue
+        if files.regular_file(path) and check(path):
             freed += path.stat().st_size
             path.unlink()
+            print('Deleted', path)
         else:
+            kept.append(path)
+    for folder, checks in folders:
+        if not files.occupied(folder):
             continue
-        print('Deleted', path)
+        if not files.real_folder(folder):
+            kept.append(folder)
+            continue
+        gone = 0
+        for p in files.tree(folder):
+            check = checks.get(p.relative_to(folder).as_posix())
+            if check is not None and check(p):
+                freed += p.stat().st_size
+                p.unlink()
+                gone += 1
+            else:
+                kept.append(p)
+        files.prune(folder)
+        print('Deleted', gone, 'files from', folder)
     print(f'Freed {freed / 1e6:.0f} MB of downloaded sources')
+    for p in kept[:20]:
+        print('Kept', p, "| not the installer's file (or changed since): delete it yourself if you want", flush=True)
+    if len(kept) > 20:
+        print(f'Kept {len(kept) - 20} more files of that kind', flush=True)
 
 if __name__ == '__main__':
-    for stream in (sys.stdout, sys.stderr):
-        stream.reconfigure(errors='backslashreplace')
+    files.escape_unprintable()
     try:
         main()
     except (ValueError, OSError) as e:

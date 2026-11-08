@@ -35,9 +35,9 @@ import tempfile
 
 import numpy as np
 
-from . import audio
-from .measure import k_filter, level
-from .model import Clock
+from . import audio, files
+from .measure import k_filter, level, release
+from .model import Clock, load_project
 
 RATE = audio.RATE
 BANDS = [(20, 60), (60, 250), (250, 800), (800, 2500), (2500, 6000), (6000, 16000)]
@@ -146,6 +146,14 @@ def long_term(master, meter):
     return {'tonal_balance': tonal_balance(master), 'side_minus_mid_db': stereo_width(master), 'loudness': loud}
 
 
+def no_links_in(folder):
+    """Refuse a render folder holding links: it holds its own files only, so nothing is read through a link."""
+    odd = files.links_in(folder)
+    if odd:
+        raise ValueError(f'{folder} holds links ({", ".join(str(Path(p).relative_to(folder)) for p in odd[:5])}); a render '
+                         'folder holds its own files only, so analyze reads none through a link')
+
+
 def load_reference(spec, config=None):
     """(name, long_term measures) of a reference: a name in tonal-references.json, a render folder (its master.wav
     and report.json), or a WAV file, which FFmpeg converts to 48 kHz and meters in a temporary folder (needs a
@@ -155,8 +163,17 @@ def load_reference(spec, config=None):
         return spec, table[spec]
     path = Path(spec)
     if path.is_dir():
-        master, _ = audio.read_wav(path / 'master.wav')
-        report = json.loads((path / 'report.json').read_text(encoding='utf-8'))
+        # Held while it is read, as analyze and compare hold theirs: clean leaves it alone meanwhile, and a render
+        # still at work there is refused (it was read unheld, and a clean could take its master mid-read; found by
+        # GPT Pro's fourth review of 0.4.0).
+        with files.working(path):
+            no_links_in(path)
+            report = files.read_json(path / 'report.json')  # bounded: a render folder from elsewhere
+            if not isinstance(report, dict):
+                raise ValueError(f'--reference {spec}: its report.json is no render report')
+            if isinstance(report.get('failed'), dict):
+                raise ValueError(f'--reference {spec}: that render stopped before it finished ({report["failed"].get("error")})')
+            master, _ = audio.read_wav(path / 'master.wav')
         return f'{path.resolve().parent.name}/{path.name}', long_term(master, report.get('master', {}))
     if path.is_file():
         if path.suffix.lower() != '.wav':
@@ -165,7 +182,10 @@ def load_reference(spec, config=None):
             raise ValueError('--reference with a WAV file needs --config: FFmpeg converts and meters it')
         with tempfile.TemporaryDirectory() as tmp:
             wav = Path(tmp) / 'reference.wav'
-            audio.ffmpeg(config, ['-i', str(path), '-ac', '2', '-ar', str(RATE), '-c:a', 'pcm_f32le', str(wav)], tmp, 'reference')
+            # At most a second past the longest WAV read (audio.MAX_WAV_SECONDS), so a longer reference is refused
+            # when it is read rather than converted whole first.
+            audio.ffmpeg(config, ['-i', str(path), '-t', str(audio.MAX_WAV_SECONDS + 1), '-ac', '2', '-ar', str(RATE), '-c:a',
+                                  'pcm_f32le', str(wav)], tmp, 'reference')
             meter = audio.measure(config, wav, tmp, 'reference_loudness')
             master, _ = audio.read_wav(wav)
             measures = long_term(np.array(master), meter)
@@ -230,17 +250,19 @@ def lead_presence(lead, accompaniment, spans):
     bl, centres = band_powers(lead.mean(axis=1), edges)
     ba, _ = band_powers(accompaniment.mean(axis=1), edges)
     lead_total, acc_total = bl.sum(axis=0), ba.sum(axis=0)
-    active = db(lead_total) > db(lead_total).max() - 35
+    # A frame counts while the lead sounds: some energy (db() floors silence at -200 dB, so a silent lead would be
+    # within 35 dB of its own "loudest" frame everywhere) and within 35 dB of its loudest.  A lead that rests
+    # throughout a section has no active frames there, and no figures.
+    active = (lead_total > 1e-20) & (db(lead_total) > db(lead_total).max() - 35)
     rows = []
     for sid, a, b in spans:
         sel = active & (centres >= a) & (centres < b)
         row = {'section': sid, 'lead_active_frames': int(sel.sum())}
         if sel.sum() >= 5:
-            row['lead_minus_accompaniment_level_db'] = round(level_diff[sid], 1)
-        if sel.sum() >= 5:
             ratio = db(lead_total[sel]) - db(acc_total[sel])
             masked = (ba[:, sel] > 2 * bl[:, sel]) * bl[:, sel]
-            row.update(lead_minus_accompaniment_db_median=round(float(np.median(ratio)), 1),
+            row.update(lead_minus_accompaniment_level_db=round(level_diff[sid], 1),
+                       lead_minus_accompaniment_db_median=round(float(np.median(ratio)), 1),
                        lead_minus_accompaniment_db_p10=round(float(np.percentile(ratio, 10)), 1),
                        masked_share_pct=round(float(masked.sum() / bl[:, sel].sum() * 100), 1))
         rows.append(row)
@@ -283,11 +305,26 @@ def balance(p, levels, group):
     return out
 
 
+def region_names(sections, bar_spans):
+    """Refuse two regions of one name: a span given twice, or one named as a section is (a section may be called
+    span:focus).  They shared their figures and their sum, and a section's came out wrong, with a cut suggested on them
+    (found by GPT Pro's seventh review of 0.4.0).  A round asks before its render, analyze before it reads a stem."""
+    seen = set()
+    for name in [*sections, *(f'span:{n}' for n, _, _ in bar_spans)]:
+        if name in seen:
+            raise ValueError(f'{name} names two regions (a section and a --span, or one --span label given twice); '
+                             'give each --span a label of its own')
+        seen.add(name)
+
+
 def analyze(render_dir, bar_spans=(), reference=None):
     """`bar_spans`: (name, first bar, last bar), 1-based and inclusive, measured like the sections.  `reference`:
     (name, measures) from load_reference."""
     render_dir = Path(render_dir)
-    p = json.loads((render_dir / 'project.json').read_text(encoding='utf-8'))
+    # The project as the render wrote it, read as any project is (size bounded, validated): a render folder from
+    # elsewhere cannot name stems outside it or ask for an unbounded length, nor reach one through a link.
+    no_links_in(render_dir)
+    p = load_project(render_dir / 'project.json')
     clock = Clock(p)
     spans = section_spans(p, clock)
     bpb = clock.beats_per_bar
@@ -297,6 +334,7 @@ def analyze(render_dir, bar_spans=(), reference=None):
     extra = [(f'span:{name}', round(clock.seconds((first - 1) * bpb) * RATE), round(clock.seconds(last * bpb) * RATE))
              for name, first, last in bar_spans]
     regions = spans + extra
+    region_names([s['id'] for s in p['sections']], bar_spans)
     beats = {sid: ((s['start_bar']) * bpb, (s['start_bar'] + s['bars']) * bpb) for sid, s in zip([x[0] for x in spans], p['sections'])}
     beats.update({f'span:{name}': ((first - 1) * bpb, last * bpb) for name, first, last in bar_spans})
     groups = {sid: doublings(p, *beats[sid]) for sid, _, _ in regions}
@@ -304,7 +342,7 @@ def analyze(render_dir, bar_spans=(), reference=None):
     master, _ = audio.read_wav(render_dir / 'master.wav')
     rows = master_sections(master, spans)
     report_file = render_dir / 'report.json'
-    report = json.loads(report_file.read_text(encoding='utf-8')) if report_file.is_file() else {}
+    report = files.read_json(report_file) if report_file.is_file() else {}
     buses = (report.get('buses') or {}).get('assignment') if report.get('chain') == 'bus' else None
     stems, lead, accompaniment = {}, None, None
     for t in p['tracks']:
@@ -360,7 +398,7 @@ def analyze(render_dir, bar_spans=(), reference=None):
                         'transients; have it heard, lower target_lufs, or lower that section\'s peaks '
                         '(mix.saturate on its loudest parts, ducking, less level on what it adds).')
     receipts_file = render_dir / 'stem_receipts.json'
-    for r in json.loads(receipts_file.read_text(encoding='utf-8')) if receipts_file.is_file() else []:
+    for r in files.read_json(receipts_file) if receipts_file.is_file() else []:
         played = r.get('surge') or {}
         if played.get('rendered_with') == 'built-in synth':
             warnings.append(f'{r["track"]}: Surge XT preset {played.get("preset")} played on the built-in synth\'s '
@@ -369,10 +407,12 @@ def analyze(render_dir, bar_spans=(), reference=None):
         if share is not None and share > 2:
             warnings.append(f'{r["track"]}: for {share:g}% of its playing the dynamics sat between two recorded takes that '
                             'disagree in phase (the correction ran past 1.25 or under 0.8); play it in dynamics_mode "take" (the default), or keep a solo near one recorded dynamic.')
-    return {'render': render_dir.name, 'sections': rows, 'tonal_balance': here['tonal_balance'],
-            'side_minus_mid_db': here['side_minus_mid_db'], 'reference_comparison': comparison, 'stem_levels_lufs_ungated': stems,
-            'lead_tracks': lead_tracks, 'lead_source': 'buses' if buses is not None else 'stems',
-            'lead_presence': lead_presence(lead, accompaniment, regions) if lead is not None and accompaniment is not None else [],
-            'melody_groups': melody, 'warnings': warnings,
-            'master': here['loudness'],
-            'note': 'Measurements only; they do not establish how the music sounds.'}
+    measured = {'render': render_dir.name, 'sections': rows, 'tonal_balance': here['tonal_balance'],
+                'side_minus_mid_db': here['side_minus_mid_db'], 'reference_comparison': comparison, 'stem_levels_lufs_ungated': stems,
+                'lead_tracks': lead_tracks, 'lead_source': 'buses' if buses is not None else 'stems',
+                'lead_presence': lead_presence(lead, accompaniment, regions) if lead is not None and accompaniment is not None else [],
+                'melody_groups': melody, 'warnings': warnings,
+                'master': here['loudness'],
+                'note': 'Measurements only; they do not establish how the music sounds.'}
+    release()
+    return measured

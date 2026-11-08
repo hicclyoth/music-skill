@@ -6,6 +6,8 @@ Read this when the music serves a picture or a story moment:
 - music timed to events on screen;
 - a tension, suspense or horror cue.
 
+Contents: [Brief](#brief) · [Emotional underscore](#emotional-underscore) · [Scoring to picture](#scoring-to-picture) · [Suspense and horror](#suspense-and-horror) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 Related guides:
 - [orchestration.md](orchestration.md): the orchestra on the banks, balance, and the wide master;
 - [climax-and-melody.md](climax-and-melody.md): planning a high point;

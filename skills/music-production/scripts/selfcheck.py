@@ -19,6 +19,20 @@ from soundbank import yin_f0
 from musiclib import midi,audio
 from musiclib.model import Clock,TPQ,validate,performed,save_json,file_hash,cc_events
 
+def fake_board(pylib,files_=None):
+    """A pedalboard folder as pip leaves one: the package's files and a dist-info RECORD naming each with its SHA-256
+    and size (the wheel format), so surge.board_intact passes it."""
+    import base64,hashlib
+    pylib=Path(pylib);(pylib/'pedalboard').mkdir(parents=True,exist_ok=True)
+    rows=[]
+    for name,data in (files_ or {'pedalboard/__init__.py':b'# fake\n'}).items():
+        (pylib/name).write_bytes(data)
+        digest=base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b'=').decode()
+        rows.append(f'{name},sha256={digest},{len(data)}')
+    info=pylib/'pedalboard-0.0.0.dist-info';info.mkdir(exist_ok=True)
+    (info/'RECORD').write_bytes(('\n'.join(rows+['pedalboard-0.0.0.dist-info/RECORD,,'])+'\n').encode())
+    return info/'RECORD'
+
 def checks(work,config=None):
     work=Path(work).resolve();work.mkdir(parents=True,exist_ok=True);results=[]
     def check(name,fn):
@@ -32,6 +46,10 @@ def checks(work,config=None):
         try:fn()
         except ValueError:return True
         raise AssertionError('Expected rejection')
+    def rejects_with(kind,fn):
+        try:fn()
+        except kind:return True
+        raise AssertionError(f'Expected {kind.__name__}')
     def clock_roundtrip():
         p=example();p['clock']={'bars':8,'meter':[6,8],'tempo':[[0,99],[5.5,76],[12,112],[22,68]],'tail_seconds':3};c=Clock(p)
         for beat in [0,.125,5.49,5.5,5.501,11.9,12,22,24]:assert abs(c.beat(c.seconds(beat))-beat)<1e-9
@@ -43,7 +61,45 @@ def checks(work,config=None):
         p=example();p['clock']['tempo']=[[0,108],[0,120]];rejects(lambda:validate(p))
         p=example();p['tracks'][2]['instrument']={'harmonics':100000};rejects(lambda:validate(p))
         p=example();p['tracks'][0]['notes'][0]['pitch']=128;rejects(lambda:validate(p))
-        return {'invalid_cases_rejected':4}
+        # A key struck twice at once is found by validate, before any render, with both notes and where they are.
+        p=example();t=p['tracks'][0];n=copy.deepcopy(t['notes'][0]);n['id']+='_again';t['notes'].append(n)
+        t['performance']['notes'][n['id']]=dict(t['performance']['notes'][t['notes'][0]['id']])
+        try:
+            validate(p);raise AssertionError('a key struck twice at once passed validation')
+        except ValueError as e:
+            assert t['notes'][0]['id'] in str(e) and n['id'] in str(e) and ' bar ' in str(e),str(e)
+        # A phaser's rate is FFmpeg aphaser's speed, 0.1 to 2 Hz: outside it a project passed and its render failed.
+        for rate,ok in ((.05,False),(.1,True),(2,True),(2.5,False)):
+            p=example();p['tracks'][0]['mix']['effects']=[{'type':'phaser','rate_hz':rate,'depth':.5}]
+            if ok:validate(p)
+            else:rejects(lambda:validate(p))
+        # The text review reads, of another type, is refused before review stops on it (found by GPT Pro's third review).
+        for change in (lambda p:p.__setitem__('brief',{'mood':'warm'}),lambda p:p.__setitem__('decisions',None),
+                       lambda p:p['tracks'][0]['notes'][0].__setitem__('phrase',['A']),lambda p:p['tracks'][0].__setitem__('role',['melody'])):
+            p=example();change(p);rejects(lambda p=p:validate(p))
+        # A project, or its clock, mix, tracks, sections, tempo, harmony, notes or performance, of another JSON type is
+        # refused with its place, and any other field of the wrong type as that: they raised AttributeError or TypeError
+        # and stopped the command (found by CI on Python 3.14, which parsed a deeply nested list).
+        for q in ([],'x',1,None):rejects(lambda q=q:validate(q))
+        first=lambda p:p['tracks'][0]['notes'][0]['id']
+        for change,place in ((lambda p:p.__setitem__('clock',[]),'clock'),(lambda p:p.__setitem__('mix','x'),'mix'),
+                             (lambda p:p.__setitem__('tracks','x'),'tracks'),(lambda p:p.__setitem__('tracks',[1]),'track'),
+                             (lambda p:p.__setitem__('sections',[1]),'section'),(lambda p:p['clock'].__setitem__('tempo',[1]),'tempo'),
+                             (lambda p:p.__setitem__('harmony',[1]),'harmony'),(lambda p:p['tracks'][0].__setitem__('notes',[1]),'note'),
+                             (lambda p:p['tracks'][0].__setitem__('performance',[]),'performance'),
+                             (lambda p:p['tracks'][0]['performance'].__setitem__('notes',[]),'performance.notes'),
+                             (lambda p:p['tracks'][0].__setitem__('mix',[]),'mix'),
+                             (lambda p:p['tracks'][0]['performance']['notes'].__setitem__(first(p),1),'performance.notes'),
+                             (lambda p:p['tracks'][0]['performance'].__setitem__('cc',[1]),'wrong type'),
+                             (lambda p:p['tracks'][0].__setitem__('range',5),'wrong type')):
+            p=example();change(p)
+            try:validate(p);raise AssertionError(f'{place} of the wrong type passed validation')
+            except ValueError as e:assert place in str(e),str(e)
+        # A revision history of another type (revise stopped on it) and a huge integer in a small file (it raised
+        # OverflowError) are refused with a reason.  (Found by GPT Pro's fifth review of 0.4.0.)
+        p=example();p['revision_history']={};rejects(lambda:validate(p))
+        p=example();p['clock']['bars']=10**400;rejects(lambda:validate(p))
+        return {'invalid_cases_rejected':31}
     check('malformed_projects_rejected',invalid)
     def midi_roundtrip():
         p=example();path=work/'roundtrip.mid';routing=midi.write(p,path);m=midi.read(path);clock=Clock(p)
@@ -65,7 +121,15 @@ def checks(work,config=None):
         path=work/'bad.mid';path.write_bytes(b'MThd'+struct.pack('>IHHH',6,0,1,960)+b'MTrk'+struct.pack('>I',1)+b'\x00')
         rejects(lambda:midi.read(path));path.write_bytes(b'not midi');rejects(lambda:midi.read(path))
         good=work/'roundtrip.mid';rejects(lambda:midi.read(good,max_bytes=10))
-        return {'bad_cases_rejected':3}
+        # The skill reads its own exports back bounded by their size, not by the limits for MIDI from elsewhere: a
+        # project may hold 500,000 notes, a million note events before its controllers, which is the million a file
+        # from elsewhere may hold.  (Found by a review of 0.4.0.)
+        p=example();p.pop('harmony',None);p['clock']['bars']=64;p['sections']=[{'id':'a','start_bar':0,'bars':64}];t=p['tracks'][0];p['tracks']=[t]
+        t['notes']=[{'id':f'x{k}','on':round(k*.08,2),'duration':.05,'pitch':48+k%12} for k in range(3000)]
+        t['performance']={'notes':{n['id']:{'velocity':80} for n in t['notes']},'cc':[]};validate(p);midi.write(p,work/'many.mid')
+        rejects(lambda:midi.read(work/'many.mid',max_events=6000))
+        assert sum(len(x['notes']) for x in midi.read_own(work/'many.mid')['tracks'])==3000
+        return {'bad_cases_rejected':3,'own_export_read_by_its_size':True}
     check('bounded_untrusted_midi_reader',malformed_midi)
     def zip_traversal():
         z=work/'bad.zip'
@@ -158,7 +222,17 @@ def checks(work,config=None):
         q=copy.deepcopy(p);q['tracks'][0]['performance']['bend_range']=30;rejects(lambda:validate(q))
         midi.write(p,work/'bend_score.mid',expressive=False)
         assert not any(e[1]>>4==14 for x in midi.read(work/'bend_score.mid')['tracks'] for e in x['events'])
-        return {'wheel_events':len(wheel),'rpn_range_semitones':12,'score_export_has_no_bend':True}
+        # The additive synth plays the curve the MIDI holds: no bend before its first point (a note on beats 0-2 under a
+        # first point on beat 4 sounds its own pitch, as the wheel rests until then), and a ramp under a tempo change
+        # reaches at a beat the value the MIDI gives that beat; controllers alike.  (Found by a review of 0.4.0.)
+        from musiclib.model import bend_events,cc_events
+        c=Clock({'clock':{'bars':2,'meter':[4,4],'tempo':[[0,60],[2,120]]},'sections':[]})
+        a={'engine':'additive','performance':{'bend':[[4,2],[6,2]],'cc':[]}}
+        assert np.all(audio.bend_curve(a,np.array([0.0,1.0,1.9]),c)==0) and audio.bend_curve(a,np.array([c.seconds(4)]),c)[0]==2
+        a['performance'].update(bend=[[0,0],[4,2]],cc=[[0,11,0],[4,11,120]],bend_range=2);mid=np.array([c.seconds(2)])
+        wheel_at=next(v for b,v in reversed(bend_events(a)) if b<=2);cc_at=next(v for b,ctl,v in reversed(cc_events(a)) if ctl==11 and b<=2)
+        assert abs(audio.bend_curve(a,mid,c)[0]-(wheel_at-8192)/8191*2)<.01 and abs(audio.control(a,11,mid,c,100)[0]-cc_at)<1,(audio.bend_curve(a,mid,c),wheel_at,cc_at)
+        return {'wheel_events':len(wheel),'rpn_range_semitones':12,'score_export_has_no_bend':True,'additive_follows_the_midi_curve':True}
     check('pitch_bend_exports_rpn_and_wheel',bend_export)
     def single_voice_center():
         p=example();t=p['tracks'][2];t['instrument']={'detune_cents':[0]};audio.synthesize(p,t,work/'mono_voice.wav')
@@ -336,6 +410,22 @@ def checks(work,config=None):
             assert any(f'plays the built-in {preset}; Surge XT is installed, and its full patch set has patches named for this sound' in x for x in prompts)==asked,prompts
         return {'flat':{k:len(v) for k,v in repetition(flat,Clock(flat)).items() if k!='energy'},'pushes_pct':s['parts']['lead']['downbeat_pushes_pct']}
     check('review_asks_about_loops_returns_arrivals_and_blocks',review_development)
+    def review_summary():
+        # The printed summary keeps every question word for word, shows where each counted finding is, and ends with
+        # the file and the keys of the full figures; --json prints the whole report instead.
+        from musiclib import summary
+        from musiclib.review import review
+        # The example with its first piano note a minor ninth under the lead's (B3 under C5), held as long.
+        p=example();lead=min(p['tracks'][2]['notes'],key=lambda n:n['on'])
+        p['tracks'][0]['notes'][0].update(on=lead['on'],duration=max(2,lead['duration']),pitch=lead['pitch']-13)
+        r=review(p,work/'review_summary');text=summary.review(r,work/'review_summary')
+        assert r['prompts'] and all(q in text for q in r['prompts']),text
+        assert 'vertical_minor_seconds_ninths (' in text and 'B3/C5 (foreground)' in text and text.splitlines()[-1].startswith('Full figures: ') and 'score_review.json' in text.splitlines()[-1],text
+        save_json(work/'summary_project.json',p);import subprocess,sys
+        out=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'review',str(work/'summary_project.json'),'--output',str(work/'review_summary_json'),'--json'],capture_output=True,text=True,encoding='utf-8')
+        assert out.returncode==0 and json.loads(out.stdout)['prompts']==r['prompts'],out.stderr[-600:]
+        return {'questions':len(r['prompts']),'summary_characters':len(text),'full_json_characters':len(out.stdout)}
+    check('review_summary_keeps_every_question',review_summary)
     def surge_catalog():
         # Any patch of the measured catalog is a Surge preset by its id: found by role and measured character (flagged
         # patches left out, dark to bright), falling back by its role, and played only from the full patch set, which
@@ -359,7 +449,7 @@ def checks(work,config=None):
         t={'id':'pad','surge':{'preset':key}};surge.validate(t)
         assert rejects(lambda:surge.validate({'id':'pad','surge':{'preset':'no/such/patch'}}))
         assert label(('surge',key))=='surge_'+key.replace('/','.') and '/' not in label(('surge',key))
-        fake=work/'fake_surge_catalog';(fake/'pylib'/'pedalboard').mkdir(parents=True,exist_ok=True)
+        fake=work/'fake_surge_catalog';fake_board(fake/'pylib')
         binary=fake/'Surge XT.vst3';binary.write_bytes(b'surge')
         cfg={'surge':{'path':str(binary),'sha256':file_hash(binary),'patches':str(fake)},'pedalboard':{'path':str(fake/'pylib')}}
         for where,reason in ((None,'full Surge XT patch set'),(fake/'all','missing or changed')):
@@ -540,7 +630,15 @@ def checks(work,config=None):
         out.unlink()
         for wrong_asset,wrong_item in (({**asset,'sha256':'0'*64},item),({**asset,'sf2_bytes':len(bank)-1},item),(asset,{**item,'output_sha256':'0'*64})):
             rejects(lambda:fs.install_prebuilt(wrong_item,wrong_asset,runtime,work,'',True,assets))
-        assert not list((runtime/'build').iterdir()),list((runtime/'build').iterdir())
+        assert [p.name for p in (runtime/'build').iterdir()]==['files.json'],list((runtime/'build').iterdir())
+        # A bank of the user's under the installed bank's name (one edited since, or another so named) is set aside and
+        # named, not replaced; the bank put there is recorded as the installer's.  (Found by a review of 0.4.0.)
+        import contextlib,io
+        out.write_bytes(b'MINE');said=io.StringIO()
+        with contextlib.redirect_stdout(said):fs.install_prebuilt(item,asset,runtime,work,'',True,assets)
+        kept=[p for p in (runtime/'build').iterdir() if '.replaced-' in p.name]
+        from musiclib import files as owned
+        assert out.read_bytes()==bank and [p.read_bytes() for p in kept]==[b'MINE'] and 'SET ASIDE' in said.getvalue() and out.name in owned.recorded(runtime/'build'),(kept,said.getvalue())
         lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'soundbank-lock.json').read_text(encoding='utf-8'))
         names={i['name'] for i in lock['archives']+lock['builds']};pre=lock['prebuilt']['assets']
         assert set(pre)=={i['name'] for i in lock['builds']} and all(a['file'].endswith('.sf2.xz') and len(a['sha256'])==64 for a in pre.values())
@@ -680,7 +778,13 @@ def checks(work,config=None):
         for layers in ({'base':ids},{'base':ids[:3],'top':ids[2:]},{'base':ids[:3],'top':ids[3:4]},{'Base':ids[:3],'top':ids[3:]}):
             rejects(lambda:validate({**q,'loop':{'start_bar':0,'layers':layers}}))
         rejects(lambda:validate({**q,'mix':{**q['mix'],'chain':'room'}}))
-        return {'cues':cues,'tempo':t,'layer_cases_rejected':5}
+        # A bus that compresses or saturates its parts together, split across layers, would not let the layers add up
+        # to the mix: refused, unless the mix's dynamics are wide; the fx bus, which does neither, may be split (GPT
+        # Pro's seventh review of 0.4.0).
+        split=copy.deepcopy(q);next(x for x in split['tracks'] if x['id']=='drums')['mix']['bus']='ensemble'
+        assert rejects(lambda:validate(split));split['mix']['dynamics']='wide';validate(split)
+        fxs=copy.deepcopy(q);next(x for x in fxs['tracks'] if x['id']=='piano')['mix']['bus']='fx';validate(fxs)
+        return {'cues':cues,'tempo':t,'layer_cases_rejected':6}
     check('loop_cue_points_tempo_and_layer_rules',loop_markers_and_layers)
     def strum():
         from musiclib import expression
@@ -721,7 +825,10 @@ def checks(work,config=None):
         # name another bank's preset, or a bank without layers, with the programs that have them.
         part=lambda patch:{'id':'v','performance':{'notes':{},'dynamics':[[0,64]]},'patch':patch}
         off=layered.unsupported(part({'bank':1,'program':48}),xf_bank());bare=layered.unsupported(part({'bank':0,'program':48}),work/'xf_plain.sf2')
-        assert layered.unsupported(part({'bank':0,'program':48}),xf_bank()) is None and layered.unsupported({**part({'bank':1,'program':48}),'performance':{'notes':{}}},xf_bank()) is None
+        assert layered.unsupported(part({'bank':0,'program':48}),xf_bank()) is None
+        # A preset the bank lacks is refused before synthesis, with what the bank has: FluidSynth put another in its
+        # place, which the render found only after synthesis (found by the stress test of 0.4.0).
+        assert 'no preset at bank 1 program 48' in layered.unsupported({**part({'bank':1,'program':48}),'performance':{'notes':{}}},xf_bank())
         assert 'bank 1 program 48' in off and '48 (held)' in off and 'has none' in bare and 'at bank 0: none' in bare,(off,bare)
         assert sorted((x['bank'],x['program']) for x in bank['presets'])==[(0,48),(16,48),(17,48),(32,48),(33,48)]
         # The derived presets reuse the stored takes: the samples are the plain build's, byte for byte.
@@ -752,8 +859,34 @@ def checks(work,config=None):
         build({'name':'ring','presets':[{'name':'struck','program':0,'layers':[{**layer,'max_seconds':3}]}]},root,work/'ring_capped.sf2')
         capped=lengths(sf2.read(work/'ring_capped.sf2'))
         assert abs(free[0]-2.05)<.15 and abs(free[1]-5.05)<.15 and abs(capped[1]-3)<.05,(free,capped)
-        return {'kept_seconds':free,'capped_at_3s':capped}
+        # Two layers of one build that cut the same take otherwise each keep their own cut: the G4 take stays 5 s long
+        # in one preset and 3 s in the other (a take loaded once was shared by its file name alone, so the second
+        # preset got the first's).  (Found by a review of 0.4.0.)
+        both={'name':'ring','presets':[{'name':'struck','program':0,'layers':[layer]},{'name':'capped','program':1,'layers':[{**layer,'max_seconds':3}]}]}
+        build(both,root,work/'ring_both.sf2');shared=lengths(sf2.read(work/'ring_both.sf2'))
+        assert any(abs(x-3)<.05 for x in shared) and any(abs(x-5.05)<.15 for x in shared),shared
+        return {'kept_seconds':free,'capped_at_3s':capped,'one_build_two_cuts':shared}
     check('soundbank_ring_db_keeps_each_take_to_its_own_decay',ring_cut)
+    def denoise_keeps_each_layers_partials():
+        # Two layers that denoise one take but give it different measured pitches keep each its own partials as
+        # recorded: the take loaded once was shared by everything but that pitch, so the second layer got the first's
+        # cleaning.  (Found by the second review of 0.4.0.)
+        import wave
+        from soundbank import build
+        from musiclib import sf2
+        root=work/'partials_source';root.mkdir();rate=48000;t=np.arange(6*rate)/rate;rng=np.random.default_rng(5)
+        x=.3*np.exp(-t)*(np.sin(2*np.pi*110*t)+np.sin(2*np.pi*165*t))+.0005*rng.standard_normal(len(t))  # quiet frames over 35 dB under the loud ones, as soundbank.quiet_power needs
+        q=np.clip(np.round(np.repeat(x[:,None],2,1)*32767),-32768,32767).astype('<i2')
+        with wave.open(str(root/'p_a_f.wav'),'wb') as w:w.setnchannels(2);w.setsampwidth(2);w.setframerate(rate);w.writeframes(q.tobytes())
+        layer={'dir':'.','pattern':r'p_(?P<id>a)_(?P<dyn>f)\.wav','dynamics':['f'],'velocity':{'f':[1,127]},'keys':[40,64],'level':'peak',
+               'denoise':{'reduce_db':12,'keep_partials_below':300}}
+        spec={'name':'partials','presets':[{'name':'on_a','program':0,'layers':[{**layer,'pitches':{'a':45.0}}]},
+                                           {'name':'on_e','program':1,'layers':[{**layer,'pitches':{'a':52.0}}]}]}
+        build(spec,root,work/'partials.sf2');bank=sf2.read(work/'partials.sf2')
+        data=[sf2.load_sample(bank,i).tobytes() for i in range(len(bank['samples']))]
+        assert len(data)==4 and set(data[:2]).isdisjoint(data[2:]),len(set(data))  # each layer's two channels, its own cleaning
+        return {'samples':len(data),'shared_between_layers':0}
+    check('soundbank_denoise_keeps_each_layers_partials',denoise_keeps_each_layers_partials)
     def aiff(path,x,rate,bits=16):
         """A big-endian PCM AIFF, as the University of Iowa recordings are published."""
         x=np.asarray(x,dtype=np.float64);x=x[:,None] if x.ndim==1 else x;e=int(np.floor(np.log2(rate)))
@@ -844,6 +977,10 @@ def checks(work,config=None):
         layer={'dir':'T','pattern':r'T_(?P<dyn>pp|mf)_(?P<note>[A-G]#?-?\d)\.wav','dynamics':['pp','mf'],'velocity':{'pp':[1,63],'mf':[64,127]},
                'keys':[60,65],'pitch_source':'split','max_correction_cents':100,'layer_levels_db':{'pp':-10,'mf':0},'borrowed_level':'served'}
         build({'name':'split','presets':[{'name':'t','program':0,'layers':[layer]}]},root,work/'split.sf2');bank=sf2.read(work/'split.sf2')
+        # With denoise too, as the Iowa banks build from their sources: the manifest's noise is read (a local name hid
+        # the files module, and every such build stopped; found by GPT Pro's fourth review of 0.4.0).
+        build({'name':'split','presets':[{'name':'t','program':0,'layers':[{**layer,'denoise':{'reduce_db':12}}]}]},root,work/'split_denoised.sf2')
+        assert sf2.read(work/'split_denoised.sf2')['presets']
         zones=[z for z in bank['instruments'][0]['zones'] if z['target'] is not None]
         cents={n['file'].split('_')[-1][:-4]:n['cents'] for n in manifest['notes']}
         names=['C4','C#4','D4','D#4','E4','F4']
@@ -901,7 +1038,15 @@ def checks(work,config=None):
             nxt=[c for c in planned[k+1:] if c['parity']==a['parity']]
             if a['fade_out'] and nxt:assert a['fade_out'][0]+a['fade_out'][1]<=nxt[0]['start_seconds']+1e-9,(a,nxt[0])
         assert sum(n['legato'] for n in planned)==7
-        return {'level_spread_db':{'same_take':round(float(np.ptp(same)),2),'unrelated':round(float(np.ptp(free)),2),'half_antiphase':round(float(np.ptp(anti)),2)}}
+        # A long line is planned in N log N: 20,000 alternating notes in a few seconds at most (each crossfade scanned
+        # every note for the next on its render, 20 s here, and hours for the 500,000 notes a project may hold).
+        p['clock']={'bars':2500,'meter':[4,4],'tempo':[[0,160]]};p['sections']=[{'id':'a','start_bar':0,'bars':2500}]
+        t['notes']=[{'id':f'm{k}','on':.5*k,'duration':.5,'pitch':60+2*(k%2)} for k in range(20000)]
+        t['performance']['notes']={n['id']:{'velocity':80} for n in t['notes']}
+        began=time.monotonic();long_line=layered.plan(t,Clock(p));took=time.monotonic()-began
+        assert len(long_line)==20000 and took<5,took
+        return {'level_spread_db':{'same_take':round(float(np.ptp(same)),2),'unrelated':round(float(np.ptp(free)),2),'half_antiphase':round(float(np.ptp(anti)),2)},
+                'plan_20000_notes_seconds':round(took,2)}
     check('dynamics_crossfade_keeps_power_and_legato_fades_cross',crossfade_gains)
     def take_mode():
         from musiclib import layered
@@ -1228,7 +1373,7 @@ def checks(work,config=None):
         patch=dict(synth.DEFAULT);patch['amp']={'attack':.001,'decay':.1,'sustain':1.0,'release':.1}
         def alias_db(midi,wave):
             patch['oscillators']=[{'wave':wave}]
-            y=synth.resample_down(synth.voice(patch,np.full(n,float(midi)),n,n,1.0,'t',rate,.5),synth.OVER)[:,0]
+            y=synth.resample_down(synth.voice(patch,np.full(n,float(midi)),n,n,1.0,'t',rate,np.arange(n)/rate*2),synth.OVER)[:,0]
             seg=y[2400:2400+16384]*np.hanning(16384);spec=20*np.log10(np.abs(np.fft.rfft(seg))+1e-12);f=np.fft.rfftfreq(16384,1/48000)
             f0=440*2**((midi-69)/12);harm=np.zeros_like(f,dtype=bool)
             for k in range(1,30):harm|=np.abs(f-k*f0)<40
@@ -1245,12 +1390,19 @@ def checks(work,config=None):
         assert abs(pc[-1]-67)<.01
         for name,item in synth.presets().items():
             t={'id':'s','synth':{'preset':name},'notes':[]};synth.validate(t);pat=synth.patch_of(t)
-            v=synth.voice(pat,np.full(rate//4,57.0),rate//8,rate//4,.8,'n',rate,.5);assert np.isfinite(v).all() and np.abs(v).max()>1e-4,name
-        a=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,.5)
-        b=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,.5)
+            v=synth.voice(pat,np.full(rate//4,57.0),rate//8,rate//4,.8,'n',rate,np.arange(rate//4)/rate*2);assert np.isfinite(v).all() and np.abs(v).max()>1e-4,name
+        a=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,np.arange(rate//4)/rate*2)
+        b=synth.voice(synth.patch_of({'synth':{'preset':'supersaw_lead'}}),np.full(rate//4,64.0),rate//8,rate//4,.8,'n',rate,np.arange(rate//4)/rate*2)
         assert np.array_equal(a,b)
         rejects(lambda:synth.validate({'id':'s','synth':{'oscillators':[{'wave':'kazoo'}]}}))
-        return {'alias_db_c7':{'saw':round(saw,1),'square':round(sq,1)},'presets':len(synth.presets())}
+        # The objects inside an oscillator are checked before the render, as the patch's own are: a PWM LFO's shape,
+        # fields and depth, an FM index envelope's fields and bounds.  (A "sawtooth" PWM passed and stopped the render.)
+        for bad in ({'wave':'pulse','pwm':{'rate_hz':1,'depth':.2,'shape':'sawtooth'}},{'wave':'pulse','pwm':{'rate':1}},
+                    {'wave':'pulse','pwm':{'depth':.9}},{'wave':'pulse','pwm':'fast'},{'wave':'fm','index_env':{'sustain':2}},
+                    {'wave':'fm','index_env':{'attack':.01,'hold':1}}):
+            rejects(lambda bad=bad:synth.validate({'id':'s','synth':{'oscillators':[bad]}}))
+        synth.validate({'id':'s','synth':{'oscillators':[{'wave':'pulse','pwm':{'rate_hz':1,'depth':.2,'shape':'saw'}}]}})
+        return {'alias_db_c7':{'saw':round(saw,1),'square':round(sq,1)},'presets':len(synth.presets()),'nested_objects_checked':6}
     check('synth_is_band_limited_stable_and_repeatable',synth_engine)
     def drum_machine():
         from musiclib import drums
@@ -1298,9 +1450,9 @@ def checks(work,config=None):
         # A chord of three notes, the top one shorter, arpeggiated at 50 Hz: the voice steps up through the held notes
         # once per step and drops the top note when it ends; "updown" turns back without repeating the ends.
         chord=[{'pitch':60,'start_seconds':0.,'end_seconds':1.},{'pitch':64,'start_seconds':0.,'end_seconds':1.},{'pitch':67,'start_seconds':0.,'end_seconds':.5}]
-        up=synth.arpeggio_curve(chord,{'rate_hz':50},0.,48000,48000,.5)[::960]
+        up=synth.arpeggio_curve(chord,{'rate_hz':50},0.,48000,48000,None,None)[::960]
         assert up[:6].tolist()==[60,64,67,60,64,67] and set(up[26:50].tolist())=={60,64},up[:30]
-        ud=synth.arpeggio_curve(chord,{'rate_hz':50,'order':'updown'},0.,48000,48000,.5)[::960]
+        ud=synth.arpeggio_curve(chord,{'rate_hz':50,'order':'updown'},0.,48000,48000,None,None)[::960]
         assert ud[:8].tolist()==[60,64,67,64,60,64,67,64],ud[:8]
         # The NES-style triangle holds 16 levels, and at C7 its aliases stay far below its harmonics.
         f=440*2**((96-69)/12);n=rate;dt=np.full(n,f/rate);y=synth.resample_down(synth.stepped_triangle(np.cumsum(dt),dt,16),synth.OVER)
@@ -1440,7 +1592,24 @@ def checks(work,config=None):
         cut=analysis.balance(q,levels,group)
         assert len(cut)==1 and cut[0]['track']==c['id'] and cut[0]['suggested_cut_db']==3.0,cut
         c['role']='bass';assert analysis.balance(q,levels,group)==[]  # a bass may sit 3 dB under the tune
-        return {'group':group,'suggestion':cut[0]}
+        # A lead that rests through a section has no active frames there and no figures, not a masked share of 0/0
+        # (NaN, which a report cannot hold); one that plays gets them.  (Found by a review of 0.4.0.)
+        rate=audio.RATE;n=4*rate;tone=(np.sin(2*np.pi*440*np.arange(n)/rate)*.1)[:,None].repeat(2,axis=1)
+        rows=analysis.lead_presence(np.zeros((n,2)),tone,[('a',0,n)])
+        assert rows==[{'section':'a','lead_active_frames':0}] and json.dumps(rows,allow_nan=False),rows
+        rows=analysis.lead_presence(tone,tone*.5,[('a',0,n)])
+        assert rows[0]['lead_active_frames']>5 and all(np.isfinite(v) for k,v in rows[0].items() if k!='section'),rows
+        # Analysis regions by names of their own: a --span named as a section is, or one label given twice, is refused
+        # before anything is read (they shared their figures, and a section's came out 19.6 dB wrong with a cut
+        # suggested on it; GPT Pro's seventh review of 0.4.0); a round asks before its render.
+        from musiclib.revision import revision_round
+        analysis.region_names(['intro','verse'],[('focus',1,2),('other',3,4)])
+        assert rejects(lambda:analysis.region_names(['span:focus','tail'],[('focus',3,4)]))
+        assert rejects(lambda:analysis.region_names(['a'],[('take',1,4),('take',3,4)]))
+        save_json(work/'names.json',example())
+        assert rejects(lambda:revision_round(work/'names.json',work/'names_round',None,spans=[('take',1,2),('take',2,2)],show=lambda *a:None))
+        assert not (work/'names_round').exists()
+        return {'group':group,'suggestion':cut[0],'silent_lead_has_no_figures':True,'region_names_refused':3}
     check('analysis_groups_octave_doublings_and_suggests_cuts',melody_group_and_balance)
     def strict_projects():
         # A JSON float where MIDI needs an integer (100.0) and a section id that is not text stop in validation, with
@@ -1524,7 +1693,43 @@ def checks(work,config=None):
         for pts,a,b in (([[8,2],[12,2]],0,16),([[0,0],[4,0],[4,2],[8,2]],0,4),([[4,0],[4,2],[6,2]],4,8),([[2,0],[6,1.5],[9,-1]],4,12)):
             cut=crop(pts,a,b,bend=True)
             assert all(wheel(pts,a+k/8)==(wheel(cut,k/8) if cut else 8192) for k in range(int((b-a)*8))),(pts,a,b,cut)
-        return {'bend_points':len(u['performance']['bend'])}
+        # A key held across the cut and struck again right at it is not re-attacked as well (that would strike it twice
+        # at once); one held across the cut and struck again later is; of two held at once, only the later attack.
+        p=example();t=p['tracks'][0];bpb=Clock(p).beats_per_bar
+        t['notes']=[{'id':'held','on':bpb-1,'duration':2,'pitch':50},{'id':'again','on':bpb,'duration':1,'pitch':50},
+                    {'id':'long','on':bpb-2,'duration':4,'pitch':55},{'id':'later','on':bpb-1,'duration':4,'pitch':55},
+                    {'id':'ring','on':bpb-1,'duration':3,'pitch':60},{'id':'next','on':bpb+1,'duration':1,'pitch':60}]
+        t['performance']['notes']={n['id']:{'velocity':80} for n in t['notes']};validate(p)
+        kept=sorted(n['id'] for n in extract(p,2,2)['tracks'][0]['notes'])
+        assert kept==['again','later','next','ring'],kept
+        # A long note struck again, shorter, before the cut has stopped by the cut: it is not re-attacked there.
+        p=example();t=p['tracks'][0]
+        t['notes']=[{'id':'old','on':0,'duration':8,'pitch':60},{'id':'last','on':3,'duration':.5,'pitch':60},
+                    {'id':'pedal','on':0,'duration':8,'pitch':62},{'id':'short','on':2,'duration':1,'pitch':62},
+                    {'id':'active','on':4,'duration':1,'pitch':67}]
+        t['performance']['notes']={n['id']:{'velocity':80} for n in t['notes']};validate(p)
+        stopped=sorted(n['id'] for n in extract(p,2,1)['tracks'][0]['notes'])
+        assert stopped==['active'],stopped
+        # A re-attack that the notes' own timings put on the tick of the next strike of its key (the held note 100 ms
+        # late, the next 20 ms early) is left out, where it would stop the render.
+        p=example();p['clock']['tempo']=[[0,120]];t=p['tracks'][0]
+        t['notes']=[{'id':'held','on':3,'duration':2,'pitch':60},{'id':'next','on':4.24,'duration':.5,'pitch':60}]
+        t['performance']['notes']={'held':{'velocity':80,'timing_ms':100},'next':{'velocity':80,'timing_ms':-20}};validate(p)
+        timed=[n['id'] for n in extract(p,2,1)['tracks'][0]['notes']]
+        assert timed==['next'],timed
+        # So is one that the next strike of its key follows within 100 ms as played; a strike later than that keeps it.
+        for on,timing,want in ((4.02,0,['next']),(4.3,-20,['held','next']),(4.24,-60,['next'])):
+            t['notes'][1]['on']=on;t['performance']['notes']={'held':{'velocity':80},'next':{'velocity':80,'timing_ms':timing}};validate(p)
+            got=[n['id'] for n in extract(p,2,1)['tracks'][0]['notes']]
+            assert got==want,(on,timing,got)
+        # The passage's own notes that the part's earlier offset plays before the cut all sound at the excerpt's start;
+        # of a key struck so more than once, only its last strike stays (the piece's later strikes had stopped the rest).
+        p=example();p['clock']['tempo']=[[0,120]];t=p['tracks'][0];t['performance']['offset_ms']=-300
+        t['notes']=[{'id':k,'on':on,'duration':1,'pitch':57} for k,on in (('a',4),('b',4.05),('c',4.5),('d',4.75))]
+        t['performance']['notes']={n['id']:{'velocity':80} for n in t['notes']};validate(p)
+        early=[n['id'] for n in extract(p,2,1)['tracks'][0]['notes']]
+        assert early==['c','d'],early
+        return {'bend_points':len(u['performance']['bend']),'held_notes_kept_at_the_cut':kept,'stopped_before_the_cut':stopped,'retimed_onto_the_next':timed,'played_before_the_cut':early}
     check('excerpt_moves_bends_sweeps_and_dynamics',excerpt_curves)
     def mono_lines():
         from musiclib import synth
@@ -1552,7 +1757,32 @@ def checks(work,config=None):
         rejects(lambda:cut_sources(bad,src,root/'out'))
         bad['notes'][0]['file']=str(victim.resolve());rejects(lambda:cut_sources(bad,src,root/'out'))
         assert victim.read_text(encoding='utf-8')=='keep'
-        return {'refused':['..','absolute']}
+        # A note cut from a changed recording does not match its hash: no note of the run is kept (the one that matched
+        # is taken out again), the command says why with no traceback, and its folder is gone; a bank build whose
+        # receipt would replace the bank is refused before it starts.  (Found by a review of 0.4.0.)
+        import subprocess,sys
+        from soundbank import _cut_note,read_audio
+        from musiclib import files as owned
+        rate=audio.RATE;audio.write_wav(src/'take.wav',(np.sin(2*np.pi*220*np.arange(rate)/rate)*.5).astype(np.float32)[:,None].repeat(2,axis=1))
+        x,info=read_audio(src/'take.wav');x=np.asarray(x,dtype=np.float32);good={'groups':[],'sources':[{'file':'take.wav'}],'notes':[]}
+        for k,(a,b) in enumerate(((0,rate//4),(rate//4,rate//2))):
+            good['notes'].append({'source':'take.wav','file':f'n{k}.wav','start':a,'end':b,'fade':0,'sha256':_cut_note(x,a,b,0,info['rate'],root/f'probe{k}.wav')})
+        assert cut_sources(good,src,root/'ok')==2 and sorted(p.name for p in (root/'ok').iterdir())==['n0.wav','n1.wav']
+        y=x.copy();y[rate//4:]*=.5;audio.write_wav(src/'take.wav',y)
+        rejects(lambda:cut_sources(good,src,root/'changed'));assert not owned.occupied(root/'changed')
+        save_json(root/'manifest.json',good);script=str(Path(__file__).with_name('soundbank.py'))
+        r=subprocess.run([sys.executable,script,'cut',str(root/'manifest.json'),'--root',str(src),'--output',str(root/'cli')],capture_output=True,text=True,timeout=120)
+        assert r.returncode==2 and 'does not reproduce' in r.stderr and 'Traceback' not in r.stderr and not owned.occupied(root/'cli'),(r.returncode,r.stderr[-400:])
+        r=subprocess.run([sys.executable,script,'build',str(root/'manifest.json'),'--root',str(src),'--output',str(root/'same.sf2'),'--receipt',str(root/'.'/'same.sf2')],capture_output=True,text=True,timeout=120)
+        assert r.returncode==2 and 'one file' in r.stderr and not owned.occupied(root/'same.sf2'),(r.returncode,r.stderr[-400:])
+        # So is one that names the bank through another folder name for the same folder (a junction, a link).
+        (root/'banks').mkdir();aliased=False
+        if os.name=='nt':aliased=subprocess.run(['cmd','/c','mklink','/J',str(root/'alias'),str(root/'banks')],capture_output=True).returncode==0
+        else:os.symlink(root/'banks',root/'alias',target_is_directory=True);aliased=True
+        if aliased:
+            r=subprocess.run([sys.executable,script,'build',str(root/'manifest.json'),'--root',str(src),'--output',str(root/'banks'/'kit.sf2'),'--receipt',str(root/'alias'/'kit.sf2')],capture_output=True,text=True,timeout=120)
+            assert r.returncode==2 and 'one file' in r.stderr and not owned.occupied(root/'banks'/'kit.sf2'),(r.returncode,r.stderr[-400:])
+        return {'refused':['..','absolute'],'changed_source_kept_nothing':True,'receipt_on_the_bank_refused':True,'receipt_through_an_alias_refused':aliased}
     check('a_cut_manifest_writes_only_inside_its_folder',files_stay_inside)
     def no_overwrite():
         import subprocess,sys
@@ -1572,7 +1802,44 @@ def checks(work,config=None):
                              '--license','test','--source','test','--version','1','--output',str(new/'config.json')],capture_output=True,text=True)
         assert done.returncode==0,done.stderr
         loaded=audio.load_config(new/'config.json');assert Path(loaded['soundfonts']['named']['path'])==(old/'own.sf2').resolve()
-        return {'named_bank':'still found'}
+        # configure checks its bank's tables as add-soundfont does: a file that is no SoundFont is refused, a bank is
+        # configured.  (Found by a review of 0.4.0.)
+        (old/'not-a-bank.sf2').write_text('plain text',encoding='utf-8')
+        for font,want in ((old/'not-a-bank.sf2',2),(bank,0)):
+            out=new/f'configured_{want}.json'
+            done=subprocess.run([sys.executable,str(here/'studio.py'),'configure','--fluidsynth',str(old/'fs.exe'),'--ffmpeg',str(old/'ff.exe'),
+                                 '--soundfont',str(font),'--output',str(out)],capture_output=True,text=True)
+            assert done.returncode==want and out.is_file()==(want==0),(font,done.returncode,done.stderr[-300:])
+        # A spec, manifest or configuration that is no JSON object is refused with what it should be (a list stopped
+        # the command with a traceback); a configuration given as a link is not read through it (it was resolved
+        # first; both found by GPT Pro's fifth review of 0.4.0).
+        # An object without the fields each reads first is refused the same way (it raised KeyError).
+        (old/'list.json').write_text('[]',encoding='utf-8');(old/'empty.json').write_text('{}',encoding='utf-8');(old/'root').mkdir(exist_ok=True)
+        for doc,says in (('list.json','JSON object'),('empty.json','needs')):
+            for argv in (['soundbank.py','build',str(old/doc),'--root',str(old/'root'),'--output',str(new/'x.sf2'),'--receipt',str(new/'x.json')],
+                         ['soundbank.py','split',str(old/doc),'--root',str(old/'root'),'--output',str(new/'x_split')],
+                         ['soundbank.py','cut',str(old/doc),'--root',str(old/'root'),'--output',str(new/'x_cut')],
+                         ['fetch_soundbanks.py','--config',str(old/doc),'--runtime',str(new/'rt'),'--output',str(new/'x_cfg.json'),'--offline']):
+                done=subprocess.run([sys.executable,str(here/argv[0]),*argv[1:]],capture_output=True,text=True)
+                assert done.returncode==2 and says in done.stderr and 'Traceback' not in done.stderr,(argv[1],doc,done.returncode,done.stderr[-300:])
+        # A bank spec without its name, a configuration with a null path, banks given as a list: refused naming the
+        # field, by one shape check for every reader of a configuration (they raised KeyError, TypeError and
+        # AttributeError; found by GPT Pro's sixth review of 0.4.0).
+        (old/'nameless.json').write_text('{"presets": []}',encoding='utf-8')
+        (old/'null_path.json').write_text(json.dumps({'fluidsynth':{'path':None},'ffmpeg':{},'soundfont':{}}),encoding='utf-8')
+        (old/'bank_list.json').write_text(json.dumps({'soundfonts':[]}),encoding='utf-8')
+        for argv,says in ((['soundbank.py','build',str(old/'nameless.json'),'--root',str(old/'root'),'--output',str(new/'y.sf2'),'--receipt',str(new/'y.json')],'"name"'),
+                          (['studio.py','doctor','--config',str(old/'null_path.json')],'"fluidsynth"'),
+                          (['studio.py','add-soundfont','--config',str(old/'bank_list.json'),'--path',str(old/'own.sf2'),'--output',str(new/'z.json'),
+                            '--name','extra','--license','test','--source','test','--version','1'],'"soundfonts"')):
+            done=subprocess.run([sys.executable,str(here/argv[0]),*argv[1:]],capture_output=True,text=True)
+            assert done.returncode==2 and says in done.stderr and 'Traceback' not in done.stderr,(argv[1],done.returncode,done.stderr[-300:])
+        assert not [n for n in ('y.sf2','y.json','z.json') if (new/n).exists()]
+        linked_cfg=False
+        try:os.symlink(old/'config.json',old/'linked_config.json');linked_cfg=True
+        except (OSError,NotImplementedError):pass  # symbolic links need a privilege on Windows
+        if linked_cfg:assert rejects(lambda:audio.load_config(old/'linked_config.json'))
+        return {'named_bank':'still found','configure_refuses_a_file_that_is_no_bank':True,'linked_config_refused':linked_cfg}
     check('a_config_written_elsewhere_keeps_relative_banks',relative_banks)
     def short_downloads():
         import http.server,threading
@@ -1595,6 +1862,13 @@ def checks(work,config=None):
             try:fs._fetch_once(base+'/short',dest,None,10**6,None);raise AssertionError('kept a short download')
             except fs.Damaged:pass
             assert not dest.exists() and not dest.with_name('dl.bin.partial').exists()
+            # The bootstrap's downloads too: one the server cuts short is a Short, tried again, and leaves nothing.
+            import bootstrap;bh=bootstrap.HOSTS;bootstrap.HOSTS=bh+('127.0.0.1',)
+            try:
+                try:bootstrap._download_once({'url':base+'/short','bytes':1000,'sha256':'0'*64},dest);raise AssertionError('kept a short download')
+                except bootstrap.Short:pass
+            finally:bootstrap.HOSTS=bh
+            assert not dest.exists() and not list(work.glob('.dl.bin.*'))
             dest.write_bytes(b'damaged')
             fs.fetch=lambda url,d,size=None,max_bytes=0,tries=4,check=None:fs._fetch_once(base+'/ok',d,size,10**6,check)
             fs.cached('https://example.invalid/ok',dest,False,1000,lambda f:f.read_bytes()==body)
@@ -1602,22 +1876,47 @@ def checks(work,config=None):
         finally:
             fs.HOSTS=hosts;server.shutdown()
             import importlib;importlib.reload(fs)
-        # A damaged cached wheel is replaced by the one just verified, and that is the file handed back.
-        import bootstrap,hashlib,subprocess as sp
-        good=b'pedalboard wheel';name='pedalboard-0.9.26-cp313-cp313-win_amd64.whl';wc=work/'wheel_cache';wc.mkdir(exist_ok=True)
+        # A damaged cached wheel is set aside and the wheel fetched again from its locked address (bootstrap.download,
+        # stood in for here), and that is the file handed back.
+        import bootstrap,hashlib
+        good=b'pedalboard wheel';name=f'pedalboard-0.9.26-{bootstrap.wheel_tags()[0]}.whl';wc=work/'wheel_cache';wc.mkdir(exist_ok=True)
         (wc/name).write_bytes(b'damaged')
-        lock={'optional':{'pedalboard':{'version':'0.9.26','wheels':{name:{'bytes':len(good),'sha256':hashlib.sha256(good).hexdigest()}}}}}
-        real=bootstrap.subprocess.run
-        def fake(argv,**k):
-            target=Path(argv[argv.index('-d')+1])
-            (target/name).write_bytes((wc/name).read_bytes() if '--no-index' in argv else good)
-            return sp.CompletedProcess(argv,0,b'',b'')
+        lock={'optional':{'pedalboard':{'version':'0.9.26','wheels':{name:{'url':'https://files.pythonhosted.org/x/'+name,'bytes':len(good),'sha256':hashlib.sha256(good).hexdigest()}}}}}
+        real=bootstrap.download
+        def fake(item,dest,offline):
+            assert item['url'].endswith(name) and not offline
+            dest.write_bytes(good)
         try:
-            bootstrap.subprocess.run=fake
+            bootstrap.download=fake
             path,meta=bootstrap.pedalboard_wheel(lock,wc,False)
-        finally:bootstrap.subprocess.run=real
-        assert path==wc/name and path.read_bytes()==good and file_hash(path)==meta['sha256']
-        return {'short_read':'tried again, never cached','damaged_cache':'downloaded again','damaged_wheel':'replaced'}
+        finally:bootstrap.download=real
+        assert path==wc/name and path.read_bytes()==good and file_hash(path)==meta['sha256'] and len(list(wc.glob(name+'.replaced-*')))==1
+        # bootstrap.download tries a server error, a download cut short and a timeout again, after 3, 6 and 12 s, as
+        # fetch_soundbanks.fetch does, and nothing else: one HTTP 504 from GitHub's servers stopped a whole install,
+        # without saying which download (found by CI).
+        import types,urllib.error
+        item={'url':'https://github.com/x/y.zip','bytes':len(good),'sha256':hashlib.sha256(good).hexdigest()}
+        status=lambda code:urllib.error.HTTPError(item['url'],code,'x',{},None)
+        def failing(errors):
+            left=list(errors)
+            def once(item,dest):
+                if left:raise left.pop(0)
+                dest.write_bytes(good)
+            return once
+        waits=[];real_once=bootstrap._download_once
+        try:
+            bootstrap.time=types.SimpleNamespace(sleep=waits.append)
+            for errors,ok,paused in (((status(504),bootstrap.Short('cut'),TimeoutError('slow')),True,[3,6,12]),((status(404),),False,[]),
+                                     ((ValueError('the download does not match the lock'),),False,[]),((status(503),)*4,False,[3,6,12]),
+                                     ((FileExistsError(17,'taken meanwhile'),),False,[])):
+                waits.clear();dest=work/'retried.bin';bootstrap._download_once=failing(errors)
+                if dest.exists():dest.unlink()
+                try:bootstrap.download(item,dest,False);assert ok and dest.read_bytes()==good,errors
+                except (OSError,ValueError):assert not ok,errors
+                assert waits==paused,(errors,waits)
+        finally:bootstrap.time=time;bootstrap._download_once=real_once
+        return {'short_read':'tried again, never cached','damaged_cache':'downloaded again','damaged_wheel':'replaced',
+                'bootstrap_retries':'server errors, short reads and timeouts, after 3, 6 and 12 s'}
     check('a_short_or_damaged_download_is_never_kept',short_downloads)
     def compare_unit():
         # Hand-made renders of the setup study (no buses: the premix is the stems summed), the bass a quiet part:
@@ -1710,7 +2009,7 @@ def checks(work,config=None):
                 audio.write_wav(out/f'{f}.wav',x.astype(np.float32))
             return out
         louder_bass=copy.deepcopy(cq);next(tr for tr in louder_bass['tracks'] if tr['id']=='bass')['mix']['level_dbfs']+=6
-        wide=copy.deepcopy(cq);wide['mix']['dynamics']='wide'
+        wide=copy.deepcopy(cq);wide['mix'].update(dynamics='wide',chain='bus')  # validate: "wide" is the bus chain's
         c0=chain('chain_before',cq,bass0,lead0)
         ec=compare(c0,chain('chain_echo',louder_bass,2*bass0,lead1));g2=ec['files']
         assert g2['stems']['bass']['level_db']==6.02 and abs(real(g2['stems']['lead'])[0]['start_s']-6)<.02,g2['stems']
@@ -1747,6 +2046,1148 @@ def checks(work,config=None):
         return {'note':r['summary']['changed'],'louder':m['summary']['changed'],'quiet_bass':q['summary']['changed'],'echo':ec['summary']['changed'],
                 'band':bd['summary']['changed'],'tempo':tp['summary']['changed']}
     check('compare_finds_level_and_local_changes',compare_unit)
+    def compare_rewritten_level():
+        # A file rewritten throughout has no overall level (more of it changed than one gain matches: its windows' gains
+        # scatter, and their median once gave -332 dB); a level move keeps its level.
+        from musiclib.compare import compare_audio,describe
+        n=48000*4
+        def line(seed):
+            g=np.random.default_rng(seed);x=np.zeros(n);seg=np.arange(n//16)/48000
+            for k in range(16):x[k*n//16:(k+1)*n//16]=.2*np.sin(2*np.pi*220*2**(g.integers(0,24)/12)*seg)*np.exp(-3*seg)
+            return np.stack([x,.9*x],axis=1).astype(np.float32)
+        a=line(1);audio.write_wav(work/'cmp_a.wav',a);clock=Clock(example());out={}
+        for name,b in (('level',.5*a),('rewritten',line(2)),('quieter_rewrite',.05*line(3))):
+            audio.write_wav(work/f'cmp_{name}.wav',b.astype(np.float32));e,_,_=compare_audio(work/'cmp_a.wav',work/f'cmp_{name}.wav',clock);out[name]=e['level_db']
+        assert out['level']==-6.02 and out['rewritten'] is None and out['quieter_rewrite'] is None,out
+        assert describe(e).startswith('no overall level'),describe(e)
+        return out
+    check('compare_reports_no_level_for_a_rewritten_file',compare_rewritten_level)
+    def entry_lock_across_renders():
+        # Renders sharing a cache: while one process holds a cache entry, another cannot take it, and can once it ends.
+        import subprocess,sys
+        from musiclib.render import entry_lock,keep_stem
+        folder=work/'lock_entry';folder.mkdir()
+        code=('import sys,time;sys.path.insert(0,sys.argv[1]);from musiclib.render import entry_lock\n'
+              'with entry_lock(sys.argv[2]) as held:\n    print(held,flush=True);time.sleep(4)')
+        holder=subprocess.Popen([sys.executable,'-c',code,str(Path(__file__).resolve().parent),str(folder)],stdout=subprocess.PIPE,text=True)
+        try:
+            assert holder.stdout.readline().strip()=='True'
+            with entry_lock(folder,wait=False) as busy:assert busy is False
+        finally:
+            holder.wait(timeout=60);holder.stdout.close()
+        with entry_lock(folder,wait=False) as free:assert free is True
+        with entry_lock(folder) as again:assert again is True
+        # Keeping a stem is only a saving: one that cannot be written is skipped, not raised.
+        assert keep_stem(work/'no_such_entry',work/'lock_entry'/'entry.lock',{}) is False
+        # A keep stopped part way by anything (Ctrl+C in a part's thread) leaves no copy behind, and clean knows the
+        # names a render's own files take while written, so an entry holding one is still one it may remove.  (Found
+        # by GPT Pro's third review of 0.4.0: the copy stayed, and the entry was left alone for ever.)
+        import shutil as sh
+        from musiclib.clean import ENTRY_FILES
+        (work/'lock_entry'/'stem_source.wav').write_bytes(bytes(8192));real_copy=sh.copyfile
+        def stopped(src,dst,*a,**k):
+            Path(dst).write_bytes(bytes(4096));raise KeyboardInterrupt
+        sh.copyfile=stopped
+        try:
+            try:
+                keep_stem(work/'lock_entry',work/'lock_entry'/'stem_source.wav',{});raise AssertionError('the stop went unnoticed')
+            except KeyboardInterrupt:pass
+        finally:sh.copyfile=real_copy
+        assert not [x.name for x in (work/'lock_entry').iterdir() if x.name.startswith('.stem.wav')],sorted(x.name for x in (work/'lock_entry').iterdir())
+        assert ENTRY_FILES.fullmatch('.stem.wav.fwn3nxr2.wav') and ENTRY_FILES.fullmatch('.raw.wav.a1_b2c3d.wav') and not ENTRY_FILES.fullmatch('my_take.wav')
+        return {'held_by_another_process_refused':True,'free_after_it_ends':True,'failed_keep_skipped':True,'stopped_keep_left_nothing':True}
+    check('cache_entry_locked_across_renders',entry_lock_across_renders)
+    def clean_only_what_the_tools_made():
+        # clean deletes only folders whose tool-written records say a tool made them, of the kept piece, never through
+        # a link, and only when asked to: these are the cases two reviews of 0.4.0 found it deleting what it should not.
+        import subprocess,sys
+        from musiclib.clean import clean,describe
+        base=work/'clean_cases';H=lambda c:c*64
+        from musiclib import files as record
+        # Folders as the tools leave them: each records what it wrote in its files.json (musiclib.files), and a
+        # round names its project relative to itself.
+        def made(folder,title,keys=(),recorded=True):
+            folder.mkdir(parents=True);save_json(folder/'render_input.json',{'project_sha256':H('a'),'renderer_sha256':H('b')})
+            save_json(folder/'project.json',{'title':title,'tracks':[]});save_json(folder/'stem_receipts.json',[{'track':'t','cache_key':k} for k in keys])
+            (folder/'master.wav').write_bytes(bytes(1000))
+            if recorded:record.register(folder,[folder/n for n in ('render_input.json','project.json','stem_receipts.json','master.wav')])
+            return folder
+        def round_of(folder,title,project,keys=()):
+            folder.mkdir(parents=True)
+            save_json(folder/'round.json',{'kind':'music-production round','title':title,'project':os.path.relpath(project,folder).replace(os.sep,'/'),'status':'DRAFT_PASS','review':'review/score_review.json','render':'render/report.json','seconds':{}})
+            record.register(folder,[folder/'round.json']);made(folder/'render',title,keys);return folder
+        def entry(cache,key):
+            (cache/key).mkdir(parents=True);save_json(cache/key/'receipt.json',{'key':key,'sha256':H('c'),'track':'t'});(cache/key/'raw.wav').write_bytes(bytes(2000))
+        def link(at,target):
+            # A junction on Windows (no privilege needed), a symbolic link elsewhere.
+            if os.name=='nt':return subprocess.run(['cmd','/c','mklink','/J',str(at),str(target)],capture_output=True).returncode==0
+            os.symlink(target,at,target_is_directory=True);return True
+        listed=lambda r:sorted((x['kind'],Path(x['path']).as_posix()) for x in r['listed'])
+        proj=base/'piece';final=made(proj/'final','Song')
+        # A source folder with a project saved as round.json, or an ordinary render_input.json, is not a tool's folder.
+        (proj/'compositions').mkdir();save_json(proj/'compositions'/'round.json',{'title':'Song','clock':{},'tracks':[]});(proj/'compositions'/'compose.py').write_text('x',encoding='utf-8')
+        (proj/'notes').mkdir();save_json(proj/'notes'/'render_input.json',{'project_sha256':'x','renderer_sha256':'y'})
+        # A link to a folder outside holding a render is not entered; a linked record does not make a render folder.
+        outside=made(base/'outside'/'old','Song');linked=link(proj/'link_out',base/'outside')
+        symlinked=False
+        try:
+            (proj/'source').mkdir();(proj/'source'/'render_input.json').symlink_to(final/'render_input.json');save_json(proj/'source'/'project.json',{'title':'Song'});symlinked=True
+        except OSError:pass  # symbolic links need a privilege on Windows; the CI's Linux and macOS runs make one
+        first=clean(proj,[final])
+        assert listed(first)==[] and first['dry_run'],first
+        clean(proj,[final],remove=True)
+        assert (proj/'compositions'/'compose.py').is_file() and (proj/'notes'/'render_input.json').is_file() and (outside/'master.wav').is_file()
+        assert not symlinked or (proj/'source'/'project.json').is_file()
+        # A parent folder of two pieces: the kept piece's old round and unused cache entry go, the other piece stays.
+        work2=base/'pieces';a,b=work2/'song_a',work2/'song_b'
+        for c,k in ((a,H('1')),(a,H('2')),(b,H('3'))):entry(c/'cache',k)
+        made(a/'final','Song A',[H('1')]);round_of(a/'r1','Song A',str(a/'song.json'),[H('2')])
+        made(b/'final','Song B',[H('3')]);round_of(b/'r3','Song B',str(b/'song.json'),[H('3')])
+        dry=clean(work2,[a/'final'])
+        want=[('cache entry','song_a/cache/'+H('2')),('render','song_a/r1/render'),('round','song_a/r1')]
+        assert listed(dry)==want and (a/'r1').is_dir() and sorted(Path(x['path']).as_posix() for x in dry['left_alone'])==['song_b/final','song_b/r3','song_b/r3/render'],dry
+        assert all(x['whole'] for x in dry['listed']) and describe(dry).splitlines()[-1].startswith('Nothing was removed')
+        done=clean(work2,[a/'final'],remove=True)
+        assert listed(done)==want and not (a/'r1').exists() and (b/'final'/'master.wav').is_file() and (b/'r3').is_dir() and (b/'cache'/H('3')).is_dir()
+        # A piece renamed between rounds: its earlier round names the same project file.
+        c=work2/'song_c';round_of(c/'r1','Old name',c/'song.json');round_of(c/'r2','New name',c/'song.json')
+        assert listed(clean(work2,[c/'r2']))==[('render','song_c/r1/render'),('round','song_c/r1')]
+        # Only what a tool wrote and recorded goes, unchanged: a listed render keeps the files added to it and another
+        # piece's render inside it, so it stays, in part, with its records; a file changed since stays; and a folder
+        # from before 0.4.0, with no files.json, is left alone.  (The cases the second review of 0.4.0 found.)
+        e=work2/'song_e';made(e/'final','Song E');old=made(e/'r_old','Song E')
+        (old/'listen').mkdir();(old/'listen'/'for_the_user.mp3').write_bytes(b'mp3');(old/'my_notes.txt').write_text('mine',encoding='utf-8')
+        nested=made(old/'alt','Other song');changed=made(e/'r_changed','Song E');(changed/'master.wav').write_bytes(bytes(1001))
+        legacy=made(e/'r_legacy','Song E',recorded=False)
+        r=clean(e,[e/'final'],remove=True)
+        assert (old/'listen'/'for_the_user.mp3').is_file() and (old/'my_notes.txt').is_file() and (nested/'master.wav').is_file(),r
+        assert not (old/'master.wav').exists() and (old/'project.json').is_file() and (old/record.RECORD).is_file(),r
+        assert (changed/'master.wav').is_file() and not (changed/'stem_receipts.json').exists() and (legacy/'master.wav').is_file(),r
+        parts={Path(x['path']).as_posix():x for x in r['listed']}
+        assert not parts['r_old']['whole'] and {'r_old/listen/for_the_user.mp3','r_old/my_notes.txt'}<=set(parts['r_old']['kept_inside']),parts
+        left={Path(x['path']).as_posix():x['why'] for x in r['left_alone']}
+        assert left.get('r_old/alt')=='another piece' and 'no record' in left.get('r_legacy',''),left
+        again=clean(e,[e/'final'])  # what the first left is found again, and still not removed
+        assert {Path(x['path']).as_posix() for x in again['listed']}=={'r_old','r_changed'} and not any(x['whole'] for x in again['listed']),again
+        # A round left in part (a file of the user's in its render) loses its review/ whole, the record with it; a file
+        # named as a record but not one (files.json in a folder of the user's, a project.json no record lists at a
+        # round's top) stays, so the round goes in part even when all else goes.  (Found by a clean-room run.)
+        kept_round=round_of(e/'r_kept','Song E',e/'song.json');(kept_round/'review').mkdir()
+        save_json(kept_round/'review'/'score_review.json',{});record.register(kept_round/'review',[kept_round/'review'/'score_review.json'])
+        (kept_round/'render'/'mine.txt').write_text('mine',encoding='utf-8')
+        named=round_of(e/'r_named','Song E',e/'song.json');(named/'mine').mkdir();(named/'mine'/record.RECORD).write_text('{}',encoding='utf-8')
+        save_json(named/'project.json',{'title':'Song E'})
+        r=clean(e,[e/'final'],remove=True);parts={Path(x['path']).as_posix():x for x in r['listed']}
+        assert not (kept_round/'review').exists() and (kept_round/'round.json').is_file() and (kept_round/'render'/'mine.txt').is_file(),r
+        assert (named/'mine'/record.RECORD).is_file() and (named/'project.json').is_file() and not (named/'render').exists(),r
+        assert not parts['r_named']['whole'] and {'r_named/mine/files.json','r_named/project.json'}<=set(parts['r_named']['kept_inside']),parts
+        # A folder or a --keep given as a link is refused.
+        assert not linked or (link(base/'root_link',proj) and rejects(lambda:clean(base/'root_link',[base/'root_link'/'final'])))
+        assert not linked or (link(proj/'final_link',final) and rejects(lambda:clean(proj,[proj/'final_link'])))
+        # A cache entry a render holds stays.
+        d=work2/'song_d';entry(d/'cache',H('4'));entry(d/'cache',H('5'));made(d/'final','Song D',[H('5')])
+        code=('import sys,time;sys.path.insert(0,sys.argv[1]);from musiclib.render import entry_lock\n'
+              'with entry_lock(sys.argv[2]) as held:\n    print(held,flush=True);time.sleep(5)')
+        holder=subprocess.Popen([sys.executable,'-c',code,str(Path(__file__).resolve().parent),str(d/'cache'/H('4'))],stdout=subprocess.PIPE,text=True)
+        try:
+            assert holder.stdout.readline().strip()=='True'
+            looked=clean(d,[d/'final'])  # the dry run looks at the entry's lock too, creating nothing
+            held=clean(d,[d/'final'],remove=True)
+        finally:
+            holder.wait(timeout=60);holder.stdout.close()
+        assert [x['error'] for x in held['not_removed']]==['a render is using it'] and (d/'cache'/H('4')).is_dir(),held
+        # The dry run says so too: it listed the entry as one that goes (found by GPT Pro's third review of 0.4.0).
+        assert [x['error'] for x in looked['not_removed']]==['a render is using it'] and not any(H('4') in x['path'] for x in looked['listed']),looked
+        # An entry's lock file goes only where no render can hold another by its name: a render that makes and holds
+        # a new lock there the moment clean lets the entry go keeps it (on POSIX clean removed the name under the lock,
+        # then again after letting go, which took the render's new lock away).  (Found by a review of 0.4.0.)
+        import contextlib
+        import musiclib.render as rd
+        f2=work2/'song_f';entry(f2/'cache',H('6'));entry(f2/'cache',H('7'));made(f2/'final','Song F',[H('7')]);real_lock=rd.entry_lock;newer=[]
+        @contextlib.contextmanager
+        def then_a_render(folder,wait=True,create=True):
+            with real_lock(folder,wait,create) as free:
+                yield free
+            newer.append(os.open(Path(folder)/'entry.lock',os.O_RDWR|os.O_CREAT,0o644))  # a render, there at once
+        rd.entry_lock=then_a_render
+        try:
+            clean(f2,[f2/'final'],remove=True)
+            assert newer and (f2/'cache'/H('6')/'entry.lock').is_file(),sorted(p.name for p in (f2/'cache'/H('6')).iterdir()) if (f2/'cache'/H('6')).is_dir() else 'entry gone'
+        finally:
+            rd.entry_lock=real_lock
+            for fd in newer:os.close(fd)
+        # A link inside a listed folder (a junction on Windows, which os.walk enters) is never walked into: the empty
+        # folders where it leads stay, and the folder holding it stays in part with its records, the link named.
+        # (Found by a review of 0.4.0: the empty folders behind a junction were removed.)
+        g=work2/'song_g';made(g/'final','Song G');old_g=made(g/'r_link','Song G');(base/'beyond'/'empty'/'deeper').mkdir(parents=True)
+        junction=link(old_g/'listen',base/'beyond')
+        if junction:
+            r=clean(g,[g/'final'],remove=True);parts={Path(x['path']).as_posix():x for x in r['listed']}
+            assert (base/'beyond'/'empty'/'deeper').is_dir() and (old_g/'render_input.json').is_file() and (old_g/record.RECORD).is_file(),r
+            assert not parts['r_link']['whole'] and 'r_link/listen' in parts['r_link']['kept_inside'],parts
+            from musiclib import files as owned
+            owned.prune(old_g);assert (base/'beyond'/'empty'/'deeper').is_dir()
+        # A cache entry's file another program holds open (Windows refuses to remove it) leaves that entry, named, and
+        # the clean goes on to the rest.  (Found by a review of 0.4.0: one open file stopped the whole clean.)
+        h2=work2/'song_h';entry(h2/'cache',H('8'));entry(h2/'cache',H('9'));made(h2/'final','Song H',[H('9')]);old_h=made(h2/'r_old','Song H')
+        real_unlink=Path.unlink
+        def held_open(self,*a,**k):
+            if self.name=='raw.wav' and self.parent.name==H('8'):raise PermissionError(13,'held open by another program',str(self))
+            return real_unlink(self,*a,**k)
+        Path.unlink=held_open
+        try:r=clean(h2,[h2/'final'],remove=True)
+        finally:Path.unlink=real_unlink
+        assert [x['path'] for x in r['not_removed']]==[f'cache/{H("8")}'] and (h2/'cache'/H('8')/'receipt.json').is_file() and not old_h.exists(),r
+        # From GPT Pro's third review of 0.4.0: a tool's folder deeper than clean looked (four levels), inside a listed
+        # one, keeps its own piece and record: another piece's stays whole and is named; a file of the user's in an
+        # audition's own cache is named among what stays; a record changed while clean runs keeps the folder with its
+        # records; and a tool's folder holding a listed one stays held while clean removes inside it.
+        k=work2/'song_k';made(k/'final','Song K');old_k=made(k/'r_old','Song K');deep=made(old_k/'a'/'b'/'c'/'d'/'e','Another song')
+        r=clean(k,[k/'final'],remove=True);left={Path(x['path']).as_posix():x['why'] for x in r['left_alone']}
+        assert (deep/'master.wav').is_file() and left.get('r_old/a/b/c/d/e')=='another piece' and old_k.is_dir(),(left,r['listed'])
+        aud=k/'aud';(aud/'00_v'/'render').parent.mkdir(parents=True);save_json(aud/'00_v'/'song.json',{'title':'Song K','tracks':[]})
+        made(aud/'00_v'/'render','Song K');entry(aud/'cache',H('d'));(aud/'cache'/'my_notes.txt').write_text('mine',encoding='utf-8')
+        save_json(aud/'audition.json',{'kind':'music-production audition','title':'Song K','track':'lead','bars':[1,1],'versions':[],'each_seconds':2,'status':'FAIL'})
+        record.register_tree(aud,skip={aud/'00_v'/'render',aud/'cache'})
+        r=clean(k,[k/'final'],remove=True);parts={Path(x['path']).as_posix():x for x in r['listed']}
+        assert (aud/'cache'/'my_notes.txt').is_file() and 'aud/cache/my_notes.txt' in parts['aud']['kept_inside'],parts.get('aud')
+        import musiclib.clean as cl
+        changed=made(k/'r_changed_meanwhile','Song K');real_empty=cl._empty_folders;fired=[]
+        def meanwhile(folder,skip,holders=(),stamps=None):
+            if folder==changed and not fired:  # once, after the folder's files went and before its records do
+                fired.append(1);(changed/'late.json').write_text('{}',encoding='utf-8');record.register(changed,[changed/'late.json'])
+            return real_empty(folder,skip,holders,stamps)
+        cl._empty_folders=meanwhile
+        try:r=clean(k,[k/'final'],remove=True)
+        finally:cl._empty_folders=real_empty
+        assert record.is_record(changed/record.RECORD) and (changed/'late.json').is_file() and any(x['path']=='r_changed_meanwhile' for x in r['not_removed']),r['not_removed']
+        host=k/'other_aud';(host/'00_v').mkdir(parents=True);save_json(host/'audition.json',{'kind':'music-production audition','title':'Other song','track':'x','bars':[1,1],'versions':[],'each_seconds':2})
+        record.register(host,[host/'audition.json']);inner=made(host/'inner','Song K');real_remove=cl._remove;seen=[]
+        def watched(*a,**kw):
+            seen.append(record.take(host,create=False)[0])  # another open of the lock, as a run starting there would make
+            return real_remove(*a,**kw)
+        cl._remove=watched
+        try:clean(k,[k/'final'],remove=True)
+        finally:cl._remove=real_remove
+        assert seen==['busy'] and not inner.exists() and not record.occupied(host/record.WORK_LOCK),seen
+        # From GPT Pro's fourth review of 0.4.0: a round's review/ record written again after the plan keeps the round
+        # with its records (it went unseen); a file of the user's that appears after the plan keeps the folder with the
+        # records that name it (they went first, and the folder's removal then failed on it); a dry run lets go of the
+        # entry locks it takes; tool folders inside each other are worked out once each (it took twice as long for
+        # every level); a kept render's stem receipts are read within the record limit.
+        def after_plan(change):
+            real_plan=cl._plan
+            def planned(folder,kind,rec,inner):
+                plan=real_plan(folder,kind,rec,inner);change(Path(folder));return plan
+            cl._plan=planned;return real_plan
+        m=work2/'song_m';made(m/'final','Song M')
+        rnd=m/'r_round';rnd.mkdir();save_json(rnd/'round.json',{'kind':'music-production round','title':'Song M','project':'../song.json','status':'DRAFT_PASS',
+                                                                 'review':'review/score_review.json','render':'render/report.json','seconds':{}})
+        record.register(rnd,[rnd/'round.json']);(rnd/'review').mkdir();save_json(rnd/'review'/'score_review.json',{})
+        record.register(rnd/'review',[rnd/'review'/'score_review.json']);made(rnd/'render','Song M')
+        real_plan=after_plan(lambda f:(time.sleep(.02),record.register(rnd/'review',[])) if f==rnd else None)
+        try:r=clean(m,[m/'final'],remove=True)
+        finally:cl._plan=real_plan
+        assert record.is_record(rnd/'review'/record.RECORD) and any(x['path']=='r_round' for x in r['not_removed']),r['not_removed']
+        late=made(m/'r_late','Song M')
+        real_plan=after_plan(lambda f:(late/'my_notes.txt').write_text('mine',encoding='utf-8') if f==late else None)
+        try:r=clean(m,[m/'final'],remove=True)
+        finally:cl._plan=real_plan
+        assert (late/'my_notes.txt').is_file() and all((late/n).is_file() for n in ('files.json','render_input.json','project.json')),sorted(x.name for x in late.iterdir())
+        assert any(x['path']=='r_late' and 'appeared' in x['error'] for x in r['not_removed']),r['not_removed']
+        n_=work2/'song_n';made(n_/'final','Song N',keys=[H('e')]);entry(n_/'cache',H('e'));entry(n_/'cache',H('f'));(n_/'cache'/H('f')/'entry.lock').write_bytes(b'')
+        for _ in range(2):  # the second sees the entry as free as the first did
+            r=clean(n_,[n_/'final'],remove=False)
+            assert [x['path'] for x in r['listed'] if x['kind']=='cache entry']==[f'cache/{H("f")}'] and not r['not_removed'],(r['listed'],r['not_removed'])
+        q_=work2/'song_q';made(q_/'final','Song Q');f=q_/'a';made(f,'Song Q')
+        for k in range(1,26):f=f/chr(97+k);made(f,'Song Q')
+        began=time.monotonic();r=clean(q_,[q_/'final'],remove=False);nested_s=time.monotonic()-began
+        assert len(r['listed'])==26 and nested_s<30,(len(r['listed']),nested_s)
+        big=made(work2/'song_r'/'final','Song R');save_json(big/'stem_receipts.json',[{'track':'t','cache_key':H('a'),'pad':'x'*5000}],new=False)
+        real_max=record.MAX_RECORD;record.MAX_RECORD=2000
+        try:assert rejects(lambda:clean(work2/'song_r',[big],remove=False))
+        finally:record.MAX_RECORD=real_max
+        return {'records_by_name_alone_kept':True,'link_not_followed':linked,'linked_record_kept':symlinked,'other_piece_left_alone':True,'renamed_piece_cleaned':True,'unrecorded_files_kept':True,'held_entry_kept':True,'emptied_review_removed':True,'files_named_as_records_kept':True,
+                'deep_folder_kept_its_piece':True,'audition_cache_file_named':True,'record_changed_meanwhile_kept':True,'holding_folder_held':True,
+                'junction_not_walked':junction,'open_entry_named':True,'nested_record_changed_kept':True,'late_file_kept_with_records':True,
+                'dry_run_lets_entry_locks_go':True,'nested_26_units_s':round(nested_s,2),'kept_receipts_bounded':True}
+    check('clean_removes_only_what_the_tools_made',clean_only_what_the_tools_made)
+    def files_never_overwrite_or_write_through():
+        # Outputs never take an occupied path, a dangling link included; a write swaps a new file in, so a hard link at
+        # the path keeps its bytes; an install sets aside what it did not record, never removing it (musiclib.files).
+        from musiclib import files as fs
+        d=work/'files_cases';d.mkdir()
+        (d/'taken.txt').write_text('x',encoding='utf-8');(d/'folder').mkdir()
+        for p in (d/'taken.txt',d/'folder'):rejects(lambda p=p:fs.fresh(p))
+        fs.fresh(d/'new.txt')
+        dangling=False
+        try:os.symlink(d/'missing_target',d/'dangling');dangling=True
+        except OSError:pass  # symbolic links need a privilege on Windows; the CI's Linux and macOS runs make one
+        if dangling:
+            rejects(lambda:fs.fresh(d/'dangling'))
+            assert fs.occupied(d/'dangling') and not (d/'missing_target').exists()
+            assert [x.name for x in fs.foreign(d)]==['dangling']  # a link is something a write could leave through
+            os.unlink(d/'dangling')
+        outside=d/'outside.json';outside.write_text('{"keep": 1}',encoding='utf-8');os.link(outside,d/'linked.json')
+        assert {x.name for x in fs.foreign(d)}=={'outside.json','linked.json'}
+        fs.write_json(d/'linked.json',{'new':2})
+        assert json.loads(outside.read_text(encoding='utf-8'))=={'keep':1} and json.loads((d/'linked.json').read_text(encoding='utf-8'))=={'new':2}
+        assert not fs.foreign(d) and not [x for x in d.iterdir() if x.name.startswith('.')]
+        target=d/'install';target.mkdir();(target/'mine.txt').write_text('user',encoding='utf-8')
+        stage=fs.staging_folder(target);(stage/'mine.txt').write_text('new',encoding='utf-8');(stage/'bank.sf2').write_bytes(b'v1')
+        moved=fs.install_tree(stage,target)
+        assert len(moved)==1 and moved[0].read_text(encoding='utf-8')=='user' and (target/'mine.txt').read_text(encoding='utf-8')=='new',moved
+        stage=fs.staging_folder(target);(stage/'bank.sf2').write_bytes(b'v2')
+        assert fs.install_tree(stage,target)==[] and (target/'bank.sf2').read_bytes()==b'v2' and not stage.exists()
+        # A files.json of someone else's where an install records its files (another program's list, the user's own)
+        # is set aside and named, not written over by the record.  (Found by a review of 0.4.0.)
+        other=d/'theirs';other.mkdir();(other/'files.json').write_text('{"personal_note": "mine"}',encoding='utf-8')
+        stage=fs.staging_folder(other);(stage/'tool.txt').write_text('t',encoding='utf-8')
+        moved=fs.install_tree(stage,other)
+        assert len(moved)==1 and json.loads(moved[0].read_text(encoding='utf-8'))=={'personal_note':'mine'} and fs.is_record(other/'files.json'),moved
+        # A program that stops or fails after it began its output leaves nothing under the output's name: FFmpeg and
+        # FluidSynth write a new file of their own, which takes the name only when they succeed.  (Found by a review.)
+        from musiclib import audio
+        real_run=audio.run
+        def failing(argv,folder,label,timeout=600):
+            out=Path(argv[-1]) if label=='ffmpeg_case' else Path(argv[argv.index('-F')+1])
+            out.write_bytes(b'RIFF'+bytes(4092));raise RuntimeError(f'{label} failed (1): write failed')
+        audio.run=failing;stopped=0
+        try:
+            src=d/'in.wav';audio.write_wav(src,np.zeros((480,2),dtype=np.float32))
+            for call in (lambda:audio.ffmpeg({'ffmpeg':{'path':'ffmpeg'}},['-i',src,'-c:a','pcm_s16le',d/'out.wav'],d,'ffmpeg_case'),
+                         lambda:audio.fluidsynth({'fluidsynth':{'path':'fluidsynth'}},d/'bank.sf2',d/'in.mid',d/'synth.wav',d,'fluidsynth_case')):
+                try:call()
+                except RuntimeError:stopped+=1
+        finally:
+            audio.run=real_run
+        assert stopped==2,stopped
+        assert not fs.occupied(d/'out.wav') and not fs.occupied(d/'synth.wav') and not [x for x in d.iterdir() if x.name.startswith('.out') or x.name.startswith('.synth')],sorted(x.name for x in d.iterdir())
+        # An output is recorded only in a folder whose files.json is the tools' record: another program's files.json a
+        # few folders up is neither set aside nor written over.  (Found by a review of 0.4.0.)
+        mine=d/'project_of_theirs';(mine/'reports'/'music').mkdir(parents=True);(mine/'files.json').write_text('{"their": "list"}',encoding='utf-8')
+        (mine/'reports'/'music'/'compare.json').write_text('{}',encoding='utf-8')
+        assert fs.register_output(mine/'reports'/'music'/'compare.json') is None and json.loads((mine/'files.json').read_text(encoding='utf-8'))=={'their':'list'}
+        assert sorted(x.name for x in mine.iterdir())==['files.json','reports']
+        # A resumed run records a file it did not write only while it is unchanged since the earlier record: one the
+        # user edited between the runs is not adopted (clean would take it for the tools').  (Found by a review.)
+        resumed=d/'resumed';resumed.mkdir();(resumed/'analysis.json').write_text('{"a": 1}',encoding='utf-8');fs.register(resumed,[resumed/'analysis.json'])
+        before=fs.recorded(resumed);(resumed/'analysis.json').write_text('{"a": 1, "mine": true}',encoding='utf-8')
+        fs.register_tree(resumed,keep=before)
+        assert not fs.unchanged(resumed/'analysis.json',fs.recorded(resumed)['analysis.json'])
+        # Nor is a file put into a run's folder while the run works there, a note saved into a render folder during the
+        # render: a run records only what it wrote itself, and clean keeps the rest.  (It was recorded with the run's
+        # files and clean removed it; found by a probe of 0.4.0.)
+        busy=d/'busy_run';busy.mkdir();save_json(busy/'report.json',{'a':1});(busy/'my_notes.txt').write_text('mine',encoding='utf-8')
+        fs.register_tree(busy);assert list(fs.recorded(busy))==['report.json'],fs.recorded(busy)
+        # Nor a file put under a name the run wrote: what the run noted is the file as it was then (its device, inode,
+        # size and time), not the name (found by GPT Pro's fifth review of 0.4.0).
+        swapped=d/'swapped_run';swapped.mkdir();save_json(swapped/'report.json',{'tools':True});(swapped/'report.json').unlink()
+        (swapped/'report.json').write_text('{"the user": "wrote this"}',encoding='utf-8');fs.register_tree(swapped)
+        assert 'report.json' not in fs.recorded(swapped),fs.recorded(swapped)
+        # Nor, by its saved record, a copy put back under the name that keeps the size and time (shutil.copy2): the record
+        # keeps the file's number too, and an entry of two numbers proves nothing (found by GPT Pro's sixth review).
+        kept=d/'kept_copy';kept.mkdir();save_json(kept/'report.json',{'tools':True});fs.register_tree(kept)
+        (kept/'report.json').rename(kept/'report.orig');shutil.copy2(kept/'report.orig',kept/'report.json');(kept/'report.orig').unlink()
+        entry=fs.recorded(kept)['report.json'];assert len(entry)==3 and not fs.unchanged(kept/'report.json',entry)
+        assert not fs.unchanged(kept/'report.json',entry[:2]) and not fs.remove_own(kept) and (kept/'report.json').is_file()
+        # From the same review's reading of the code: a program's log that the run could not open, and a check's decoded
+        # file the program never wrote, are not noted as the run's; remove_own takes away only the records it found.
+        import stat as stat_mod,sys
+        from musiclib import mixbus
+        logs=d/'ro_logs';logs.mkdir();(logs/'ro.log').write_text('theirs',encoding='utf-8');os.chmod(logs/'ro.log',stat_mod.S_IREAD)
+        try:
+            try:audio.run([sys.executable,'-c','pass'],logs,'ro')
+            except OSError:pass
+            if (logs/'ro.log').read_text(encoding='utf-8')=='theirs':assert not fs.written_here(logs/'ro.log')  # (an administrator writes it)
+        finally:os.chmod(logs/'ro.log',stat_mod.S_IWRITE|stat_mod.S_IREAD)
+        dec=d/'dec';(dec/'logs').mkdir(parents=True);(dec/'logs'/'preview_decoded.wav').write_bytes(b'theirs');real_run=audio.run
+        def no_program(*a,**k):raise RuntimeError('decode_mp3 failed (1)')
+        audio.run=no_program
+        try:assert rejects_with(RuntimeError,lambda:mixbus.mp3_check({'ffmpeg':{'path':'ffmpeg'}},dec,-14))
+        finally:audio.run=real_run
+        assert not fs.written_here(dec/'logs'/'preview_decoded.wav')
+        late=d/'late_record';late.mkdir();save_json(late/'a.json',{'a':1});fs.register_tree(late);real_links=fs.links_in
+        def rewrite(folder):
+            fs.register(late,[]);return real_links(folder)  # another run writes the record again meanwhile
+        fs.links_in=rewrite
+        try:assert not fs.remove_own(late) and fs.is_record(late/fs.RECORD)
+        finally:fs.links_in=real_links
+        # A run taking its own failed output away (an audition rendering again with a longer tail) removes what its
+        # record lists, and a file put there keeps the folder and the record (the whole folder went; same review).
+        own=d/'own_run';(own/'stems').mkdir(parents=True);save_json(own/'report.json',{'a':1});save_json(own/'stems'/'a.json',{'b':2})
+        fs.register_tree(own);(own/'stems'/'my_notes.txt').write_text('mine',encoding='utf-8')
+        assert not fs.remove_own(own) and (own/'stems'/'my_notes.txt').is_file() and fs.is_record(own/fs.RECORD) and not (own/'report.json').exists()
+        (own/'stems'/'my_notes.txt').unlink();(own/'stems'/fs.RECORD).write_text('{"mine": true}',encoding='utf-8')  # no record
+        assert not fs.remove_own(own) and (own/'stems'/fs.RECORD).is_file() and fs.is_record(own/fs.RECORD)
+        (own/'stems'/fs.RECORD).unlink()
+        with fs.working(own):assert not fs.remove_own(own) and fs.is_record(own/fs.RECORD)  # another run holds it
+        assert fs.remove_own(own) and not fs.occupied(own)
+        # A record made with a relative folder, as a round or a review given a relative --output makes it, lists the
+        # files: each was taken from the folder a second time and nothing was recorded.  (Found by the stress test.)
+        here=os.getcwd();os.chdir(d)
+        try:
+            Path('rel_round').mkdir();Path('rel_round/round.json').write_text('{}',encoding='utf-8');(Path('rel_round')/'review').mkdir()
+            Path('rel_round/review/notes.csv').write_text('x',encoding='utf-8');fs.wrote(Path('rel_round/review/notes.csv'))  # as review writes it
+            fs.register(Path('rel_round'),[Path('rel_round')/'round.json']);fs.register_tree(Path('rel_round')/'review')
+        finally:os.chdir(here)
+        assert list(fs.recorded(d/'rel_round'))==['round.json'] and list(fs.recorded(d/'rel_round'/'review'))==['notes.csv']
+        # A file written whole keeps the mode a new file has under the user's umask (mkstemp makes them 0600).
+        import stat
+        made_whole=fs.stage_name(d/'mode.wav','.wav')
+        assert fs.FILE_MODE is None or stat.S_IMODE(os.stat(made_whole).st_mode)==fs.FILE_MODE,oct(os.stat(made_whole).st_mode)
+        return {'dangling_link_refused':dangling,'hard_link_kept':True,'unrecorded_set_aside':True,'foreign_record_set_aside':True,'failed_output_left_nothing':True,
+                'foreign_record_above_an_output_untouched':True,'changed_file_not_adopted_on_resume':True,'staged_mode':oct(fs.FILE_MODE) if fs.FILE_MODE is not None else 'not POSIX'}
+    check('files_never_overwrite_or_write_through',files_never_overwrite_or_write_through)
+    def writers_leave_whole_files_when_a_write_fails():
+        # A write that fails part way, as on a full disk, leaves the file that was there whole and no temporary file:
+        # every writer of a final file writes a new file of its own and swaps it in (musiclib.files.staged).  (Found by
+        # the second review of 0.4.0: the WAV, bank, manifest and note writers wrote under the final name.)
+        import errno
+        from musiclib import files as fs,sf2,loop as lp
+        from musiclib.review import review
+        import soundbank as sb
+        d=work/'full_disk';d.mkdir()
+        class Full:
+            # A file that takes 64 bytes, then reports the disk full.
+            def __init__(self,f):self.f,self.n=f,0
+            def write(self,b):
+                if self.n+len(b)>64:self.f.write(b[:max(0,64-self.n)]);raise OSError(errno.ENOSPC,'No space left on device')
+                self.n+=len(b);return self.f.write(b)
+            def __getattr__(self,k):return getattr(self.f,k)
+            def __enter__(self):return self
+            def __exit__(self,*a):return self.f.__exit__(*a)
+        tone=(.4*np.sin(2*np.pi*440*np.arange(4800)/48000)).astype(np.float32);both=np.stack([tone,tone],1)
+        bank=lambda path:sf2.write(path,'tiny',[{'name':'A4','data':tone,'rate':48000,'root':69}],
+                                   [{'name':'inst','global':{},'zones':[{'gens':{43:(60,80)},'sample':0}]}],
+                                   [{'name':'tiny','bank':0,'program':0,'global':{},'zones':[{'gens':{},'instrument':0}]}])
+        rows={'groups':[{'name':'g'}],'sources':[{'file':'s.wav'}],'notes':[{'file':f'g/n{k}.wav','sha256':'0'*64} for k in range(4)]}
+        p=example()
+        writers={'wav':lambda path:audio.write_wav(path,both),'float_wav':lambda path:sb.write_float_wav(path,both,44100),
+                 'json':lambda path:fs.write_json(path,{'a':list(range(50))}),'bank':bank,'manifest':lambda path:sb.save_manifest(path,rows),
+                 'midi':lambda path:midi.write(p,path),'loop':lambda path:lp.write_wav(path,both,0,len(both)),
+                 'review':lambda path:review(p,path.parent)}
+        real=os.fdopen
+        for name,write in writers.items():
+            folder=d/name;folder.mkdir();path=folder/('score_review.json' if name=='review' else f'out.{name}')
+            path.write_bytes(b'the file that was there')
+            os.fdopen=lambda *a,**k:Full(real(*a,**k))
+            try:
+                write(path);raise AssertionError(f'{name}: the full disk went unnoticed')
+            except OSError as e:assert e.errno==errno.ENOSPC,(name,e)
+            finally:os.fdopen=real
+            assert path.read_bytes()==b'the file that was there' and [x.name for x in folder.iterdir()]==[path.name],(name,sorted(x.name for x in folder.iterdir()))
+        # Windows refuses a rename while a virus scanner holds a file just written: the swap is tried again for up to a
+        # second (files.replace), as pip and graceful-fs do; elsewhere a refusal is final.  (A selfcheck run on Windows
+        # failed so, replacing a note's temporary file a moment after it was made.)
+        real_replace=os.replace;refused=[]
+        def scanner(src,dst):
+            if len(refused)<2:
+                refused.append(dst);raise PermissionError(13,'held by another program',str(dst))
+            return real_replace(src,dst)
+        os.replace=scanner
+        try:
+            if os.name=='nt':
+                fs.write_json(d/'scanned.json',{'a':1});assert json.loads((d/'scanned.json').read_text(encoding='utf-8'))=={'a':1} and len(refused)==2
+            else:
+                try:
+                    fs.write_json(d/'scanned.json',{'a':1});raise AssertionError('a refused rename went unnoticed')
+                except PermissionError:pass
+        finally:os.replace=real_replace
+        assert not [x.name for x in d.iterdir() if x.name.startswith('.scanned')]
+        # publish_new where a drive has no hard links (FAT on POSIX, some network drives): the empty reservation under
+        # the output's name goes when the new file cannot take its place (it stayed, and the name looked taken; found
+        # by GPT Pro's fourth review of 0.4.0).  Run here as on POSIX, with files' own os standing in.
+        import types
+        out=d/'reserved.json';src=d/'reserved.src';src.write_text('{}',encoding='utf-8')
+        def no_link(*a,**k):raise OSError(errno.EOPNOTSUPP,'no hard links')
+        def storage_fails(a,b,*x,**k):
+            if Path(b)==out:raise OSError(errno.EIO,'storage failure')
+            return os.replace(a,b,*x,**k)
+        shim=types.SimpleNamespace(**{k:getattr(os,k) for k in dir(os) if not k.startswith('__')});shim.name,shim.link,shim.replace='posix',no_link,storage_fails
+        real_os=fs.os;fs.os=shim
+        try:assert rejects_with(OSError,lambda:fs.publish_new(src,out))
+        finally:fs.os=real_os
+        assert not fs.occupied(out) and src.is_file()
+        # A bank the soundbank command found free is published only while it still is (sf2.write new).
+        taken=d/'taken.sf2';taken.write_bytes(b'theirs');tone=(.3*np.sin(2*np.pi*440*np.arange(480)/48000)).astype(np.float32)
+        assert rejects_with(FileExistsError,lambda:sf2.write(taken,'x',[{'name':'A4','data':tone,'rate':48000,'root':69}],[{'name':'i','global':{},'zones':[{'gens':{},'sample':0}]}],
+                                                            [{'name':'x','bank':0,'program':0,'global':{},'zones':[{'gens':{},'instrument':0}]}],new=True))
+        assert taken.read_bytes()==b'theirs'
+        # On POSIX, a published output whose temporary name cannot then be removed is still noted as the run's (it
+        # was not, and went unrecorded; found by GPT Pro's fifth review of 0.4.0).
+        out=d/'linked_out.json';src=d/'linked_out.src';src.write_text('{}',encoding='utf-8');real_unlink=os.unlink
+        def stuck(path,*a,**k):
+            if Path(path)==src:raise OSError(errno.EIO,'storage failure')
+            return real_unlink(path,*a,**k)
+        shim=types.SimpleNamespace(**{k:getattr(os,k) for k in dir(os) if not k.startswith('__')});shim.name,shim.unlink='posix',stuck
+        real_os=fs.os;fs.os=shim
+        try:assert rejects_with(OSError,lambda:fs.publish_new(src,out))
+        finally:fs.os=real_os
+        assert out.is_file() and fs.written_here(out)
+        return {'writers':sorted(writers),'refused_rename_retried':os.name=='nt','reservation_removed':True,'bank_not_over_a_taken_name':True}
+    check('writers_leave_whole_files_when_a_write_fails',writers_leave_whole_files_when_a_write_fails)
+    def run_stops_its_program_when_stopped():
+        # A run stopped from outside (Ctrl+C, a failure in another part) stops the program it started and waits for it,
+        # so nothing that program writes outlives the run.  (Found by the second review of 0.4.0.)
+        import subprocess,sys
+        started=[];real=subprocess.Popen
+        class Interrupted(real):
+            def __init__(self,*a,**k):super().__init__(*a,**k);started.append(self);self.asked=False
+            def wait(self,timeout=None):
+                if not self.asked:
+                    self.asked=True;raise KeyboardInterrupt  # as Ctrl+C arrives while the run waits
+                return super().wait(timeout)
+        subprocess.Popen=Interrupted
+        try:
+            try:
+                audio.run([sys.executable,'-c','import time;time.sleep(60)'],work/'stopped_run','sleeper');raise AssertionError('the stop went unnoticed')
+            except KeyboardInterrupt:pass
+        finally:subprocess.Popen=real
+        assert len(started)==1 and started[0].poll() is not None,started
+        # A part's program stops once another part of its render has failed (audio.cancel_scope): it ran to its end.
+        import threading
+        event=threading.Event();threading.Timer(.3,event.set).start();began=time.monotonic()
+        try:
+            with audio.cancel_scope(event):
+                audio.run([sys.executable,'-c','import time;time.sleep(30)'],work/'cancelled_run','sleeper');raise AssertionError('not stopped')
+        except audio.Cancelled:pass
+        assert time.monotonic()-began<10,time.monotonic()-began
+        # A part stopped before its program starts starts none; one waiting for memory or for a cache entry another
+        # process holds stops waiting.  (A program started after the stop ran to its end, and a waiting part waited on,
+        # then synthesized; found by GPT Pro's fourth review of 0.4.0.)
+        import musiclib.render as rd
+        stopped=threading.Event();stopped.set();ran=work/'ran_after_the_stop.txt'
+        with audio.cancel_scope(stopped):
+            assert rejects_with(audio.Cancelled,lambda:audio.run([sys.executable,'-c',f'open({str(ran)!r},"w").write("ran")'],work/'late_run','late'))
+        assert not ran.exists()
+        budget=rd.MemoryBudget(10_000);event=threading.Event();threading.Timer(.3,event.set).start();began=time.monotonic()
+        with budget.hold(10_000):
+            with audio.cancel_scope(event):
+                assert rejects_with(audio.Cancelled,lambda:budget.hold(5_000).__enter__())
+        waited_memory=time.monotonic()-began
+        entry=work/'held_entry';entry.mkdir()
+        code=('import sys,time;sys.path.insert(0,sys.argv[1]);from musiclib.render import entry_lock\n'
+              'with entry_lock(sys.argv[2]) as held:\n    print(held,flush=True);time.sleep(20)')
+        holder=subprocess.Popen([sys.executable,'-c',code,str(Path(__file__).resolve().parent),str(entry)],stdout=subprocess.PIPE,text=True)
+        try:
+            assert holder.stdout.readline().strip()=='True'
+            event=threading.Event();threading.Timer(.3,event.set).start();began=time.monotonic()
+            def wait_for_entry():
+                with rd.entry_lock(entry):raise AssertionError('took an entry another process holds')
+            with audio.cancel_scope(event):
+                assert rejects_with(audio.Cancelled,wait_for_entry)
+            waited_entry=time.monotonic()-began
+        finally:
+            holder.kill();holder.wait(timeout=30);holder.stdout.close()
+        assert waited_memory<5 and waited_entry<5,(waited_memory,waited_entry)
+        return {'program_stopped':True,'returncode':started[0].returncode,'stopped_with_its_render':True,
+                'no_program_after_the_stop':True,'memory_wait_stopped_s':round(waited_memory,2),'entry_wait_stopped_s':round(waited_entry,2)}
+    check('run_stops_its_program_when_stopped',run_stops_its_program_when_stopped)
+    def bootstrap_receipts_set_aside_what_it_did_not_write():
+        # The dependency receipts take their place as an installed file does: a dependency_receipts.json bootstrap did
+        # not write, or one edited since, is set aside under a new name and kept; bootstrap's own is replaced.  (Found by
+        # the second review of 0.4.0: an unrelated file there was written over.)
+        import bootstrap,contextlib,io
+        rt=work/'receipts_runtime';rt.mkdir();(rt/'dependency_receipts.json').write_text('{"mine": true}',encoding='utf-8')
+        said=io.StringIO();aside=lambda:sorted(x for x in rt.iterdir() if '.replaced-' in x.name)
+        with contextlib.redirect_stdout(said):bootstrap.save_receipts(rt,[{'id':'a'}])
+        assert len(aside())==1 and json.loads(aside()[0].read_text(encoding='utf-8'))=={'mine':True} and 'SET ASIDE' in said.getvalue(),said.getvalue()
+        assert json.loads((rt/'dependency_receipts.json').read_text(encoding='utf-8'))==[{'id':'a'}]
+        with contextlib.redirect_stdout(said):bootstrap.save_receipts(rt,[{'id':'b'}])
+        assert len(aside())==1 and json.loads((rt/'dependency_receipts.json').read_text(encoding='utf-8'))==[{'id':'b'}]
+        (rt/'dependency_receipts.json').write_text('[{"id": "b", "edited": true}]',encoding='utf-8')
+        with contextlib.redirect_stdout(said):bootstrap.save_receipts(rt,[{'id':'c'}])
+        assert len(aside())==2 and json.loads((rt/'dependency_receipts.json').read_text(encoding='utf-8'))==[{'id':'c'}]
+        assert not [x for x in rt.iterdir() if x.name.startswith('.')],sorted(x.name for x in rt.iterdir())
+        # The configuration's path is checked before the install and again when it is written: files.json is refused,
+        # and a path the install put a bank at meanwhile keeps the bank (it was written over with the configuration;
+        # found by GPT Pro's third review of 0.4.0).
+        from musiclib import files as fs
+        assert rejects(lambda:fs.check_config_path(rt/'files.json','--config'))
+        bank=rt/'demo.sf2';fs.check_config_path(bank,'--config');bank.write_bytes(b'RIFF a bank')
+        assert rejects(lambda:fs.save_config(bank,{'a':1},'--config')) and bank.read_bytes()==b'RIFF a bank'
+        fs.save_config(rt/'config.json',{'a':1},'--config');assert json.loads((rt/'config.json').read_text(encoding='utf-8'))=={'a':1}
+        return {'set_aside':len(aside()),'own_replaced':True,'config_never_over_an_installed_file':True}
+    check('bootstrap_receipts_set_aside_what_it_did_not_write',bootstrap_receipts_set_aside_what_it_did_not_write)
+    def clean_and_runs_never_share_a_folder():
+        # A render, round or audition holds its folder's work lock while it runs (musiclib.files.working); clean takes
+        # the same lock before it looks inside a folder.  A folder in use, or inside one in use, is left alone and named,
+        # a second run there is refused, and once the run ends its lock file is gone.  (Found by the second review of
+        # 0.4.0: clean could remove the files of a round or a resumed render at work.)
+        import subprocess,sys
+        from musiclib import files as fs
+        from musiclib.clean import clean
+        H=lambda c:c*64
+        def made(folder,title):
+            folder.mkdir(parents=True);save_json(folder/'render_input.json',{'project_sha256':H('a'),'renderer_sha256':H('b')})
+            save_json(folder/'project.json',{'title':title,'tracks':[]});save_json(folder/'stem_receipts.json',[]);(folder/'master.wav').write_bytes(bytes(1000))
+            fs.register(folder,[folder/n for n in ('render_input.json','project.json','stem_receipts.json','master.wav')]);return folder
+        piece=work/'lock_cases';final=made(piece/'final','Song');busy=made(piece/'r_busy','Song');idle=made(piece/'r_idle','Song')
+        rnd=piece/'r_round';rnd.mkdir()
+        save_json(rnd/'round.json',{'kind':'music-production round','title':'Song','project':'../song.json','status':'FAIL','review':'review/score_review.json','render':'render/report.json','seconds':{}})
+        fs.register(rnd,[rnd/'round.json']);made(rnd/'render','Song')
+        code=('import sys,time;sys.path.insert(0,sys.argv[1]);from musiclib import files\n'
+              'with files.working(sys.argv[2]) as one,files.working(sys.argv[3]) as two:\n    print(one and two,flush=True);time.sleep(6)')
+        holder=subprocess.Popen([sys.executable,'-c',code,str(Path(__file__).resolve().parent),str(busy),str(rnd)],stdout=subprocess.PIPE,text=True)
+        try:
+            assert holder.stdout.readline().strip()=='True'
+            assert fs.take(busy)[0]=='busy' and rejects(lambda:fs.working(busy).__enter__())
+            # A reference render is held while it is read too, so one a run is still writing is refused (it was read
+            # unheld, and a clean could take its master mid-read; found by GPT Pro's fourth review of 0.4.0).
+            from musiclib.analysis import load_reference
+            try:load_reference(str(busy));raise AssertionError('a reference in use was read')
+            except ValueError as e:assert 'in use' in str(e),e
+            dry=clean(piece,[final]);done=clean(piece,[final],remove=True)
+        finally:
+            holder.wait(timeout=60);holder.stdout.close()
+        for r in (dry,done):
+            left={Path(x['path']).as_posix():x['why'] for x in r['left_alone']}
+            assert [Path(x['path']).as_posix() for x in r['listed']]==['r_idle'] and set(left)=={'r_busy','r_round','r_round/render'},r
+            assert all('working in it' in why for why in left.values()),left
+        assert (busy/'master.wav').is_file() and (rnd/'render'/'master.wav').is_file() and not idle.exists()
+        assert not fs.occupied(busy/fs.WORK_LOCK) and not fs.occupied(rnd/fs.WORK_LOCK)  # each went with its run
+        again=clean(piece,[final],remove=True)
+        assert sorted(Path(x['path']).as_posix() for x in again['listed'])==['r_busy','r_round','r_round/render'] and not busy.exists() and not rnd.exists(),again
+        return {'busy_left_alone':True,'inside_busy_left_alone':True,'second_run_refused':True,'lock_file_gone_after_the_run':True}
+    check('clean_and_runs_never_share_a_folder',clean_and_runs_never_share_a_folder)
+    def render_refuses_a_linked_output():
+        # A render's output given as a link is refused before it is resolved, which would follow the link and write
+        # wherever it leads.  (Found by the second review of 0.4.0.)
+        import subprocess
+        from musiclib.render import render
+        target=work/'link_target';target.mkdir();at=work/'render_through_link'
+        if os.name=='nt':made=subprocess.run(['cmd','/c','mklink','/J',str(at),str(target)],capture_output=True).returncode==0
+        else:
+            os.symlink(target,at,target_is_directory=True);made=True
+        if made:
+            try:
+                render(work/'no_such_project.json',at,None);raise AssertionError('a linked output was taken')
+            except ValueError as e:assert 'is a link' in str(e),e  # refused for being a link, not for what it leads to
+            assert not list(target.iterdir())
+        return {'link_refused':made}
+    check('render_refuses_a_linked_output',render_refuses_a_linked_output)
+    def bounded_reads_of_records_and_wav_headers():
+        # A WAV format chunk larger than any format needs, and a stopped render's report.json larger than a record may
+        # be, are refused before they are read whole.  (Found by the second review of 0.4.0.)
+        from musiclib import files as fs
+        from musiclib.render import stopped
+        wav=work/'huge_fmt.wav';wav.write_bytes(b'RIFF'+struct.pack('<I',4020)+b'WAVE'+b'fmt '+struct.pack('<I',4000)+bytes(4000)+b'data'+struct.pack('<I',0))
+        try:
+            audio.read_wav(wav);raise AssertionError('a 4000-byte format chunk was read')
+        except ValueError as e:assert 'format chunk' in str(e),e
+        folder=work/'stopped_big';folder.mkdir();save_json(folder/'report.json',{'failed':{'error':'x'*200}})
+        assert stopped(folder)=='x'*200
+        real=fs.MAX_RECORD;fs.MAX_RECORD=100
+        try:assert stopped(folder) is None
+        finally:fs.MAX_RECORD=real
+        # JSON nested deeper than Python parses, a SoundFont cut short inside a chunk and a loop's chunks shorter than
+        # what they count are refused with a reason, and a record so nested is no record (it raised RecursionError and
+        # struct.error, and stopped clean).  (Found by the stress test of 0.4.0.)
+        from musiclib import loop as lp,sf2
+        from musiclib.model import load_project
+        deep=work/'deep.json';deep.write_text('['*100000+']'*100000,encoding='utf-8')
+        assert rejects(lambda:load_project(deep))
+        # Python 3.14 parses those 100,000 levels, and a free-form harmony 600 levels deep, which every Python parses,
+        # passed validate and stopped excerpt's copy of the project with RecursionError: JSON is read to MAX_DEPTH
+        # levels, no deeper (found by CI on Python 3.14).
+        assert fs.loads('['*fs.MAX_DEPTH+']'*fs.MAX_DEPTH) and rejects(lambda:fs.loads('['*(fs.MAX_DEPTH+1)+']'*(fs.MAX_DEPTH+1)))
+        nested=[]
+        for _ in range(600):nested=[nested]
+        q=example();q['harmony']={'chart':nested};(work/'deep_harmony.json').write_text(json.dumps(q),encoding='utf-8')
+        assert rejects(lambda:load_project(work/'deep_harmony.json'))
+        q['harmony']={'chart':[[['C','G']]]};(work/'deep_harmony.json').write_text(json.dumps(q),encoding='utf-8');load_project(work/'deep_harmony.json')
+        (work/'deep_record').mkdir();(work/'deep_record'/fs.RECORD).write_text('{"kind": '+'['*100000+']'*100000+'}',encoding='utf-8')
+        assert fs.recorded(work/'deep_record')=={} and not fs.is_record(work/'deep_record'/fs.RECORD)
+        tone=(.4*np.sin(2*np.pi*440*np.arange(480)/48000)).astype(np.float32)
+        sf2.write(work/'cut_short.sf2','x',[{'name':'A4','data':tone,'rate':48000,'root':69}],[{'name':'i','global':{},'zones':[{'gens':{},'sample':0}]}],
+                  [{'name':'x','bank':0,'program':0,'global':{},'zones':[{'gens':{},'instrument':0}]}])
+        data=bytearray((work/'cut_short.sf2').read_bytes());at=data.find(b'ifil');data[at+4:at+8]=struct.pack('<I',2)
+        (work/'cut_short.sf2').write_bytes(bytes(data));assert rejects(lambda:sf2.read(work/'cut_short.sf2'))
+        body=b'WAVE'+b'smpl'+struct.pack('<I',40)+struct.pack('<9I',0,0,20833,60,0,0,0,5,0)+bytes(4)
+        (work/'short_smpl.wav').write_bytes(b'RIFF'+struct.pack('<I',len(body))+body);assert rejects(lambda:lp.read_smpl(work/'short_smpl.wav'))
+        body=b'WAVE'+b'cue '+struct.pack('<I',4)+struct.pack('<I',3)
+        (work/'short_cue.wav').write_bytes(b'RIFF'+struct.pack('<I',len(body))+body);assert rejects(lambda:lp.read_cues(work/'short_cue.wav'))
+        # From GPT Pro's third review: a report read through the shared reader is refused as a link or over its limit
+        # before it is read; an output found free is never put in the place of one that took its name meanwhile; and a
+        # drum part whose kit the bank lacks is refused before synthesis (FluidSynth put kit 0 in its place).
+        big=work/'big_report.json';big.write_text('{"a": "'+'x'*500+'"}',encoding='utf-8')
+        assert rejects(lambda:fs.read_json(big,limit=100)) and fs.read_json(big)['a']=='x'*500
+        taken=work/'taken.json';taken.write_text('{"theirs": true}',encoding='utf-8')
+        try:
+            save_json(taken,{'mine':True},new=True);raise AssertionError('written over a file that took the name')
+        except FileExistsError:pass
+        assert json.loads(taken.read_text(encoding='utf-8'))=={'theirs':True} and not [x for x in work.iterdir() if x.name.startswith('.taken.json')]
+        from musiclib import layered
+        kit={'id':'kit','drums':True,'program':80,'performance':{'notes':{}}}
+        assert 'no preset at bank 128 program 80' in layered.unsupported(kit,work/'tiny.sf2')  # sf2_writer_reader_roundtrip's bank
+        kit['drums']=False;kit['program']=0;assert layered.unsupported(kit,work/'tiny.sf2') is None
+        return {'format_chunk_refused':True,'oversized_report_not_read':True,'deep_json_refused':True,'short_chunks_refused':True,
+                'bounded_reader':True,'new_output_never_over_another':True,'missing_kit_refused':True}
+    check('bounded_reads_of_records_and_wav_headers',bounded_reads_of_records_and_wav_headers)
+    def slur_legato_plays_one_line():
+        # A slur glides the part's pitch wheel, which bends every note the part holds: notes that overlap as written (a
+        # chord, a held note under a run) are refused before the render, which would bend them together; crossfade
+        # legato plays them as written.  (Found by the second review of 0.4.0.)
+        p=example();q=copy.deepcopy(p);q['clock']={'bars':2,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':1}
+        q['sections']=[{'id':'line','start_bar':0,'bars':2,'intent':'One line'}]
+        t=copy.deepcopy(p['tracks'][0]);t.update(id='flute',program=73,bank=0,role='melody',range=[60,90])
+        t['notes']=[{'id':f'flute_n{k}','on':on,'duration':1,'pitch':m} for k,(on,m) in enumerate([(0,72),(1,74),(2,76),(3,79)])]
+        t['performance']={'notes':{f'flute_n{k}':{'velocity':96,'gate':1.0} for k in range(4)},'bend_range':12,'legato':{'max_interval':5}}
+        q['tracks']=[t];validate(q)
+        t['notes'][1]['on']=.5  # the second note now starts under the first: two voices
+        try:
+            validate(q);raise AssertionError('two written voices passed as one slurred line')
+        except ValueError as e:assert 'one line' in str(e) and 'flute_n0' in str(e) and 'flute_n1' in str(e),e
+        t['performance']['legato']['mode']='crossfade';validate(q)
+        return {'overlap_refused':True,'crossfade_accepted':True}
+    check('slur_legato_plays_one_line',slur_legato_plays_one_line)
+    def synth_modulation_in_beats_follows_the_tempo():
+        # An LFO or an arpeggio timed in beats follows the beats the voice plays: when the tempo doubles under a held
+        # note, its cycle halves in seconds.  A rate in both Hz and beats is refused, a PWM's too.  (Found by the second
+        # review of 0.4.0: a beat-based rate kept the tempo its note started at, and two rate fields passed the check.)
+        from musiclib import synth
+        q={'clock':{'bars':2,'meter':[4,4],'tempo':[[0,60],[2,120]]}};c=Clock(q);rate=48000;n=3*rate
+        beats=audio.beats_at(c,np.arange(n)/rate)-c.beat(0.)
+        saw=synth.lfo(n,{'rate_beats':1,'shape':'saw'},rate,beats);wraps=(np.flatnonzero(np.diff(saw)<-1)+1)/rate
+        assert np.allclose(wraps,[1.,2.,2.5],atol=1e-3),wraps
+        chord=[{'pitch':m,'start_seconds':0.,'end_seconds':3.} for m in (60,64,67)]
+        steps=(np.flatnonzero(np.diff(synth.arpeggio_curve(chord,{'rate_beats':.5},0.,n,rate,beats,c)))+1)/rate
+        assert np.allclose(steps[:7],[.5,1.,1.5,2.,2.25,2.5,2.75],atol=1e-3),steps[:7]
+        # synth.render gives a held note's LFO the beats it plays through, the tempo change included.
+        seen=[];real=synth.lfo
+        def spy(m,spec,r,b=None):
+            if spec and spec.get('rate_beats'):seen.append((r,b))
+            return real(m,spec,r,b)
+        t={'id':'pad','synth':{'oscillators':[{'wave':'sine'}],'lfo':{'rate_beats':1,'to_amp':.3}},'notes':[{'id':'a','pitch':60,'on':0,'duration':3}],
+           'performance':{'notes':{'a':{'velocity':100}}}}
+        synth.validate(t);synth.lfo=spy
+        try:synth.render(q,t,work/'lfo_tempo.wav',c)
+        finally:synth.lfo=real
+        r,b=seen[0];assert abs(b[int(2.5*r)]-3.)<1e-3,b[int(2.5*r)]
+        for bad in ({'lfo':{'rate_hz':2,'rate_beats':1,'to_amp':.3}},{'oscillators':[{'wave':'pulse','pwm':{'rate_hz':1,'rate_beats':1,'depth':.2}}]},
+                    {'arpeggio':{'rate_hz':30,'rate_beats':.25}}):
+            rejects(lambda bad=bad:synth.validate({'id':'s','synth':{'oscillators':[{'wave':'saw'}],**bad}}))
+        return {'lfo_wraps_s':wraps.round(3).tolist(),'arpeggio_steps_s':steps[:7].round(3).tolist(),'both_rates_refused':3}
+    check('synth_modulation_in_beats_follows_the_tempo',synth_modulation_in_beats_follows_the_tempo)
+    def json_output_survives_an_ascii_console():
+        # --json output escapes what the console's code page lacks as JSON does (\u00e9, a surrogate pair beyond the
+        # BMP), so it stays JSON; the console's own escape (\xe9) is not JSON.  (Found by the second review of 0.4.0.)
+        import subprocess,sys
+        here=Path(__file__).resolve().parent
+        p=example();p['title']='Café 𝄞 喆';save_json(work/'console_json.json',p)
+        run=subprocess.run([sys.executable,str(here/'studio.py'),'review',str(work/'console_json.json'),'--output',str(work/'console_json_review'),'--json'],
+                           capture_output=True,timeout=300,env={**os.environ,'PYTHONIOENCODING':'ascii'},creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+        assert run.returncode==0,(run.returncode,run.stderr[-500:])
+        assert json.loads(run.stdout.decode('ascii'))['title']=='Café 𝄞 喆'
+        return {'parsed':True}
+    check('json_output_survives_an_ascii_console',json_output_survives_an_ascii_console)
+    def delete_sources_takes_only_the_installers_files():
+        # --delete-sources removes a download or a sample only while it is the installer's own (its locked size and
+        # hash, or the git blob hash of the tree listing); a changed archive and a file put among the samples stay.
+        import contextlib,hashlib,io
+        import fetch_soundbanks as fb
+        rt=work/'delete_sources'/'runtime';cache=rt/'cache';sources=rt/'sources';cache.mkdir(parents=True);sources.mkdir()
+        good,bad=cache/'good.zip',cache/'bad.zip';good.write_bytes(b'archive');bad.write_bytes(b'changed!')
+        commit='c'*40;folder=sources/f'samples-{commit[:12]}';(folder/'wav').mkdir(parents=True)
+        (folder/'wav'/'a.wav').write_bytes(b'note a');(folder/'wav'/'mine.wav').write_bytes(b'user')
+        blob=lambda b:hashlib.sha1(b'blob %d\0'%len(b)+b).hexdigest()
+        listed=[('wav/a.wav',blob(b'note a'),6),('wav/mine.wav',blob(b'theirs'),6)]
+        save_json(sources/f'someone_samples_{commit}_tree.json',{'sha':commit,'tree':[{'path':q,'type':'blob','sha':h,'size':n} for q,h,n in listed]})
+        lock={'archives':[{'name':'good','url':'https://example.org/good.zip','sha256':hashlib.sha256(b'archive').hexdigest(),'bytes':7},
+                          {'name':'bad','url':'https://example.org/bad.zip','sha256':hashlib.sha256(b'original').hexdigest(),'bytes':8}],
+              'builds':[{'name':'samples','kind':'git','repository':'someone/samples','commit':commit,'paths':['wav/'],
+                         'samples':2,'samples_sha256':fb.sample_digest(listed)}]}
+        said=io.StringIO()
+        with contextlib.redirect_stdout(said):fb.delete_sources(lock,None,rt,cache)
+        assert not good.exists() and bad.is_file() and not (folder/'wav'/'a.wav').exists() and (folder/'wav'/'mine.wav').is_file(),said.getvalue()
+        assert said.getvalue().count('Kept ')==2,said.getvalue()
+        return {'deleted':2,'kept':2}
+    check('delete_sources_takes_only_the_installers_files',delete_sources_takes_only_the_installers_files)
+    def flac_source_must_be_flac():
+        # A file named .flac that is not FLAC (a playlist, another container) is refused before FFmpeg opens it.
+        from soundbank import read_audio
+        fake=work/'not_flac.flac';fake.write_bytes(b'#EXTM3U\nfile:///etc/passwd\n')
+        try:read_audio(fake,ffmpeg='ffmpeg-is-not-started');raise AssertionError('a non-FLAC .flac was read')
+        except ValueError as e:assert 'fLaC' in str(e),e
+        return {'refused_before_ffmpeg':True}
+    check('flac_source_must_be_flac',flac_source_must_be_flac)
+    def notes_csv_escapes_formulas():
+        # A cell a spreadsheet would run as a formula (=, +, -, @, tab, CR first) starts with an apostrophe (OWASP, CSV
+        # Injection), so a project from someone else cannot put a formula into notes.csv.
+        import csv
+        from musiclib.review import review
+        p=example();n=p['tracks'][0]['notes'][0];n['phrase']='=HYPERLINK("http://example.org")';n['articulation']='@SUM(1)'
+        review(p,work/'csv_review')
+        rows=list(csv.DictReader((work/'csv_review'/'notes.csv').open(encoding='utf-8',newline='')))
+        row=next(r for r in rows if r['note_id']==n['id'])
+        cells=[v for v in row.values() if 'HYPERLINK' in v or 'SUM(1)' in v]
+        assert len(cells)==2 and all(v.startswith("'") for v in cells),row
+        return {'escaped_cells':len(cells)}
+    check('notes_csv_escapes_formulas',notes_csv_escapes_formulas)
+    def shared_reports_name_folders_relatively():
+        # A comparison is saved with the renders and the clip relative to its folder: no local folders or user name.
+        from musiclib.compare import portable
+        base=work/'portable';(base/'r1'/'render').mkdir(parents=True);(base/'r2'/'render').mkdir(parents=True)
+        r=portable({'before':base/'r1'/'render','after':base/'r2'/'render','clip':{'file':base/'r2'/'clip.mp3'}},base/'r2'/'render')
+        assert r['before']=='../../r1/render' and r['after']=='.' and r['clip']['file']=='../clip.mp3',r
+        return {'relative':True}
+    check('shared_reports_name_folders_relatively',shared_reports_name_folders_relatively)
+    def scripts_escape_what_their_output_cannot_show():
+        # On Windows a script's output read through a pipe, as an agent reads it, is written in the ANSI code page
+        # (Python documentation, sys.stdout), which lacks characters some folder names hold (喆 is not in code page 950):
+        # every script that prints escapes them instead of stopping.  PYTHONIOENCODING=ascii makes any system's pipe
+        # such a page.  (Found by setting the skill up in a folder named with 喆.)
+        import subprocess,sys
+        here=Path(__file__).resolve().parent
+        printing=[s.name for s in sorted(here.glob('*.py')) for t in [s.read_text(encoding='utf-8')] if "__name__=='__main__'" in t.replace(' ','') and 'print(' in t]
+        missing=[n for n in printing if 'escape_unprintable()' not in (here/n).read_text(encoding='utf-8')]
+        assert len(printing)>=7 and not missing,(printing,missing)
+        out=work/'console_喆'/'song.json';out.parent.mkdir()
+        run=subprocess.run([sys.executable,str(here/'make_example.py'),'--output',str(out)],capture_output=True,timeout=120,
+                           env={**os.environ,'PYTHONIOENCODING':'ascii'},creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
+        assert run.returncode==0 and b'console_\\u5586' in run.stdout and out.is_file(),(run.returncode,run.stdout[-300:],run.stderr[-500:])
+        return {'printing_scripts':len(printing),'escaped':True}
+    check('scripts_escape_what_their_output_cannot_show',scripts_escape_what_their_output_cannot_show)
+    def pedalboard_checked_against_its_record():
+        # pedalboard runs Surge in this process's Python, so it must be the files pip installed: each file the RECORD
+        # lists with its SHA-256 and size, no code file it does not list, and the RECORD bootstrap saw.
+        import hashlib
+        from musiclib import surge
+        lib=work/'board_cases'/'pylib';record=fake_board(lib,{'pedalboard/__init__.py':b'x = 1\n','pedalboard/core.py':b'y = 2\n'})
+        assert surge.board_intact(lib,hashlib.sha256(record.read_bytes()).hexdigest())
+        surge.VERIFIED_BOARD.clear();assert not surge.board_intact(lib,'0'*64)
+        (lib/'pedalboard'/'core.py').write_bytes(b'y = 3\n');surge.VERIFIED_BOARD.clear();assert not surge.board_intact(lib)
+        (lib/'pedalboard'/'core.py').write_bytes(b'y = 2\n');(lib/'pedalboard'/'extra.py').write_bytes(b'z = 1\n')
+        surge.VERIFIED_BOARD.clear();assert not surge.board_intact(lib)
+        (lib/'pedalboard'/'extra.py').unlink();surge.VERIFIED_BOARD.clear();assert surge.board_intact(lib)
+        return {'changed_added_and_other_record_refused':True}
+    check('pedalboard_checked_against_its_record',pedalboard_checked_against_its_record)
+    def automation_applies_per_sample_with_held_ends():
+        # Automation in NumPy, sample by sample, linear in dB and in time between points: any number of points (an FFmpeg
+        # expression failed past 95), the first point's level before it and the last one's after it.
+        p=example();clock=Clock(p);frames=round((clock.end+clock.tail)*audio.RATE);x=np.ones((frames,2),dtype=np.float32)
+        level=lambda y,beat:20*np.log10(float(y[min(frames-1,round(clock.seconds(beat)*audio.RATE)),0]))
+        y=audio.automated(x,[[4,-12],[8,0]],clock)
+        assert abs(level(y,0)+12)<1e-3 and abs(level(y,4)+12)<1e-3 and abs(level(y,8))<1e-3 and abs(level(y,15.9))<1e-3
+        mid=(clock.seconds(4)+clock.seconds(8))/2;assert abs(20*np.log10(float(y[round(mid*audio.RATE),0]))+6)<.01
+        many=[[i*.1,-6.0*(i%2)] for i in range(160)];y=audio.automated(x,many,clock)
+        assert abs(level(y,.1)+6)<1e-3 and abs(level(y,.2))<1e-3 and abs(level(y,.15)+3)<.05
+        assert audio.automated(x,[[0,0],[16,0]],clock) is None
+        return {'points':len(many)}
+    check('automation_applies_per_sample_with_held_ends',automation_applies_per_sample_with_held_ends)
+    def swing_pairs_counted_from_each_bar_line():
+        # Swing pairs are counted from each bar line (a drum machine delays the even steps of the beat: Linn 2013): in
+        # 5/8 eighth swing every downbeat stays on time and the bar's fifth eighth is straight; in 3/4 quarter swing beat
+        # 3 is straight; in 4/4 nothing changes.
+        def part(meter,unit,ons):
+            p=example();p['clock']={'bars':3,'meter':meter,'tempo':[[0,120]],'tail_seconds':1}
+            p['sections']=[{'id':'a','start_bar':0,'bars':3}];p.pop('harmony',None);t=p['tracks'][0]
+            t['notes']=[{'id':f'n{k}','on':on,'duration':.2,'pitch':60+k%5} for k,on in enumerate(ons)]
+            t['performance']={'notes':{f'n{k}':{'velocity':80} for k in range(len(ons))},'swing':{'ratio':2/3,'unit':unit}}
+            p['tracks']=[t];validate(p);c=Clock(p);return {n['id']:n['tick']/TPQ for n in performed(t,c)}
+        five=part([5,8],.5,[b*2.5+k*.5 for b in range(3) for k in range(5)])
+        assert all(abs(five[f'n{b*5}']-b*2.5)<1e-9 for b in range(3)),five
+        assert all(abs(five[f'n{b*5+4}']-(b*2.5+2))<1e-9 and abs(five[f'n{b*5+1}']-(b*2.5+2/3))<2/TPQ for b in range(3)),five
+        three=part([3,4],1,[b*3+k for b in range(3) for k in range(3)])
+        assert all(abs(three[f'n{b*3}']-b*3)<1e-9 and abs(three[f'n{b*3+2}']-(b*3+2))<1e-9 and abs(three[f'n{b*3+1}']-(b*3+4/3))<2/TPQ for b in range(3)),three
+        four=part([4,4],.5,[k*.5 for k in range(24)])
+        assert all(abs(four[f'n{k}']-(k*.5 if k%2==0 else k*.5-.5+2/3))<2/TPQ for k in range(24)),four
+        return {'meters':['5/8','3/4','4/4']}
+    check('swing_pairs_counted_from_each_bar_line',swing_pairs_counted_from_each_bar_line)
+    def excerpt_keeps_the_piece_at_its_edges():
+        # An excerpt plays its passage as the piece does at both cuts (the cases the second review of 0.4.0 found): a
+        # linear CC ramp takes its value at the cut, a note held over the cut but stopped before it as played is not
+        # re-attacked, a note a float hair under the end is not in the passage, a half-tick note lands on the piece's
+        # tick, and the piece's ritardando into a boundary at the passage's end is kept (clock.rubato.spans).
+        p=example();p.pop('harmony',None);p['clock']={'bars':4,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':1}
+        p['sections']=[{'id':'a','start_bar':0,'bars':2},{'id':'b','start_bar':2,'bars':2}]
+        t=p['tracks'][2];t['performance']['cc']=[[0,11,20],[16,11,120]]  # the additive lead: linear CC by default
+        p['tracks']=[t];validate(p);q=extract(p,2,1)
+        assert q['tracks'][0]['performance']['cc'][0]==[0,11,45] and q['tracks'][0]['performance']['cc'][-1]==[4.0,11,70],q['tracks'][0]['performance']['cc']
+        p=example();p.pop('harmony',None);t=p['tracks'][0]
+        t['notes']=[{'id':'push','on':3.5,'duration':1.0,'pitch':60},{'id':'held','on':3.5,'duration':1.0,'pitch':64},{'id':'hair','on':float(np.nextafter(8.0,0.0)),'duration':.5,'pitch':67}]
+        t['performance']['notes']={'push':{'velocity':80,'gate':.4},'held':{'velocity':80},'hair':{'velocity':80}};t['performance']['cc']=[]
+        p['tracks']=[t];validate(p);q=extract(p,2,1)
+        assert [n['id'] for n in q['tracks'][0]['notes']]==['held'],q['tracks'][0]['notes']
+        q=extract(p,1,2);assert 'hair' not in [n['id'] for n in q['tracks'][0]['notes']]
+        p=example();p.pop('harmony',None);p['clock']['bars']=8;p['sections']=[{'id':'a','start_bar':0,'bars':8}];t=p['tracks'][0]
+        t['notes']=[{'id':'half','on':(7102.5)/TPQ,'duration':1/TPQ,'pitch':60},{'id':'next','on':7104/TPQ,'duration':.5,'pitch':60}]
+        t['performance']={'notes':{'half':{'velocity':80},'next':{'velocity':80}}};p['tracks']=[t];validate(p)
+        whole={n['id']:n['tick'] for n in performed(t,Clock(p))};q=extract(p,2,6);part={n['id']:n['tick'] for n in performed(q['tracks'][0],Clock(q))}
+        cut=round(4*TPQ);assert all(part[k]==whole[k]-cut for k in part) and len(part)==2,(whole,part)
+        p=example();p.pop('harmony',None);p['clock']={'bars':8,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':1,'rubato':{'phrase_beats':8,'phrase_ratio':.7}}
+        p['sections']=[{'id':'a','start_bar':0,'bars':4},{'id':'b','start_bar':4,'bars':4}];t=p['tracks'][0]
+        t['notes']=[{'id':f'n{i}','on':i,'duration':1,'pitch':60+i%7} for i in range(32)];t['performance']={'notes':{f'n{i}':{'velocity':80} for i in range(32)}}
+        p['tracks']=[t];validate(p);a=Clock(p);q=extract(p,3,2);b=Clock(q)
+        assert q['clock']['rubato']['spans'] and abs((a.seconds(16)-a.seconds(8))-b.seconds(8))<1e-6,(q['clock'],a.seconds(16)-a.seconds(8),b.seconds(8))
+        bad=copy.deepcopy(q);bad['clock']['rubato']['spans']=[[4,2,.8]];rejects(lambda:validate(bad))
+        # A note the piece plays across a cut plays the part of it inside the passage, as played: a long note with a
+        # short gate re-attacked at the cut ends where it ended (not where its gate would end the cut note), a note
+        # written before the cut but played after it starts where it started, and one held past the end sounds to the
+        # end.  A legato overlap, written to end before the cut, is not re-attacked: it belongs to the next note's
+        # attack.  (Cases two reviews of 0.4.0 found.)
+        p=example();p.pop('harmony',None);p['clock']={'bars':3,'meter':[4,4],'tempo':[[0,120],[6,90]],'tail_seconds':1}
+        p['sections']=[{'id':'a','start_bar':0,'bars':3}];t=copy.deepcopy(p['tracks'][0])
+        t['notes']=[{'id':'long','on':0,'duration':8,'pitch':60},{'id':'legato','on':2,'duration':1.5,'pitch':64},
+                    {'id':'late','on':3.9,'duration':.4,'pitch':67},{'id':'over','on':6.5,'duration':3,'pitch':72}]
+        t['performance']={'notes':{'long':{'velocity':80,'gate':.75},'legato':{'velocity':80,'gate':1.6},'late':{'velocity':80,'timing_ms':100},
+                                   'over':{'velocity':80,'gate':.9}},'cc':[],'offset_ms':-15}
+        p['tracks']=[t];validate(p);a=Clock(p);q=extract(p,2,1);b=Clock(q);cut,stop=round(4*TPQ),round(8*TPQ)
+        piece={n['id']:(max(n['tick'],cut)-cut,min(n['end_tick'],stop)-cut) for n in performed(t,a)}
+        part={n['id']:(n['tick'],n['end_tick']) for n in performed(q['tracks'][0],b)}
+        assert part=={k:v for k,v in piece.items() if k!='legato'} and sorted(part)==['late','long','over'],(piece,part)
+        # A note of the next bar that the part's offset plays early is the next passage's, so a part that plays a few
+        # milliseconds ahead (offset_ms for slow attacks) leaves every passage valid; so does a legato line over a bar
+        # line on the additive lead, and a laid-back part whose held note a re-attack cannot reach.  (Found by a
+        # review of 0.4.0: each stopped excerpt and audition.)
+        for offset in (-5,-15,-150,-300,250):
+            p=example();bass=next(t for t in p['tracks'] if t['id']=='bass');bass['performance']['offset_ms']=offset
+            next(n for n in bass['notes'] if n['id']=='bass_n0')['duration']=3.885;validate(p)
+            for first,count in ((1,1),(1,2),(2,1),(2,2),(1,3),(3,1)):extract(p,first,count)
+        p=example();lead=next(t for t in p['tracks'] if t['engine']=='additive');next(n for n in lead['notes'] if n['id']=='lead_n2')['duration']=2.0
+        validate(p);extract(p,2,2)
+        # A part held to one written line (the additive lead) whose note crosses the cut, its gate carrying it into the
+        # next note: the re-attack ends where the next note begins, at gate 1.6, rather than overlapping it as written,
+        # which validate refuses.  (Found by the stress test of 0.4.0: 6 % of random projects with an additive lead.)
+        p=example();p.pop('harmony',None);lead=next(t for t in p['tracks'] if t['engine']=='additive')
+        lead['notes']=[{'id':'over','on':3.5,'duration':.75,'pitch':72},{'id':'next','on':4.25,'duration':1.0,'pitch':74}]
+        lead['performance']={'notes':{'over':{'velocity':90,'gate':1.5},'next':{'velocity':90}},'cc':[]};validate(p)
+        q=extract(p,2,1);ql=next(t for t in q['tracks'] if t['engine']=='additive');o={n['id']:n for n in ql['notes']}
+        assert o['over']['on']==0 and abs(o['over']['duration']-.25)<1e-9 and o['next']['on']==.25,o
+        assert ql['performance']['notes']['over']['gate']==1.6,ql['performance']['notes']
+        # A note written just before the cut that its timing plays after it, where the piece struck a note of its key
+        # on the cut first: it is written where it plays, not onto the cut (two strikes of one key there as written,
+        # which validate refused); and a short note of the passage played wholly before it sounds at its start.
+        # (Found by the stress test of 0.4.0.)
+        p=example();p.pop('harmony',None);p['clock']['tempo']=[[0,120]];t=p['tracks'][0];bpb=Clock(p).beats_per_bar
+        t['notes']=[{'id':'late','on':bpb-.05,'duration':.8,'pitch':67},{'id':'cut','on':float(bpb),'duration':1.0,'pitch':67},
+                    {'id':'blip','on':bpb+2.02,'duration':.05,'pitch':72},{'id':'bar','on':bpb+3.0,'duration':.5,'pitch':74}]
+        t['performance']={'notes':{'late':{'velocity':80,'timing_ms':60},'cut':{'velocity':80},'blip':{'velocity':80},'bar':{'velocity':80}},'cc':[]}
+        validate(p);q=extract(p,2,1);o={n['id']:n for n in q['tracks'][0]['notes']}
+        assert o['cut']['on']==0 and 0<o['late']['on']<.1 and abs(q['tracks'][0]['performance']['notes']['late']['timing_ms'])<1,o
+        t['notes'][2]['on']=bpb+.02;t['performance']['notes']['blip']['timing_ms']=-80;validate(p)
+        q=extract(p,2,1);played={x['id']:x for x in performed(q['tracks'][0],Clock(q),True)}
+        assert 'blip' in played and played['blip']['tick']==0,played
+        # An older free-form harmony object, which schema.md still accepts, stays as it is (it stopped extract).
+        p=example();p['harmony']={'changes':'C major then G major'};validate(p)
+        assert extract(p,2,1)['harmony']=={'changes':'C major then G major'}
+        # From GPT Pro's fourth review of 0.4.0: a one-line part whose note a same-key move puts inside the one before
+        # it, or within a tick of another, extracts as one line; a note played early that leaves a hair under a tick to
+        # the passage's end keeps a whole tick; the rhythmic gate goes on where the piece's pattern stands at the cut.
+        def line(engine,bpm,notes,**perf):
+            t={'id':'line','engine':engine,'role':'melody','program':0,'notes':[],'performance':{'notes':{},**perf},'mix':{'level_dbfs':-12,'pan':0}}
+            for k,(pitch,on,dur,timing,gate) in enumerate(notes):
+                t['notes'].append({'id':f'n{k}','on':on,'duration':dur,'pitch':pitch});t['performance']['notes'][f'n{k}']={'velocity':80,'timing_ms':timing,'gate':gate}
+            return {'schema':'music-production/v1','title':'Line','clock':{'bars':2,'meter':[4,4],'tempo':[[0,bpm]],'tail_seconds':2},
+                    'sections':[{'id':'a','start_bar':0,'bars':2}],'mix':{},'tracks':[t]}
+        for source,first in ((line('additive',60,[(60,3.99,1/TPQ,50,.05),(60,4,1,0,.1)]),2),
+                             (line('soundfont',120,[(66,3.95,1/TPQ,80,.05),(60,4,1,80,1)],legato={'mode':'slur'},bend_range=12),2),
+                             (line('soundfont',120,[(60,3.9994,1,-50,1)]),1)):
+            validate(source);validate(extract(copy.deepcopy(source),first,1))
+        # A note that sounds one tick, cut short by a later strike of its key, stays in the passage (a float residue had
+        # it a hair under the tick, and it went; found by the excerpt fuzzer once it drew one-line parts).
+        one_tick=line('soundfont',90,[(64,1.2385,.0115,0,1),(64,1.25,.25,-6,1)],legato={'mode':'slur'},bend_range=12);validate(one_tick)
+        sounding={n['id']:n['end_tick']-n['tick'] for n in performed(one_tick['tracks'][0],Clock(one_tick),True)}
+        q=extract(copy.deepcopy(one_tick),1,1);validate(q)
+        assert sounding['n0']==1 and 'n0' in {n['id'] for n in q['tracks'][0]['notes']},(sounding,q['tracks'][0]['notes'])
+        from musiclib import production
+        gated=line('soundfont',120,[(60,4,3,0,1)]);gated['tracks'][0]['mix']['gate']={'pattern':'x.....','step_beats':.25,'depth_db':60}
+        q=extract(copy.deepcopy(gated),2,1);validate(q)
+        def gain(project,beat,seconds):
+            c=Clock(project);y,_=production.gate(np.ones((int(seconds*48000),2)),project['tracks'][0],c);return float(y[int(c.seconds(beat)*48000),0])
+        for beat in (.1,.3,.6,1.6,3.1):
+            assert abs(gain(gated,4+beat,4)-gain(q,beat,2))<1e-3,(beat,gain(gated,4+beat,4),gain(q,beat,2))
+        # From GPT Pro's fifth review of 0.4.0: after a same-key move, a note of the passage keeps its length (the
+        # one-line pass cut it by the written order, 500 to 25 ms); a note that sounds one tick after a change of tempo
+        # stays (a tick at the excerpt's first tempo was the test).
+        for engine,extra in (('additive',{}),('soundfont',{'legato':{'mode':'slur'},'bend_range':12})):
+            src=line(engine,120,[(60,3.95,.04,50,.5),(60,4,1,100,1)],**extra);validate(src)
+            q=extract(copy.deepcopy(src),2,1);validate(q)
+            want=next((x['tick']-4*TPQ,x['end_tick']-4*TPQ) for x in performed(src['tracks'][0],Clock(src),True) if x['id']=='n1')
+            got=next((x['tick'],x['end_tick']) for x in performed(q['tracks'][0],Clock(q),True) if x['id']=='n1')
+            assert got==want,(engine,got,want)
+        fast=line('soundfont',60,[(64,4.0,4/TPQ,0,1),(64,4+2/TPQ,.25,0,1)]);fast['clock']['tempo']=[[0,60],[4,120]];validate(fast)
+        q=extract(copy.deepcopy(fast),1,2);assert {'n0','n1'}<={n['id'] for n in q['tracks'][0]['notes']},q['tracks'][0]['notes']
+        for engine,extra in (('additive',{}),('soundfont',{'legato':{'mode':'slur'},'bend_range':12})):  # and held to one line
+            fast=line(engine,60,[(64,4.0,2/TPQ,0,1),(64,4+2/TPQ,.25,0,1)],**extra);fast['clock']['tempo']=[[0,60],[4,120]];validate(fast)
+            q=extract(copy.deepcopy(fast),1,2);assert {'n0','n1'}<={n['id'] for n in q['tracks'][0]['notes']},(engine,q['tracks'][0]['notes'])
+        # A pickup written before the cut and played inside the passage's first note is written before it, as in the
+        # piece, of another key or the same: both play their ticks (the pickup was left out, or cut to 2 of 9 ticks).
+        for engine,extra in (('additive',{}),('soundfont',{'legato':{'mode':'slur'},'bend_range':12})):
+            for pitch in (64,67):
+                src=line(engine,120,[(pitch,3.99,.01,20,1),(67,4,1,0,1)],**extra);validate(src)
+                q=extract(copy.deepcopy(src),2,1);validate(q)
+                want={x['id']:(x['tick']-4*TPQ,x['end_tick']-4*TPQ) for x in performed(src['tracks'][0],Clock(src),True)}
+                got={x['id']:(x['tick'],x['end_tick']) for x in performed(q['tracks'][0],Clock(q),True)}
+                assert got==want,(engine,pitch,got,want)
+        # From GPT Pro's sixth review of 0.4.0: a pickup at gate 1.6 and a note of the passage played early leave the
+        # passage's notes their lengths, the pickup ending sooner (one of them ended 68 ms early); in a chordal part, a
+        # pickup that the passage strikes again on the cut is written a few ticks later, its timing keeping where it
+        # plays (it was left out).
+        for engine,extra in (('additive',{}),('soundfont',{'legato':{'mode':'slur'},'bend_range':12})):
+            src=line(engine,120,[(60,3.875,.125,100,1.6),(62,4,.25,100,1.6),(64,4.25,.25,-80,1)],**extra);validate(src)
+            q=extract(copy.deepcopy(src),2,1);validate(q)
+            want={x['id']:(x['tick']-4*TPQ,x['end_tick']-4*TPQ) for x in performed(src['tracks'][0],Clock(src),True)}
+            got={x['id']:(x['tick'],x['end_tick']) for x in performed(q['tracks'][0],Clock(q),True)}
+            assert got['n1']==want['n1'] and got['n2']==want['n2'] and got['n0'][0]==want['n0'][0],(engine,got,want)
+        chord=line('soundfont',120,[(60,3.875,.0625,62.5,1),(60,4,.5,50,1)]);validate(chord)
+        q=extract(copy.deepcopy(chord),2,1);validate(q)
+        played=lambda p,shift=0:sorted((x['id'],x['tick']-shift,x['end_tick']-shift) for x in performed(p['tracks'][0],Clock(p),True))
+        assert played(q)==played(chord,4*TPQ),(played(q),played(chord,4*TPQ))
+        return {'cases':33}
+    check('excerpt_keeps_the_piece_at_its_edges',excerpt_keeps_the_piece_at_its_edges)
+    def tick_rounding_is_stable():
+        # A position within float error of a half tick takes the even tick, from either side, as round() does at an
+        # exact half: one position computed along two paths lands on one tick.
+        from musiclib.model import tick_of
+        for v,want in ((7102.5,7102),(7103.5,7104),(7102.5+1e-9,7102),(7102.5-1e-9,7102),(1342.5000000000005,1342),(10.4,10),(10.6,11)):
+            assert tick_of(v/TPQ)==want,(v,tick_of(v/TPQ))
+        return {'values':7}
+    check('tick_rounding_is_stable',tick_rounding_is_stable)
+    def soundfont_tables_must_hold_together():
+        # A bank whose header or bag indices run backwards, end short of their table, or name an instrument that is not
+        # there is refused, as the SoundFont 2.04 specification (7.2-7.7) and FluidSynth refuse it: indices running back
+        # and forth made a 4 KB file expand into thousands of zones.
+        import struct
+        from musiclib import sf2
+        tone=(np.sin(2*np.pi*440*np.arange(4800)/48000)*.5).astype(np.float32)
+        sf2.write(work/'three.sf2','three',[{'name':'A4','data':tone,'rate':48000,'root':69}],
+                  [{'name':'inst','zones':[{'gens':{43:(0,127)},'sample':0}]}],
+                  [{'name':f'p{k}','bank':0,'program':k,'zones':[{'gens':{},'instrument':0}]} for k in range(3)])
+        good=(work/'three.sf2').read_bytes();assert len(sf2.read(work/'three.sf2')['presets'])==3
+        def broken(edit):
+            data=bytearray(good);i=data.find(b'phdr');off=i+8;n=struct.unpack_from('<I',data,i+4)[0]//38
+            edit(data,off,n);path=work/'broken.sf2';path.write_bytes(bytes(data));return path
+        cases=[lambda d,off,n:struct.pack_into('<H',d,off+1*38+24,0) or struct.pack_into('<H',d,off+0*38+24,1),  # 1, 0, ...
+               lambda d,off,n:struct.pack_into('<H',d,off+(n-1)*38+24,2)]  # the terminal record names bag 2, not the last (3)
+        for edit in cases:
+            try:sf2.read(broken(edit));raise AssertionError('a defective bank was read')
+            except ValueError as e:assert 'structurally defective' in str(e),e
+        data=bytearray(good);i=data.find(b'pgen');off=i+8;n=struct.unpack_from('<I',data,i+4)[0]//4
+        for k in range(n):
+            if struct.unpack_from('<H',data,off+4*k)[0]==41:struct.pack_into('<HH',data,off+4*k,41,9)
+        (work/'broken.sf2').write_bytes(bytes(data))
+        try:sf2.read(work/'broken.sf2');raise AssertionError('a bank naming a missing instrument was read')
+        except ValueError as e:assert 'structurally defective' in str(e),e
+        return {'refused':3}
+    check('soundfont_tables_must_hold_together',soundfont_tables_must_hold_together)
+    def parts_wait_for_memory():
+        # Parts made at once share the memory free at the start (MemoryBudget): one that needs more than is left waits
+        # for the others, one needing all of it runs alone, and a part's estimate grows with the song and its tools.
+        import threading
+        from musiclib.render import MemoryBudget,part_memory
+        budget=MemoryBudget(1000/.8);order=[];started=threading.Event()
+        def big():
+            with budget.hold(800):started.set();time.sleep(.3);order.append('big')
+        def small():
+            started.wait()
+            with budget.hold(400):order.append('small')
+        a,b=threading.Thread(target=big),threading.Thread(target=small);a.start();b.start();a.join();b.join()
+        assert order==['big','small'],order
+        alone=MemoryBudget(100/.8)
+        with alone.hold(10**9):pass  # more than all of it: runs, alone
+        with MemoryBudget(None).hold(10**12):pass
+        p=example();c=Clock(p);frames=round((c.end+c.tail)*audio.RATE);t=copy.deepcopy(p['tracks'][2])
+        plain=part_memory(t,c,frames,None);t['mix']['filter_sweep']={'points':[[0,200],[8,4000]]}
+        swept=part_memory(t,c,frames,None);assert swept>plain and part_memory(t,c,2*frames,None)>swept
+        # In whole bytes: four estimates with fractions, let go in the order they were taken, leave the budget empty,
+        # so a part that needs all of it starts at once (summed as floats they left 3e-8 bytes held, and it waited for
+        # ever).  (Found by a review of 0.4.0.)
+        whole=MemoryBudget(2e9);held=[whole.hold(x) for x in (1e9/3,1e9/7,1e9/11,1e9/13)]
+        for h in held:h.__enter__()
+        for h in held:h.__exit__(None,None,None)
+        done=threading.Event()
+        def everything():
+            with whole.hold(1.75e9):done.set()
+        w=threading.Thread(target=everything,daemon=True);w.start();w.join(10)
+        assert whole.used==0 and done.is_set(),whole.used
+        return {'waited':True,'empty_after_all_let_go':True}
+    check('parts_wait_for_memory',parts_wait_for_memory)
+    def selfcheck_work_must_be_new_or_empty():
+        import subprocess,sys
+        busy=work/'busy_work';busy.mkdir();(busy/'roundtrip.mid').write_bytes(b'mine')
+        r=subprocess.run([sys.executable,str(Path(__file__).resolve()),'--work',str(busy)],capture_output=True,text=True,timeout=120)
+        assert r.returncode==2 and 'not empty' in r.stderr and (busy/'roundtrip.mid').read_bytes()==b'mine',(r.returncode,r.stderr)
+        return {'refused':True}
+    check('selfcheck_work_must_be_new_or_empty',selfcheck_work_must_be_new_or_empty)
+    def source_listing_must_name_the_pinned_samples():
+        # A source build takes from its listing only the samples the lock pins (each path with its blob hash and size):
+        # a listing that adds a path running out of the sample folder, or changes a size, is refused before anything is
+        # fetched, and the files are fetched no larger than their pinned size.
+        import fetch_soundbanks as fb
+        listing={'sha':'c'*40,'tree':[{'path':'wav/a.wav','type':'blob','sha':'1'*40,'size':10},{'path':'wav/b.wav','type':'blob','sha':'2'*40,'size':20},
+                                     {'path':'docs/readme.txt','type':'blob','sha':'3'*40,'size':5}]}
+        item={'name':'demo','paths':['wav/'],'samples':2,'samples_sha256':fb.sample_digest([('wav/a.wav','1'*40,10),('wav/b.wav','2'*40,20)])}
+        assert fb.pinned_samples(item,listing)==[('wav/a.wav','1'*40,10),('wav/b.wav','2'*40,20)]
+        out=copy.deepcopy(listing);out['tree'].append({'path':'wav/../../../scripts/soundbank.py','type':'blob','sha':'4'*40,'size':9})
+        grown=copy.deepcopy(listing);grown['tree'][0]['size']=10**9
+        cut=copy.deepcopy(listing);cut['truncated']=True
+        for bad in (out,grown,cut):rejects(lambda bad=bad:fb.pinned_samples(item,bad))
+        assert not fb.safe_member('wav/../x') and not fb.safe_member('C:/x.sf2') and not fb.safe_member('wav/a\0.wav') and fb.safe_member('wav/a b.wav')
+        lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'soundbank-lock.json').read_text(encoding='utf-8'))
+        assert all(len(b.get('samples_sha256',''))==64 and b['samples']>0 for b in lock['builds'] if b.get('kind')!='split')
+        return {'refused':3}
+    check('source_listing_must_name_the_pinned_samples',source_listing_must_name_the_pinned_samples)
+    def pedalboard_wheel_fetched_by_its_lock():
+        # The wheel is the lock's best one for this Python by pip's own tag ranking, taken from the cache while its
+        # bytes match the lock, else fetched from its locked address (bootstrap.download: at most its locked size,
+        # hashed as it arrives); offline with nothing cached there is none, and a damaged copy is set aside.
+        import contextlib,hashlib,io
+        import bootstrap
+        tags=bootstrap.wheel_tags();assert tags,'pip ranks no wheel tags here'
+        name=f'pedalboard-0.0.0-{tags[0]}.whl';data=b'not a real wheel'
+        lock={'optional':{'pedalboard':{'version':'0.0.0','wheels':{name:{'url':'https://files.pythonhosted.org/x/'+name,'sha256':hashlib.sha256(data).hexdigest(),'bytes':len(data)},
+                                                                     'pedalboard-0.0.0-cp27-cp27m-win32.whl':{'url':'https://files.pythonhosted.org/x/old.whl','sha256':'0'*64,'bytes':1}}}}}
+        cache=work/'wheel_cache_lock';cache.mkdir()
+        assert bootstrap.pedalboard_wheel(lock,cache,offline=True)==(None,None)
+        (cache/name).write_bytes(data);found,w=bootstrap.pedalboard_wheel(lock,cache,offline=True)
+        assert found==cache/name and w['bytes']==len(data)
+        (cache/name).write_bytes(b'damaged');said=io.StringIO()
+        with contextlib.redirect_stdout(said):assert bootstrap.pedalboard_wheel(lock,cache,offline=True)==(None,None)
+        assert 'set aside' in said.getvalue() and len(list(cache.glob(name+'.replaced-*')))==1
+        return {'tag':tags[0]}
+    check('pedalboard_wheel_fetched_by_its_lock',pedalboard_wheel_fetched_by_its_lock)
+    def render_folders_are_read_without_links():
+        # analyze and compare read a render folder's own files only: one holding a link (here its stems folder, a
+        # junction on Windows) is refused before any audio is read; and no WAV longer than a render is read at all.
+        import subprocess
+        from musiclib.compare import load
+        from musiclib.analysis import analyze
+        r=work/'linked_render';(r/'stems').mkdir(parents=True);outside=work/'outside_stems';outside.mkdir()
+        save_json(r/'project.json',example());save_json(r/'report.json',{});save_json(r/'stem_receipts.json',[])
+        load(r)  # a folder of its own files is read
+        shutil.rmtree(r/'stems')
+        made=subprocess.run(['cmd','/c','mklink','/J',str(r/'stems'),str(outside)],capture_output=True).returncode==0 if os.name=='nt' else (os.symlink(outside,r/'stems',target_is_directory=True) or True)
+        assert made
+        for read in (lambda:load(r),lambda:analyze(r)):
+            try:read();raise AssertionError('a render folder holding a link was read')
+            except ValueError as e:assert 'links' in str(e),e
+        long=work/'long.wav';audio.write_wav(long,np.zeros((3*audio.RATE,2),dtype=np.float32));limit=audio.MAX_WAV_SECONDS
+        try:
+            audio.MAX_WAV_SECONDS=2;rejects(lambda:audio.read_wav(long))
+        finally:audio.MAX_WAV_SECONDS=limit
+        audio.read_wav(long)
+        return {'refused':2}
+    check('render_folders_are_read_without_links',render_folders_are_read_without_links)
+    def a_part_larger_than_the_machine_is_refused():
+        # A part that would need more memory at once than the machine has (render.part_memory) is refused before
+        # anything is synthesized, and the error says why: a synth pad note held through a long song is the usual cause.
+        from musiclib.render import too_large
+        p=example();p['clock']={'bars':400,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':2};p['sections']=[{'id':'a','start_bar':0,'bars':400}]
+        p.pop('harmony',None);t=copy.deepcopy(p['tracks'][2]);t.update(id='pad',engine='synth',synth={'preset':'trance_pad'})
+        t['notes']=[{'id':'held','on':0,'duration':1600,'pitch':57}];t['performance']={'notes':{'held':{'velocity':70}}};p['tracks']=[t];validate(p)
+        c=Clock(p);frames=round((c.end+c.tail)*audio.RATE)
+        try:too_large(p,c,frames,{},8e9);raise AssertionError('a 16-minute synth note passed on an 8 GB machine')
+        except ValueError as e:assert 'split the note' in str(e) and 'pad' in str(e),e
+        too_large(p,c,frames,{},None);too_large(p,c,frames,{},1e12)
+        # A Surge part plays in Surge's own process where Surge XT is there; only its fallback on the built-in synth
+        # makes the note whole.
+        s=copy.deepcopy(t);s.update(engine='surge',surge={'preset':'juno_60_strings'});s.pop('synth',None);q=copy.deepcopy(p);q['tracks']=[s]
+        too_large(q,c,frames,{},8e9,{'pad':{'plays':'Surge XT'}})
+        rejects(lambda:too_large(q,c,frames,{},8e9,{'pad':{'plays':'fallback: Surge XT is not installed'}}))
+        return {'refused_on_8_gb':True}
+    check('a_part_larger_than_the_machine_is_refused',a_part_larger_than_the_machine_is_refused)
     if config:
         from musiclib.render import render
         p=example();save_json(work/'example.json',p);cache=work/'cache'
@@ -1760,8 +3201,109 @@ def checks(work,config=None):
             # Fresh syntheses of the same parts hash alike: the raw hash covers the audio, not the writer's timestamp.
             raws=lambda name:[x['raw_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))]
             assert raws('render_first')==raws('render_parallel')
-            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'parallel_jobs':parallel['jobs'],'checks':repeat['checks']}
+            # The repeat plays every part's processed stem from the cache (a frozen track), the same file to the bit.
+            stems=lambda name:[x['stem_sha256'] for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))]
+            assert first['stems_reused']==parallel['stems_reused']==0 and repeat['stems_reused']==len(p['tracks'])
+            assert stems('render_first')==stems('render_repeat')==stems('render_parallel')
+            # A draft is the same audio without what only delivery needs.
+            draft=render(work/'example.json',work/'render_draft',config,cache,draft=True)
+            assert draft['status']=='DRAFT_PASS' and draft['draft'] and draft['master']['sha256']==first['master']['sha256'],draft['status']
+            assert not (work/'render_draft'/'master.flac').exists() and (work/'render_first'/'master.flac').is_file() and draft['left_out'][0]=='master.flac'
+            return {'master_sha256':first['master']['sha256'],'cache_hits':repeat['cache_hits'],'stems_reused':repeat['stems_reused'],'parallel_jobs':parallel['jobs'],'draft_same_master':True,'checks':repeat['checks']}
         check('actual_render_repeat_is_sample_identical',integration)
+        def render_folder_is_its_own_run():
+            # A finished render leaves no lock file.  A resume refuses a folder holding a file the earlier render did not
+            # write or one changed since (the user's own MIDI under its name), and one another run holds, leaving it as it
+            # was; parts rendered at once report the part whose error the render stops on, with that error.  (Found by
+            # the second review of 0.4.0.)
+            import subprocess,sys,threading
+            from musiclib import files as fs
+            import musiclib.render as rd
+            first=work/'render_first';assert not fs.occupied(first/fs.WORK_LOCK)
+            # A render of its own: a copy of one (shutil.copytree) is not the run's, its record keeping each file's number.
+            again=work/'render_resume_cases';render(work/'example.json',again,config,cache)
+            names=lambda:sorted(x.relative_to(again).as_posix() for x in again.rglob('*'))
+            before=names();own=b'MThd'+bytes(10);(again/'composition.mid').write_bytes(own)
+            assert rejects(lambda:render(work/'example.json',again,config,cache,resume=True))
+            assert (again/'composition.mid').read_bytes()==own and names()==before
+            (again/'composition.mid').unlink();shutil.copy2(first/'composition.mid',again/'composition.mid')
+            code=('import sys,time;sys.path.insert(0,sys.argv[1]);from musiclib import files\n'
+                  'with files.working(sys.argv[2]) as held:\n    print(held,flush=True);time.sleep(5)')
+            holder=subprocess.Popen([sys.executable,'-c',code,str(Path(__file__).resolve().parent),str(again)],stdout=subprocess.PIPE,text=True)
+            try:
+                assert holder.stdout.readline().strip()=='True'
+                try:
+                    render(work/'example.json',again,config,cache,resume=True);raise AssertionError('a folder another run holds was resumed')
+                except ValueError as e:assert 'in use' in str(e),e
+            finally:
+                holder.wait(timeout=60);holder.stdout.close()
+            assert names()==before
+            # Two parts that fail, the second in part order first: the render stops at once on the first to fail and
+            # names it with its error (it named one part with another's); the parts still waiting never start and those
+            # at work stop (every part ran to its end).  (Found by GPT Pro's second and third reviews of 0.4.0.)
+            ids=[t['id'] for t in p['tracks']][:2];second_failed=threading.Event();real=rd.process_stem;reached=[]
+            def failing(q,t,*a,**k):
+                reached.append(t['id'])
+                if t['id']==ids[1]:
+                    second_failed.set();raise RuntimeError(f'{ids[1]} failed first')
+                if t['id']==ids[0]:
+                    second_failed.wait(60);time.sleep(.1);raise RuntimeError(f'{ids[0]} failed last')
+                return real(q,t,*a,**k)
+            rd.process_stem=failing
+            try:
+                try:
+                    render(work/'example.json',work/'render_two_failures',config,work/'cache_two_failures',jobs=2);raise AssertionError('the failures went unnoticed')
+                except RuntimeError as e:assert str(e)==f'{ids[1]} failed first',e
+            finally:rd.process_stem=real
+            failed=json.loads((work/'render_two_failures'/'report.json').read_text(encoding='utf-8'))['failed']
+            assert failed['part']==ids[1] and failed['error']==f'{ids[1]} failed first',failed
+            assert set(reached)<=set(ids),reached  # the parts waiting behind the two never started
+            assert not fs.occupied(work/'render_two_failures'/fs.WORK_LOCK)
+            # Every file a render writes is recorded as its own, a failed one's too: removing its own output (as an
+            # audition does before it renders again) leaves nothing (GPT Pro's fifth review of 0.4.0).
+            assert fs.remove_own(work/'render_two_failures') and not fs.occupied(work/'render_two_failures')
+            # A part the first failure stopped (Cancelled), submitted before it, does not take its place in the report,
+            # however late the render looks: it did once both had ended by then (found by GPT Pro's fourth review).
+            second_failed.clear();real_wait=rd.wait
+            def stopped_first(q,t,*a,**k):
+                if t['id']==ids[1]:
+                    second_failed.set();raise RuntimeError(f'{ids[1]} failed first')
+                if t['id']==ids[0]:
+                    second_failed.wait(60);raise audio.Cancelled(f'{ids[0]} stopped: another part failed')
+                return real(q,t,*a,**k)
+            def late_look(*a,**k):
+                done=real_wait(*a,**k);time.sleep(.3);return done
+            rd.process_stem,rd.wait=stopped_first,late_look
+            try:
+                try:
+                    render(work/'example.json',work/'render_stopped_first',config,work/'cache_stopped_first',jobs=2);raise AssertionError('the failure went unnoticed')
+                except RuntimeError as e:assert str(e)==f'{ids[1]} failed first',e
+            finally:rd.process_stem,rd.wait=real,real_wait
+            failed=json.loads((work/'render_stopped_first'/'report.json').read_text(encoding='utf-8'))['failed']
+            assert failed['part']==ids[1] and failed['error']==f'{ids[1]} failed first',failed
+            # The files made from the master stop together: the first to fail (the FLAC here, beside a slow MP3) stops
+            # the program the other runs, and the render ends on its error at once (they ran to their end, and the
+            # failure waited for the MP3 before it; GPT Pro's fifth review of 0.4.0 and the test of its fix).
+            real_ffmpeg=audio.ffmpeg;slow=threading.Event();ended={}
+            def outputs(cfg_,args,folder,label):
+                if label=='mp3':
+                    slow.set()
+                    try:return audio.run([sys.executable,'-c','import time;time.sleep(120)'],folder,'mp3_slow')
+                    finally:ended['mp3']=time.monotonic()
+                if label=='flac':
+                    slow.wait(60);time.sleep(.5);ended['flac']=time.monotonic();raise RuntimeError('flac failed')
+                return real_ffmpeg(cfg_,args,folder,label)
+            audio.ffmpeg=outputs
+            try:
+                try:
+                    render(work/'example.json',work/'render_outputs_stop',config,cache);raise AssertionError('the failure went unnoticed')
+                except RuntimeError as e:assert str(e)=='flac failed',e
+            finally:audio.ffmpeg=real_ffmpeg
+            assert ended['mp3']-ended['flac']<10 and not (work/'render_outputs_stop'/'logs'/'mp3_slow.process.json').exists(),ended
+            assert fs.remove_own(work/'render_outputs_stop')  # the stopped program's log is the run's too
+            return {'no_lock_left':True,'changed_file_refused':True,'held_folder_refused':True,'failed_part':failed['part'],
+                    'outputs_stopped_after_s':round(ended['mp3']-ended['flac'],2)}
+        check('render_folder_is_its_own_run',render_folder_is_its_own_run)
         def local_edit():
             q=copy.deepcopy(p);q['tracks'][0]['notes'][0]['pitch']+=2;save_json(work/'edited.json',q)
             r=render(work/'edited.json',work/'render_edited',config,cache)
@@ -1776,8 +3318,42 @@ def checks(work,config=None):
             r=render(work/'mix_edit.json',work/'render_mix_edit',config,cache)
             assert r['cache_hits']==len(q['tracks'])
             before=json.loads((work/'render_first'/'report.json').read_text(encoding='utf-8'));assert r['master']['sha256']!=before['master']['sha256']
-            return {'cache_hits':r['cache_hits'],'master_changed':True}
+            # Only the part whose mix changed is processed again; the others play their stems from the cache.
+            processed=[x['track'] for x in json.loads((work/'render_mix_edit'/'stem_receipts.json').read_text(encoding='utf-8')) if not x['stem_reused']]
+            assert processed==[q['tracks'][2]['id']],processed
+            # A kept stem that no longer matches its hash is not used: the part is processed again, to the same file.
+            # (A cache entry keeps its last stem, so the part whose mix was just edited is processed again too.)
+            entry=cache/next(x['cache_key'] for x in json.loads((work/'render_first'/'stem_receipts.json').read_text(encoding='utf-8')) if x['track']==q['tracks'][0]['id'])
+            data=bytearray((entry/'stem.wav').read_bytes());data[-8:]=bytes(8);(entry/'stem.wav').write_bytes(bytes(data))
+            again=render(work/'example.json',work/'render_after_damage',config,cache)
+            redone=[x['track'] for x in json.loads((work/'render_after_damage'/'stem_receipts.json').read_text(encoding='utf-8')) if not x['stem_reused']]
+            assert redone==[q['tracks'][0]['id'],q['tracks'][2]['id']] and again['master']['sha256']==before['master']['sha256'],(redone,again['master']['sha256'])
+            return {'cache_hits':r['cache_hits'],'master_changed':True,'processed_again':processed,'damaged_stem_processed_again':redone}
         check('mix_revision_reuses_all_synthesis',mix_edit)
+        def kept_stem_dependencies():
+            # What a kept stem depends on.  Send levels and the delay's time are read only by the mixer, so editing them
+            # keeps every stem, to the bit; a kick note moved processes the kick and the part it ducks again, nothing
+            # else; a kept stem swapped for another file under its receipt is processed again (the copy is checked).
+            q=copy.deepcopy(p);q['tracks'][1]['mix']['duck']={'by':'drums','depth_db':6};save_json(work/'duck.json',q)
+            kc=work/'cache_kept';first=render(work/'duck.json',work/'render_duck',config,kc)
+            stems=lambda name:{x['track']:(x['stem_reused'],x['stem_sha256']) for x in json.loads((work/name/'stem_receipts.json').read_text(encoding='utf-8'))}
+            s=copy.deepcopy(q)
+            for t in s['tracks']:
+                if t['mix'].get('reverb_db') is not None:t['mix']['reverb_db']-=3
+                if t['mix'].get('delay_db') is not None:t['mix'].update(delay_db=t['mix']['delay_db']-3,delay_quarters=.5)
+            save_json(work/'duck_sends.json',s);sends=render(work/'duck_sends.json',work/'render_duck_sends',config,kc)
+            a,b=stems('render_duck'),stems('render_duck_sends')
+            assert sends['stems_reused']==len(q['tracks']) and all(a[k][1]==b[k][1] for k in a) and sends['master']['sha256']!=first['master']['sha256'],b
+            m=copy.deepcopy(q);m['tracks'][3]['notes'][0]['on']=.5;save_json(work/'duck_moved.json',m)
+            render(work/'duck_moved.json',work/'render_duck_moved',config,kc)
+            redone=sorted(k for k,(reused,_) in stems('render_duck_moved').items() if not reused)
+            assert redone==['bass','drums'],redone
+            entry=lambda track:kc/next(x['cache_key'] for x in json.loads((work/'render_duck'/'stem_receipts.json').read_text(encoding='utf-8')) if x['track']==track)
+            shutil.copyfile(entry('lead')/'stem.wav',entry('piano')/'stem.wav')
+            again=render(work/'duck.json',work/'render_duck_swapped',config,kc);d=stems('render_duck_swapped')
+            assert not d['piano'][0] and d['piano'][1]==a['piano'][1] and again['master']['sha256']==first['master']['sha256'],d
+            return {'send_edit_stems_reused':sends['stems_reused'],'moved_kick_processed_again':redone,'swapped_stem_processed_again':True}
+        check('kept_stems_follow_what_they_read',kept_stem_dependencies)
         def bad_hash():
             cfg=json.loads(Path(config).read_text(encoding='utf-8'))
             for key in ('fluidsynth','ffmpeg','soundfont'):
@@ -1812,6 +3388,31 @@ def checks(work,config=None):
             rejects(lambda:render(work/'missing.json',work/'render_missing',work/'two_fonts.json',cache))
             return {'track_soundfont':fonts[0],'unknown_name_rejected':True}
         check('named_soundfont_selected_per_track',named_soundfont)
+        def named_bank_first_use():
+            # A named bank is hashed when a part first uses it, not at load: a wrong hash passes load_config and stops
+            # review and the render at first use, before anything is synthesized, and a round stopped so keeps its
+            # record, naming the step.  A bank changed on disk after its first use in a process is hashed again.
+            from musiclib.revision import revision_round
+            cfg=json.loads(Path(config).read_text(encoding='utf-8'));base=Path(cfg['soundfont']['path'])
+            if not base.is_absolute():base=Path(config).resolve().parent/base
+            for key in ('fluidsynth','ffmpeg','soundfont'):
+                value=Path(cfg[key]['path']);cfg[key]['path']=str(value if value.is_absolute() else Path(config).resolve().parent/value)
+            copied=work/'named_bank.sf2';shutil.copyfile(base,copied)
+            cfg['soundfonts']={'alt':{**cfg['soundfont'],'path':str(copied)},'wrong':{**cfg['soundfont'],'path':str(base),'sha256':'0'*64}}
+            save_json(work/'lazy_banks.json',cfg);loaded=audio.load_config(work/'lazy_banks.json')
+            q=copy.deepcopy(p);q['tracks'][0]['soundfont']='wrong';save_json(work/'wrong_bank.json',q)
+            assert rejects(lambda:audio.soundfont_for(loaded,q['tracks'][0]))
+            assert rejects(lambda:render(work/'wrong_bank.json',work/'render_wrong_bank',work/'lazy_banks.json',cache)) and not (work/'render_wrong_bank').exists()
+            try:
+                revision_round(work/'wrong_bank.json',work/'round_wrong_bank',work/'lazy_banks.json',show=lambda _:None);raise AssertionError('the round went on')
+            except ValueError as e:assert 'hash mismatch' in str(e),e
+            record=json.loads((work/'round_wrong_bank'/'round.json').read_text(encoding='utf-8'))
+            assert record['status']=='FAIL' and record['failed']['step']=='review' and 'hash mismatch' in record['failed']['error'],record
+            t=copy.deepcopy(p['tracks'][0]);t['soundfont']='alt';audio.soundfont_for(loaded,t)
+            with copied.open('ab') as f:f.write(b'\0')
+            assert rejects(lambda:audio.soundfont_for(audio.load_config(work/'lazy_banks.json'),t))
+            return {'wrong_hash_passes_load':True,'stops_at_first_use':True,'round_record_names_review':True,'changed_bank_hashed_again':True}
+        check('named_bank_verified_at_first_use',named_bank_first_use)
         def bend_render():
             q=copy.deepcopy(p);q['clock']={'bars':2,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':1}
             q['sections']=[{'id':'bend','start_bar':0,'bars':2,'intent':'Pitch bend check'}]
@@ -1873,6 +3474,17 @@ def checks(work,config=None):
             spaces=sorted(set(r['buses']['spaces'].values()));wanted=[f'{s}_return.wav' for s in spaces]+['delay_return.wav']
             assert sorted(r['buses']['returns'])==sorted(wanted) and all((out/'returns'/n).is_file() for n in wanted),r['buses']['returns']
             assert r['checks']['buses_and_returns_add_up_to_premix'] and r['buses']['sum_minus_premix_peak_dbfs']<-100,r['buses']
+            # A draft of the bus mix: the same premix, buses, returns and master, without the MP3 check and master.flac.
+            d=render(work/'bus.json',work/'render_bus_draft',config,cache,draft=True);od=work/'render_bus_draft'
+            assert d['status']=='DRAFT_PASS' and d['mp3'] is None and 'mp3_loudness_matches_master' not in d['checks'] and not (od/'master.flac').exists()
+            for f in ['premix.wav','master.wav']+[f'returns/{x.name}' for x in sorted((out/'returns').glob('*.wav'))]:
+                assert file_hash(od/f)==file_hash(out/f),f
+            # With too little free memory for the mix's checks beside the master they run after it: the same render.
+            import musiclib.render as render_module
+            free=render_module.free_memory;render_module.free_memory=lambda:0
+            try:s=render(work/'bus.json',work/'render_bus_sequential',config,cache)
+            finally:render_module.free_memory=free
+            assert s['master']['sha256']==r['master']['sha256'] and s['buses']==r['buses'],(s['buses'],r['buses'])
             # The same with tape wobble and a mono low end on the mix: they act on master_input.wav, and the delivered
             # buses and returns, read back once the render is done, still add up to the delivered premix.wav.
             t=copy.deepcopy(q);t['mix'].update(mono_below_hz=150,wow_flutter={'wow_cents':8,'wow_hz':.5,'flutter_cents':2,'flutter_hz':8})
@@ -1960,6 +3572,11 @@ def checks(work,config=None):
                 run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'compare',str(rest),str(added),'--output',str(report),*extra],capture_output=True,text=True,encoding='utf-8',errors='replace')
                 saved=json.loads(report.read_text(encoding='utf-8')) if report.is_file() else {}
                 assert run.returncode==0 and saved.get('clip',{}).get('error') and saved['files']['master']['master']['passages'],(why,run.stderr[-600:],saved.get('clip'))
+            # --json prints the report as saved, its folders relative to it, not the one with local paths.  (Found by a
+            # review of 0.4.0.)
+            report=work/'cli_json.json'
+            run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'compare',str(rest),str(added),'--output',str(report),'--json'],capture_output=True,text=True,encoding='utf-8',errors='replace')
+            assert run.returncode==0 and json.loads(run.stdout)==json.loads(report.read_text(encoding='utf-8')),run.stderr[-600:]
             # compare judges a part's change as it is sent, through gains it models on FFmpeg's highpass and lowpass:
             # tones through the delay's and the hall's filters, FFmpeg against the model.  Then two cases through the
             # real mixer, two parts on the fx bus that share only a delay:
@@ -2036,7 +3653,19 @@ def checks(work,config=None):
             assert all(len(x)==end for x in parts) and loop.read_cues(out/'layers'/'top.wav')==[(s['start_sample'],s['id']) for s in lp['sections']]
             assert corr>.98 and abs(lp['layers']['sum_minus_loop_db'])<3 and 0<lp['layers']['aligned_frames']<1000,(corr,lp['layers'])
             saved=json.loads((out/'loop.json').read_text(encoding='utf-8'));assert set(saved['layers'])=={'base','top'}
-            return {'gain_db':lp['layers']['gain_db'],'sum_minus_loop_db':lp['layers']['sum_minus_loop_db'],'correlation_with_loop':round(corr,4)}
+            # The layers get the mix's own production before the master as the mix does: with mix.mono_below_hz, two low
+            # parts panned apart add up to a mono low end in the layers too (they kept the stereo lows, the side 0 dB
+            # from the mid; GPT Pro's seventh review of 0.4.0).
+            m=copy.deepcopy(q);m['mix'].update(dynamics='wide',mono_below_hz=250);m['loop']['layers']={'base':['bass'],'top':[x['id'] for x in m['tracks'] if x['id']!='bass']}
+            low=next(x for x in m['tracks'] if x['id']=='bass');low['mix']['pan']=-1
+            m['tracks'].append({**copy.deepcopy(low),'id':'bass_r','mix':{**low['mix'],'pan':1}});m['loop']['layers']['top'].append('bass_r')
+            save_json(work/'layers_mono.json',m);render(work/'layers_mono.json',work/'render_layers_mono',config,cache)
+            both=sum(np.asarray(audio.read_wav(work/'render_layers_mono'/'layers'/f'{lid}.wav')[0],dtype=np.float64) for lid in ('base','top'))
+            spec=lambda x:np.abs(np.fft.rfft(x))[(np.fft.rfftfreq(len(x),1/audio.RATE)>30)&(np.fft.rfftfreq(len(x),1/audio.RATE)<150)]
+            side_db=20*np.log10(np.linalg.norm(spec(both[:,0]-both[:,1]))/max(np.linalg.norm(spec(both[:,0]+both[:,1])),1e-12))
+            assert side_db<-30,side_db
+            return {'gain_db':lp['layers']['gain_db'],'sum_minus_loop_db':lp['layers']['sum_minus_loop_db'],'correlation_with_loop':round(corr,4),
+                    'mono_low_side_db':round(float(side_db),1)}
         check('loop_layers_render_and_add_up_to_the_mix',layer_render)
         def wide_render():
             # Four soft bars and four loud ones.  The wide master is one gain and an EQ, so it keeps the mix's contrast
@@ -2143,6 +3772,17 @@ def checks(work,config=None):
                 assert a['surge']['rendered_with']=='Surge XT' and b['cache_hit'] and a['raw_sha256']==b['raw_sha256'],(a.get('surge'),b['cache_hit'])
                 assert first['master']['sha256']==again['master']['sha256'] and float(np.sqrt(np.mean(np.asarray(x,dtype=float)**2)))>1e-4
                 out['with_surge']='Surge XT, take kept by the cache'
+                # A release longer than four seconds rings into the piece's tail (tail_seconds), as far as it asks: the
+                # host stopped four seconds after the last note, and the rest was silence, which passed the quiet-tail
+                # check (GPT Pro's seventh review of 0.4.0).
+                r=copy.deepcopy(q);r['clock']={'bars':1,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':10};r['sections']=[{'id':'one','start_bar':0,'bars':1}]
+                pad=r['tracks'][0];pad.update(surge={'preset':'ghost_pad'},notes=[{'id':'n','on':0,'duration':2,'pitch':60}])
+                pad['performance']={'notes':{'n':{'velocity':90,'gate':1.0}}};save_json(work/'surge_tail.json',r)
+                render(work/'surge_tail.json',work/'render_surge_tail',config,work/'cache_surge')
+                key=json.loads((work/'render_surge_tail'/'stem_receipts.json').read_text(encoding='utf-8'))[0]['cache_key']
+                raw,info=audio.read_wav(work/'cache_surge'/key/'raw.wav');late=np.asarray(raw[6*audio.RATE:7*audio.RATE],dtype=float)
+                assert info['seconds']>=11.9 and late.size and float(np.sqrt(np.mean(late**2)))>1e-6,(info['seconds'],late.size)
+                out['release_past_four_seconds']=True
             return out
         check('surge_part_plays_the_patch_or_its_fallback',surge_part)
         def audition_part():
@@ -2161,6 +3801,14 @@ def checks(work,config=None):
             assert [x['sound'] for x in v]==['as_written','synth_fm_bell'] and (work/'audition_out'/'audition.mp3').is_file()
             assert v[1]['part_brightness']['centroid_hz']>v[0]['part_brightness']['centroid_hz'],v
             assert rejects(lambda:parse_sound('surge:no_such_patch')) and rejects(lambda:parse_sound('synth'))
+            # --solo of a part ducked to another, which the solo leaves out: the duck goes too, and each version says so
+            # (every version stopped on validate before).
+            kick={'id':'kick','engine':'drum_synth','drums':True,'role':'drums','notes':[{'id':f'k{i}','on':i,'duration':.25,'pitch':36} for i in range(8)],
+                  'performance':{'notes':{f'k{i}':{'velocity':110} for i in range(8)}},'mix':{'level_dbfs':-14}}
+            ducked=copy.deepcopy(q);ducked['tracks'][0]['mix']['duck']={'by':'kick','depth_db':6};ducked['tracks'].append(kick)
+            save_json(work/'audition_duck.json',ducked)
+            d=audition(work/'audition_duck.json','line',[parse_sound('synth:fm_bell')],1,2,work/'audition_duck',config,work/'cache_audition',solo=True)
+            assert all('duck' in x.get('performance_left_out',[]) for x in d['versions']) and d['status']=='PASS',d['versions']
             # Settings only a SoundFont part takes are left out on another engine, and said so.
             from musiclib.audition import with_sound
             sf=copy.deepcopy(p);piano=next(x for x in sf['tracks'] if x['engine']=='soundfont' and not x.get('drums'))
@@ -2179,10 +3827,126 @@ def checks(work,config=None):
             assert r['fallbacks']==['surge_bell_pad','surge_ghost_pad'] and 'not an A/B' in r['note'],r
             return {x['sound']:x['part_brightness'] for x in v}
         check('audition_plays_one_part_on_several_sounds',audition_part)
+        def revision_rounds_and_clean():
+            # Two rounds through the command: the second, after one note moved, names it, synthesizes only its part
+            # again and compares with the first. clean then keeps the second round and the cache entries it uses, and
+            # removes the first round and its own entry; the next render still reuses everything.
+            import subprocess,sys
+            from musiclib.revision import revision_round
+            from musiclib.clean import clean
+            proj=work/'rounds';proj.mkdir();q=example();save_json(proj/'song.json',q)
+            shown=[]
+            first=revision_round(proj/'song.json',proj/'r1',config,show=shown.append)
+            assert first['status']=='DRAFT_PASS' and first['compare'] is None and (proj/'r1'/'round.json').is_file() and (proj/'cache').is_dir(),first
+            assert len(shown)==5 and shown[0].startswith('Review of ') and shown[1].startswith('Render (draft) of ') and shown[2].startswith('Analysis of r1'),shown
+            q['tracks'][0]['notes'][0]['pitch']+=2;moved=q['tracks'][0]['notes'][0]['id'];save_json(proj/'song_r2.json',q)
+            run=subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),'round',str(proj/'song_r2.json'),'--output',str(proj/'r2'),'--config',str(config),'--previous',str(proj/'r1')],capture_output=True,text=True,encoding='utf-8',errors='replace')
+            assert run.returncode==0 and 'Compare r1 -> r2' in run.stdout and f'note {moved}' in run.stdout and 'Synthesized again: '+q['tracks'][0]['id'] in run.stdout,run.stdout[-3000:]+run.stderr[-1500:]
+            second=json.loads((proj/'r2'/'round.json').read_text(encoding='utf-8'))
+            # The round names its project and the round before it relative to itself: no local folders in a shared record.
+            assert second['project']=='../song_r2.json' and second['previous']=='../r1/render',(second['project'],second['previous'])
+            report=json.loads((proj/'r2'/'render'/'report.json').read_text(encoding='utf-8'))
+            assert second['compare']=='render/compare_r1.json' and report['cache_hits']==report['stems_reused']==len(q['tracks'])-1,(second,report['cache_hits'])
+            # A round's folder stands for its render in analyze and compare; analyze says why it will not overwrite the
+            # round's own measurement.
+            studio=lambda *a:subprocess.run([sys.executable,str(Path(__file__).with_name('studio.py')),*map(str,a)],capture_output=True,text=True,encoding='utf-8',errors='replace')
+            again=studio('compare',proj/'r1',proj/'r2','--output',proj/'r1_r2.json')
+            assert again.returncode==0 and again.stdout.startswith('Compare r1 -> r2'),again.stderr[-800:]
+            measured=studio('analyze',proj/'r2')
+            assert measured.returncode==2 and 'the round measured its render already' in measured.stderr and '--output' in measured.stderr,measured.stderr
+            # round --json prints the round's record instead of the summaries.
+            third=studio('round',proj/'song_r2.json','--output',proj/'r3','--config',config,'--previous',proj/'r2','--json')
+            assert third.returncode==0 and json.loads(third.stdout)==json.loads((proj/'r3'/'round.json').read_text(encoding='utf-8')),third.stdout[-800:]+third.stderr[-800:]
+            entries=len([d for d in (proj/'cache').iterdir() if d.is_dir()])
+            # clean lists by default and removes only with --remove.
+            listing=studio('clean',proj,'--keep',proj/'r2','--keep',proj/'r3')
+            assert listing.returncode==0 and listing.stdout.startswith('Would remove') and 'Nothing was removed' in listing.stdout and (proj/'r1').is_dir(),listing.stdout
+            done=clean(proj,[proj/'r2',proj/'r3'],remove=True)
+            assert not (proj/'r1').exists() and (proj/'r2'/'render'/'master.wav').is_file() and (proj/'song.json').is_file() and (proj/'r1_r2.json').is_file()
+            kinds=sorted(x['kind'] for x in done['listed']);left=len([d for d in (proj/'cache').iterdir() if d.is_dir()])
+            assert kinds==['cache entry','render','round'] and left==entries-1==len(q['tracks']) and not done['dry_run'],(kinds,entries,left)
+            assert rejects(lambda:clean(proj,[])) and rejects(lambda:clean(proj,[work/'render_first']))
+            after=render(proj/'song_r2.json',proj/'final',config)
+            assert after['cache_hits']==after['stems_reused']==len(q['tracks']) and after['status']=='TECHNICAL_PASS_AUDITION_PENDING'
+            return {'rounds':2,'removed':kinds,'cache_entries_kept':left,'final_reused_every_stem':True}
+        check('revision_rounds_and_clean',revision_rounds_and_clean)
+        def outputs_carry_no_input_metadata():
+            # Tags in a cached WAV (an artist, a comment that could hold a path) do not reach what FFmpeg writes from it: every
+            # output is written with -map_metadata -1 and -map_chapters -1 (audio.ffmpeg).
+            cfg=audio.load_config(config);src=work/'tagged.wav';audio.write_wav(src,np.zeros((4800,2),dtype=np.float32))
+            chunk=lambda tag,b:tag+struct.pack('<I',len(b))+b+(b'\0' if len(b)%2 else b'')
+            data=src.read_bytes()+chunk(b'LIST',b'INFO'+chunk(b'IART',b'tagged-artist-7151\0')+chunk(b'ICMT',b'tagged-comment-2938\0'))
+            src.write_bytes(data[:4]+struct.pack('<I',len(data)-8)+data[8:])
+            for name,codec in (('out.wav',['-c:a','pcm_s24le']),('out.mp3',['-c:a','libmp3lame','-b:a','128k']),('out.flac',['-c:a','flac'])):
+                audio.ffmpeg(cfg,['-i',src,*codec,work/name],work/'logs_meta','meta_'+name.replace('.','_'))
+                raw=(work/name).read_bytes();assert b'tagged-artist-7151' not in raw and b'tagged-comment-2938' not in raw,name
+            return {'outputs':3}
+        check('outputs_carry_no_input_metadata',outputs_carry_no_input_metadata)
+        def flac_sources_decode_within_a_limit():
+            # A FLAC source is decoded to at most a second past soundbank.MAX_SOURCE_SECONDS and refused when longer,
+            # so the temporary WAV stays bounded whatever the file holds (here with the limit set to 2 s).
+            import soundbank
+            cfg=audio.load_config(config);wav=work/'three_seconds.wav';audio.write_wav(wav,np.zeros((3*audio.RATE,2),dtype=np.float32))
+            audio.ffmpeg(cfg,['-i',wav,'-c:a','flac',work/'three_seconds.flac'],work/'logs_flac','to_flac')
+            x,_=soundbank.read_audio(work/'three_seconds.flac',cfg['ffmpeg']['path']);assert len(x)==3*audio.RATE,len(x)
+            limit=soundbank.MAX_SOURCE_SECONDS
+            try:
+                soundbank.MAX_SOURCE_SECONDS=2
+                try:soundbank.read_audio(work/'three_seconds.flac',cfg['ffmpeg']['path']);raise AssertionError('a FLAC over the limit was read')
+                except ValueError as e:assert 'cut it first' in str(e),e
+            finally:soundbank.MAX_SOURCE_SECONDS=limit
+            return {'limit_s':limit}
+        check('flac_sources_decode_within_a_limit',flac_sources_decode_within_a_limit)
+        def a_silent_part_is_named():
+            # A part whose synthesis is silent (here drum notes on a key the kit has no sample for) stops the render
+            # with its name and what to check; as an audition's context part (`quiet`) it keeps its own level instead.
+            q=copy.deepcopy(p);q['clock']={'bars':1,'meter':[4,4],'tempo':[[0,100]],'tail_seconds':1};q['sections']=[{'id':'a','start_bar':0,'bars':1}]
+            q.pop('harmony',None);piano=copy.deepcopy(next(t for t in p['tracks'] if t['id']=='piano'));drums=copy.deepcopy(next(t for t in p['tracks'] if t['drums']))
+            piano['notes']=[{'id':'pn','on':0,'duration':3,'pitch':60}];piano['performance']={'notes':{'pn':{'velocity':80}},'cc':[]}
+            drums['notes']=[{'id':'dn','on':0,'duration':.25,'pitch':2}];drums['performance']={'notes':{'dn':{'velocity':100}},'cc':[]};drums['range']=[0,127]
+            q['tracks']=[piano,drums];save_json(work/'silent.json',q)
+            try:render(work/'silent.json',work/'render_silent',config,work/'cache_silent',draft=True);raise AssertionError('a silent part rendered')
+            except ValueError as e:assert f'{drums["id"]}: its synthesis is silent' in str(e) and 'keys' in str(e),e
+            # The render that stopped says so in its folder: report.json names the stage it had finished, the part and
+            # why, and a round or a comparison will not take it for a finished render.  (Found by a review of 0.4.0.)
+            from musiclib.render import stopped
+            failed=json.loads((work/'render_silent'/'report.json').read_text(encoding='utf-8'))
+            assert failed['status']=='FAIL' and failed['failed']['part']==drums['id'] and failed['failed']['after_stage']=='midi' and 'silent' in failed['failed']['error'],failed
+            assert stopped(work/'render_silent') and stopped(work/'render_silent_never') is None
+            r=render(work/'silent.json',work/'render_silent_quiet',config,work/'cache_silent',draft=True,quiet={drums['id']})
+            receipt=next(x for x in json.loads((work/'render_silent_quiet'/'stem_receipts.json').read_text(encoding='utf-8')) if x['track']==drums['id'])
+            assert r['status']=='DRAFT_PASS' and receipt.get('nearly_silent') is True,(r['status'],receipt)
+            return {'named':drums['id']}
+        check('a_silent_part_is_named',a_silent_part_is_named)
+        def long_automation_renders():
+            # A part ridden by 200 automation points renders (FFmpeg's expression failed past 95), and its stem follows them.
+            q=copy.deepcopy(p);q['clock']={'bars':4,'meter':[4,4],'tempo':[[0,120]],'tail_seconds':1}
+            q['sections']=[{'id':'a','start_bar':0,'bars':4}];q.pop('harmony',None)
+            lead=copy.deepcopy(next(t for t in p['tracks'] if t['engine']=='additive'))
+            lead['notes']=[{'id':'held','on':0,'duration':16,'pitch':69}];lead['performance']={'notes':{'held':{'velocity':90}}}
+            lead['mix'].update(automation=[[i*.08,-12.0 if i%2 else 0.0] for i in range(200)],delay_db=None,reverb_db=None)
+            q['tracks']=[lead];save_json(work/'automation.json',q)
+            r=render(work/'automation.json',work/'render_automation',config,work/'cache_automation',draft=True)
+            y,_=audio.read_wav(work/'render_automation'/'stems'/'lead.wav');y=np.asarray(y,dtype=np.float64)
+            c=Clock(q);at=lambda beat:round(c.seconds(beat)*audio.RATE);w=round(.004*audio.RATE)
+            level=lambda beat:10*np.log10(np.mean(y[at(beat)-w:at(beat)+w]**2))
+            ridden=[level(i*.08)-level((i+1)*.08) for i in range(100,110,2)]
+            assert all(d>8 for d in ridden) and r['status']=='DRAFT_PASS',(ridden,r['status'])
+            receipt=next(x for x in json.loads((work/'render_automation'/'stem_receipts.json').read_text(encoding='utf-8')) if x['track']=='lead')
+            assert receipt.get('automation_points')==200 and 'pow(10' not in receipt['filter_chain'],receipt
+            return {'points':200,'level_drop_db':round(float(np.mean(ridden)),1)}
+        check('long_automation_renders',long_automation_renders)
     report={'status':'PASS','checks':results,'render_checks_included':bool(config),'direct_audio_audition':False,'musical_quality_certified':False}
     save_json(work/'selfcheck_report.json',report);return report
 
 if __name__=='__main__':
+    import sys
+    from musiclib import files
+    files.escape_unprintable()
     p=argparse.ArgumentParser();p.add_argument('--work',type=Path,required=True);p.add_argument('--config',type=Path);args=p.parse_args()
-    if (args.work/'selfcheck_report.json').exists():raise ValueError('Preserve prior report; use a fresh work directory')
+    # The checks write many files under fixed names, so the folder must be new or empty: a report there or not, what
+    # it already holds is not theirs to overwrite.
+    if files.linked(args.work) or (files.occupied(args.work) and (not args.work.is_dir() or any(args.work.iterdir()))):
+        print(f'ERROR: --work {args.work} is not empty (or is a link); give a new or empty folder (the selfcheck writes many files there)',file=sys.stderr)
+        sys.exit(2)
     result=checks(args.work,args.config);print(json.dumps({'status':result['status'],'checks':len(result['checks'])}),flush=True)

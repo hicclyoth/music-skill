@@ -6,6 +6,8 @@ Read this when the request is any of these:
 - a guitar-driven cue for a game, a trailer or a video;
 - an instrumental for a rock band.
 
+Contents: [Brief](#brief) · [Form](#form) · [Harmony and riffs](#harmony-and-riffs) · [Rhythm and drums](#rhythm-and-drums) · [Guitars on the banks](#guitars-on-the-banks) · [Bass](#bass) · [Arrangement](#arrangement) · [The mix](#the-mix) · [Instruments](#instruments) · [Symptoms and causes](#symptoms-and-causes) · [Sources](#sources)
+
 Related guides:
 - [anime-opening.md](anime-opening.md): a J-rock or J-pop band cue in TV size;
 - [pop-and-ballad.md](pop-and-ballad.md): the power ballad;
@@ -163,7 +165,7 @@ The table is an example plan. Build by addition toward the chorus (McAdams, Good
 | Keys | `vcsl` grand 0:0, `piano_osiris`; Surge XT `organ_1` (fallback `warm_pad`) for a rock organ |
 | Orchestra, choir (symphonic metal) | `vsco_strings` sections, `vsco` brass, `vocal_ah`, `vcsl` timpani 0:47 ([orchestration.md](orchestration.md)) |
 
-Probe a preset before building a part on it ([soundbanks.md](soundbanks.md)).
+Probe a preset before building a part on it ([soundbank-measurements.md](soundbank-measurements.md) has what each bank measured).
 
 ## Symptoms and causes
 

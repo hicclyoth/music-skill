@@ -2,7 +2,7 @@
 from collections import Counter, defaultdict, deque
 from pathlib import Path
 import struct
-from . import variation
+from . import files, variation
 from .model import Clock, TPQ, performed, cc_events, bend_curve, bend_events, legato_notes, wheel_events
 
 def vlq(n):
@@ -35,7 +35,7 @@ def remap(notes,key_map):
             kept.append(n);prev=n
     return sorted(kept,key=lambda n:(n['tick'],n['pitch']))
 
-def write(project,path,tracks=None,expressive=True,single_stem=False,render=False,keys=None,cycles=None):
+def write(project,path,tracks=None,expressive=True,single_stem=False,render=False,keys=None,cycles=None,new=False):
     """Standard MIDI file. With render=True (synthesis input only) a track's `patch` replaces its
     program/bank and `key_map` remaps pitches; a drum part whose patch is not bank 128 plays on a
     melodic channel; with `keys` (a preset's recordings per key, musiclib/variation.py) a part with
@@ -114,8 +114,16 @@ def write(project,path,tracks=None,expressive=True,single_stem=False,render=Fals
         e.extend([(end,7,bytes([176+channel,64,0])),(end,8,bytes([176+channel,123,0]))])
         if bends:e.append((end,7,bytes([224+channel,0,64])))
         chunks.append(chunk(e))
-    Path(path).write_bytes(b'MThd'+struct.pack('>IHHH',6,1,len(chunks),TPQ)+b''.join(chunks))
+    with files.staged(path,new=new) as f:  # whole or not at all; with `new`, never over a file that took the name meanwhile
+        f.write(b'MThd'+struct.pack('>IHHH',6,1,len(chunks),TPQ)+b''.join(chunks))
     return routing
+
+def read_own(path):
+    """A MIDI file the skill wrote, read back to check it: bounded by its own size (an event takes at least two bytes,
+    a delta time and a data byte), not by the limits for a file from elsewhere, which a long project's own export
+    (validate allows 500,000 notes, a million note events before the controllers and the wheel) can pass."""
+    size=Path(path).stat().st_size
+    return read(path,max_bytes=size,max_events=size//2+1)
 
 def read(path,max_bytes=8_000_000,max_events=1_000_000):
     if Path(path).stat().st_size>max_bytes:raise ValueError('MIDI byte bound exceeded')

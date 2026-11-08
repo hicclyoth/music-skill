@@ -42,7 +42,7 @@ import math
 
 import numpy as np
 
-from . import audio, stage
+from . import audio, files, stage
 from .loop import starts_at_zero
 from .measure import k_filter, k_level
 from .model import BUSES, save_json
@@ -135,8 +135,8 @@ def space_ir(name, seed=20261101):
 
 def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
     """Mix the render's processed stems through the buses and spaces into premix.wav.  Each bus, reverb and delay
-    return and impulse response is kept in returns/; the buses and returns must add up to the premix, and
-    bus_level_change_db.json compares every bus with its stems' sum.
+    return and impulse response is kept in returns/; `verify` then checks that the buses and returns add up to the
+    premix and compares every bus with its stems' sum.
 
     With `tracks` (a layer of a game loop) only those parts go through the same buses and spaces into `premix`; the
     impulse responses of the full mix are reused and nothing else is written."""
@@ -202,37 +202,43 @@ def mix(p, clock, cfg, output, frames, tracks=None, premix=None):
     graph.append(''.join(sums) + f'amix=inputs={len(sums)}:normalize=0:duration=longest,'
                  f'atrim=end_sample={frames}{fade}[mix]')
     text = ';\n'.join(graph)
-    (output / 'mix.filtergraph.txt' if full else premix.with_suffix('.filtergraph.txt')).write_text(text, encoding='utf-8')
+    graph_options = audio.graph_file(cfg, output / 'mix.filtergraph.txt' if full else premix.with_suffix('.filtergraph.txt'), text)
     exports = []
     for b in BUSES:
         if dry[b] and full:
             exports += ['-map', f'[busexp_{b}]', '-ar', str(RATE), '-c:a', 'pcm_f32le', returns / f'bus_{b}.wav']
     for label, path in returned if full else ():
         exports += ['-map', f'[{label}]', '-ar', str(RATE), '-c:a', 'pcm_f32le', path]
-    audio.ffmpeg(cfg, [*args, '-filter_complex', text, '-map', '[mix]', '-ar', str(RATE), '-c:a', 'pcm_f32le',
+    audio.ffmpeg(cfg, [*args, *graph_options, '-map', '[mix]', '-ar', str(RATE), '-c:a', 'pcm_f32le',
                        premix, *exports], output / 'logs', 'mix' if full else 'mix_' + premix.stem)
     if not full:
         return None
+    return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
+                                                                         if t['mix'].get('reverb_db') is not None},
+            'returns': [path.name for _, path in returned]}
 
+
+def verify(p, output, buses):
+    """What a full mix (`buses`, from `mix`) is checked against, written to bus_level_change_db.json and returned:
+    each bus's K-weighted level against the sum of its stems, and the buses and returns added up against the premix.
+    It reads only the files the mix wrote, so a render runs it while the master is made."""
+    returns = output / 'returns'
     change, total, mag = {}, 0.0, 0.0
     for b in BUSES:
-        members = [s for s, t in zip(stems, tracks) if bus_of(t) == b]
+        members = [output / 'stems' / f'{t["id"]}.wav' for t in p['tracks'] if bus_of(t) == b]
         if members:
             summed = sum(audio.read_wav(s)[0].astype(np.float64) for s in members)
             bus = np.asarray(audio.read_wav(returns / f'bus_{b}.wav')[0], dtype=np.float64)
             change[b] = round(k_level(bus) - k_level(summed), 2)
             total, mag = total + bus, mag + np.abs(bus)
-    for _, path in returned:
-        x = np.asarray(audio.read_wav(path)[0], dtype=np.float64)
+    for name in buses['returns']:
+        x = np.asarray(audio.read_wav(returns / name)[0], dtype=np.float64)
         total, mag = total + x, mag + np.abs(x)
     save_json(output / 'bus_level_change_db.json', change)
     # Summed, the buses and returns give the premix back up to float rounding (the premix fades in over its first 5 ms).
-    mixed = np.asarray(audio.read_wav(premix)[0], dtype=np.float64)
+    mixed = np.asarray(audio.read_wav(output / 'premix.wav')[0], dtype=np.float64)
     ok, worst, share = adds_up(total, mag, mixed, int(.01 * RATE))
-    return {'assignment': {t['id']: bus_of(t) for t in tracks}, 'spaces': {t['id']: space_of(t) for t in tracks
-                                                                         if t['mix'].get('reverb_db') is not None},
-            'level_change_db': change, 'returns': [path.name for _, path in returned],
-            'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1),
+    return {'level_change_db': change, 'sum_minus_premix_peak_dbfs': round(20 * math.log10(max(worst, 1e-12)), 1),
             'sum_error_share_of_allowance': round(share, 4), 'adds_up_to_premix': ok}
 
 
@@ -268,22 +274,34 @@ def soft_clip(x, ceiling, knee=.75, factor=4, block=1 << 16, margin=2048):
     return out
 
 
+def premix_production(p, x=None):
+    """The mix's own production before the master measures and compresses it: tape wobble over the whole mix, then the
+    low frequencies mono (musiclib/production.py).  Both are linear, and the wobble follows one trajectory for a given
+    length (its phases come from the name 'premix'), so loop layers put through it add up to the mix put through it:
+    the layers skipped it, and kept the stereo lows mono_below_hz takes out (found by GPT Pro's seventh review of
+    0.4.0).  Without `x`, whether the mix has any."""
+    if x is None:
+        return bool(p['mix'].get('wow_flutter') or p['mix'].get('mono_below_hz'))
+    from . import production
+    if p['mix'].get('wow_flutter'):
+        x, _ = production.wow_flutter(x, p['mix']['wow_flutter'], 'premix')
+    if p['mix'].get('mono_below_hz'):
+        x = production.mono_below(x, p['mix']['mono_below_hz'])
+    return x
+
+
 def master(p, cfg, output):
-    """premix.wav (or master_input.wav) -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit)."""
+    """premix.wav (or master_input.wav) -> master chain -> mixed.wav -> delivery gain and limiter -> master.wav (24-bit).
+    Returns the premix measurement, the mastering record and the measurement of master.wav as delivered (the last
+    delivery pass measured the file the render keeps, so it is not measured again)."""
     logs = output / 'logs'
     source_in = output / 'premix.wav'
-    if p['mix'].get('wow_flutter') or p['mix'].get('mono_below_hz'):
-        # Tape wobble over the whole mix, then low frequencies mono (musiclib/production.py), before the master
-        # measures and compresses it: written to master_input.wav, so premix.wav stays the buses and returns summed.
-        from . import production
+    if premix_production(p):
+        # Written to master_input.wav, so premix.wav stays the buses and returns summed.
         x, _ = audio.read_wav(source_in)
         x = x.astype('float64')  # releases the mapped file
-        if p['mix'].get('wow_flutter'):
-            x, _ = production.wow_flutter(x, p['mix']['wow_flutter'], 'premix')
-        if p['mix'].get('mono_below_hz'):
-            x = production.mono_below(x, p['mix']['mono_below_hz'])
         source_in = output / 'master_input.wav'
-        audio.write_wav(source_in, x.astype('float32'))
+        audio.write_wav(source_in, premix_production(p, x).astype('float32'))
     before = audio.measure(cfg, source_in, logs, 'measure_premix')
     gain = MIX_LUFS - before['integrated_lufs']
     wide = p['mix'].get('dynamics') == 'wide'
@@ -298,10 +316,10 @@ def master(p, cfg, output):
             ranged = range_control(mixed, output / 'ranged.wav', p['mix']['range_lu'])
             mixed = output / 'ranged.wav'
             source = audio.measure(cfg, mixed, logs, 'measure_ranged')
-        delivered = wide_delivery(cfg, output, mixed, source, target, gain, chain)
+        delivered, measured = wide_delivery(cfg, output, mixed, source, target, gain, chain)
         if ranged:
             delivered['range'] = ranged
-        return before, delivered
+        return before, delivered, measured
     delivery, passes, ceiling = target - source['integrated_lufs'], [], LIMIT_DBFS
     loud = p['mix'].get('loudness') == 'loud'
     clipped = output / 'clipped.wav'
@@ -335,7 +353,7 @@ def master(p, cfg, output):
     return before, {'chain': 'bus', 'mix_gain_db': round(gain, 6), 'master_chain': chain,
                     'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')},
                     'target_lufs': target, 'limiter_dbfs': round(ceiling, 3), 'delivery_chain': limiter, 'passes': passes,
-                    'limiting_db': section_limiting(p, mixed, output / 'master.wav', applied)}
+                    'limiting_db': section_limiting(p, mixed, output / 'master.wav', applied)}, m
 
 
 def section_limiting(p, mixed, master, gain_db):
@@ -369,7 +387,7 @@ def wide_delivery(cfg, output, mixed, source, target, gain, chain):
     return {'chain': 'bus', 'dynamics': 'wide', 'mix_gain_db': round(gain, 6), 'master_chain': chain,
             'mixed': {k: source[k] for k in ('integrated_lufs', 'true_peak_dbtp', 'lra_lu')}, 'target_lufs': target,
             'peak_held_db': round(max(0.0, wanted - delivery), 2), 'lra_lu': m['lra_lu'],
-            'limiter_dbfs': -1.0, 'delivery_chain': guard, 'passes': passes}
+            'limiter_dbfs': -1.0, 'delivery_chain': guard, 'passes': passes}, m
 
 
 def short_term(x):
@@ -430,8 +448,15 @@ def linear_master(mastering):
 def mp3_check(cfg, output, master_lufs):
     """Decode preview.mp3 again and compare its loudness with the master's (the MP3 must not change it)."""
     decoded = output / 'logs' / 'preview_decoded.wav'
-    audio.run([cfg['ffmpeg']['path'], '-hide_banner', '-nostdin', '-y', '-i', output / 'preview.mp3', '-ar', str(RATE),
-               '-c:a', 'pcm_f32le', decoded], output / 'logs', 'decode_mp3')
+    before = files.stamp(decoded)
+    try:
+        audio.run([cfg['ffmpeg']['path'], '-hide_banner', '-nostdin', '-y', '-i', output / 'preview.mp3', '-ar', str(RATE),
+                   '-c:a', 'pcm_f32le', decoded], output / 'logs', 'decode_mp3')
+    finally:
+        # FFmpeg writes it there itself: a file of the run, should a failure leave it, once FFmpeg has changed what was
+        # at that name (a file there that it never wrote is not the run's; GPT Pro's sixth review, from the code).
+        if files.stamp(decoded) != before:
+            files.wrote(decoded)
     d = audio.measure(cfg, decoded, output / 'logs', 'measure_mp3')
     decoded.unlink()
     return {'mp3_lufs': d['integrated_lufs'], 'mp3_true_peak_dbtp': d['true_peak_dbtp'],

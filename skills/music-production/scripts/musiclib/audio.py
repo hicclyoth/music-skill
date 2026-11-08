@@ -1,4 +1,5 @@
 """Local headless processes, narrow WAV I/O, instruments and audio measurements."""
+import contextlib
 import hashlib
 import json
 import math
@@ -7,15 +8,47 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+import threading
 import time
 import numpy as np
+from . import files
 from .model import Clock, performed, save_json, file_hash
+from .model import bend_curve as wheel_curve
 
 RATE=48000
+# The longest WAV read: a project's 30 minutes (validate) and its tail of up to 15 s, with room to spare.
+MAX_WAV_SECONDS=1860
 
-def absolute_paths(config, base):
+TOOLS = ('fluidsynth', 'ffmpeg', 'soundfont')  # what every configuration names, as bootstrap.py writes it
+
+
+def config_shape(config, where, needs=TOOLS):
+    """A configuration's shape, checked before any of it is read: a JSON object; the entries `needs` names present;
+    each of fluidsynth, ffmpeg, soundfont, surge and pedalboard it holds an object with a text `path`; `soundfonts`, if
+    there, an object of named banks, each an object with a text `path`.  Anything else is refused naming the field: a
+    null path, a list of banks or a missing tool stopped the command with a traceback (found by GPT Pro's sixth review
+    of 0.4.0)."""
+    if not isinstance(config, dict):
+        raise ValueError(f'{where}: a configuration is a JSON object, not {type(config).__name__}')
+    for key in needs:
+        if key not in config:
+            raise ValueError(f'{where}: the configuration needs "{key}"; bootstrap.py writes one')
+    for key in ('fluidsynth', 'ffmpeg', 'soundfont', 'surge', 'pedalboard'):
+        if key in config and not (isinstance(config[key], dict) and isinstance(config[key].get('path'), str) and config[key]['path']):
+            raise ValueError(f'{where}: "{key}" in the configuration is an object with a text "path"')
+    banks = config.get('soundfonts', {})
+    if not isinstance(banks, dict):
+        raise ValueError(f'{where}: "soundfonts" in the configuration maps names to banks (an object), not {type(banks).__name__}')
+    for name, entry in banks.items():
+        if not (isinstance(entry, dict) and isinstance(entry.get('path'), str) and entry['path']):
+            raise ValueError(f'{where}: soundfonts.{name} in the configuration is an object with a text "path"')
+    return config
+
+
+def absolute_paths(config, base, where=None):
     """The configuration with every relative path made absolute against `base` (the folder of the file it was read
-    from), so it can be written anywhere."""
+    from), so it can be written anywhere; its shape is checked first (config_shape, with no tool required)."""
+    config_shape(config, where or base, needs=())
     entries = [config[k] for k in ('fluidsynth', 'ffmpeg', 'soundfont', 'surge', 'pedalboard') if isinstance(config.get(k), dict)]
     entries += [v for v in config.get('soundfonts', {}).values() if isinstance(v, dict)]
     for entry in entries:
@@ -24,22 +57,46 @@ def absolute_paths(config, base):
                 entry[key] = str((Path(base) / entry[key]).resolve())
     return config
 
-def load_config(path):
-    """Verify every configured executable and SoundFont by path and SHA-256. `soundfont` is the
-    default bank; optional `soundfonts` adds named banks that tracks select with `soundfont`."""
+VERIFIED={}  # path -> (sha256, size, modification time) of each named bank this process has hashed
+
+def _stamp(p):
+    """A file's size and modification time: both change when the file is rewritten, so a bank hashed once is hashed
+    again once either has changed."""
+    s=os.stat(p);return (s.st_size,s.st_mtime_ns)
+
+def _verified(path,sha):
+    try:return VERIFIED.get(str(path))==(sha,_stamp(path))
+    except OSError:return False
+
+def _verify(key,entry,p):
+    # A system package update replaces the executable: the configuration then names a file that is gone or changed.
+    again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
+    if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
+    if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
+
+def load_config(path,all_banks=False):
+    """Verify the configured executables and the default SoundFont by path and SHA-256. `soundfont` is the default
+    bank; optional `soundfonts` adds named banks that tracks select with `soundfont`.  A named bank is found at load and
+    hashed the first time a part uses it (soundfont_for), or at once with `all_banks` (doctor): a full set is about 8 GB,
+    and hashing it all took a render's first five seconds for the few banks one piece plays."""
+    # Read by the name given, bounded and never through a link (found by GPT Pro's fourth review), and only then
+    # resolved, for the folder its relative entries start from: resolved first, a link had become its target and
+    # passed the reader's check (found by GPT Pro's fifth review of 0.4.0).
+    data=files.read_json(os.path.abspath(path))
     path=Path(path).resolve()
-    data=json.loads(path.read_text(encoding='utf-8'))
+    config_shape(data,path)
     extra=data.get('soundfonts',{})
-    if not isinstance(extra,dict) or 'default' in extra or not all(re.fullmatch(r'[a-z][a-z0-9_]{0,47}',k) for k in extra):
+    if 'default' in extra or not all(re.fullmatch(r'[a-z][a-z0-9_]{0,47}',k) for k in extra):
         raise ValueError('soundfonts must map lower-case names (not "default") to entries')
     for key,entry in [(k,data[k]) for k in ('fluidsynth','ffmpeg','soundfont')]+[('soundfonts.'+k,v) for k,v in extra.items()]:
         p=Path(entry['path'])
         if not p.is_absolute():p=path.parent/p
         p=p.resolve()
-        # A system package update replaces the executable: the configuration then names a file that is gone or changed.
-        again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
-        if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
-        if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
+        if key.startswith('soundfonts.') and not all_banks:
+            if not p.is_file():_verify(key,entry,p)
+        else:
+            _verify(key,entry,p)
+            if key.startswith('soundfonts.'):VERIFIED[str(p)]=(entry['sha256'],_stamp(p))
         entry['path']=str(p)
     return data
 
@@ -52,33 +109,101 @@ def soundfont_for(config,track):
         hint=(f' It is one of the optional banks: install it with fetch_soundbanks.py --only {name} (references/setup.md), then pass the configuration it writes.'
               if name in known else ' Configure it with studio.py add-soundfont, or choose a configured bank (studio.py doctor lists them).')
         raise ValueError(f'{track["id"]}: SoundFont "{name}" is not configured.'+hint)
-    return name,config['soundfonts'][name]
+    entry=config['soundfonts'][name]
+    if not _verified(entry['path'],entry.get('sha256')):
+        p=Path(entry['path']);_verify('soundfonts.'+name,entry,p);VERIFIED[str(p)]=(entry['sha256'],_stamp(p))
+    return name,entry
 
-def run(argv,folder,label,timeout=600):
+class Cancelled(Exception):
+    """The run a program belonged to stopped (another part of the render failed), and the program was stopped too."""
+
+_scope=threading.local()
+
+@contextlib.contextmanager
+def cancel_scope(event):
+    """Programs this thread starts with run() stop once `event` is set: a render's other parts, when one has failed
+    (they ran on, and the parts still waiting started, until each finished; found by GPT Pro's third review)."""
+    before=getattr(_scope,'event',None);_scope.event=event
+    try:yield
+    finally:_scope.event=before
+
+def check_cancel(what):
+    """Stop here (Cancelled) if this thread's run was stopped (cancel_scope): before a program starts, after a wait for
+    memory or a cache entry, between a part's stages.  A part that waited went on to synthesize once let in, and a
+    program started after the stop ran to its end (found by GPT Pro's fourth review of 0.4.0)."""
+    event=getattr(_scope,'event',None)
+    if event is not None and event.is_set():raise Cancelled(f'{what} stopped: another part failed')
+
+def run(argv,folder,label,timeout=600,cwd=None):
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
     log=folder/(label+'.log');started=time.monotonic()
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
-    with log.open('wb') as out:
-        proc=subprocess.Popen([str(x) for x in argv],stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,creationflags=flags)
-        try:code=proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill();proc.wait();raise TimeoutError(f'{label} exceeded {timeout}s; log: {log}')
+    cancel=getattr(_scope,'event',None)
+    check_cancel(label)  # a run already stopped starts no program (one that ended within 0.2 s ran to its end)
+    opened=False
+    try:
+        with log.open('wb') as out:
+            opened=True
+            proc=subprocess.Popen([str(x) for x in argv],stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,creationflags=flags,cwd=cwd)
+            try:
+                deadline=started+timeout
+                while True:
+                    try:code=proc.wait(timeout=.2 if cancel is not None else max(.01,deadline-time.monotonic()));break
+                    except subprocess.TimeoutExpired:
+                        if time.monotonic()>=deadline:raise TimeoutError(f'{label} exceeded {timeout}s; log: {log}') from None
+                        if cancel is not None and cancel.is_set():raise Cancelled(f'{label} stopped: another part failed') from None
+            except BaseException:
+                # Stopped from outside (Ctrl+C, a failure elsewhere): the program it started stops too, and is waited for,
+                # so nothing it writes outlives the run.
+                proc.kill()
+                with contextlib.suppress(Exception):proc.wait(timeout=10)
+                raise
+    finally:
+        # The program's log, written here rather than swapped in, noted once the program has finished writing it: a
+        # file of the run (files.register_tree), whatever stopped it; only once this run has opened it, so a file at
+        # that name it could not open is never taken for the run's (GPT Pro's sixth review of 0.4.0, from the code).
+        if opened:files.wrote(log)
     receipt={'argv':[str(x) for x in argv],'returncode':code,'seconds':round(time.monotonic()-started,3),'pid':proc.pid,'launch_mode':'CREATE_NO_WINDOW' if flags else 'no stdin; no GUI arguments','log':str(log)}
     save_json(folder/(label+'.process.json'),receipt)
     content=log.read_text(encoding='utf-8',errors='replace')
     if code:raise RuntimeError(f'{label} failed ({code}): {content[-3000:]}')
     return content
 
+def written_whole(run_it,outputs):
+    """Run `run_it(names)` with each output file of `outputs` given as a new file of its own beside it, with the same
+    extension (a program picks the format from it); each takes its output's place only when the run succeeds, and all
+    are removed when it fails, so a stopped or failed program never leaves half a file under the output's name.  A
+    null sink (os.devnull, -) is passed through."""
+    named=[]
+    try:
+        for o in outputs:named.append(o if str(o) in (os.devnull,'-') else files.stage_name(o,Path(o).suffix))
+        result=run_it(named)
+        for o,n in zip(outputs,named):
+            if n is not o:files.replace(n,o)
+        return result
+    finally:
+        for o,n in zip(outputs,named):
+            if n is not o:
+                with contextlib.suppress(OSError):os.unlink(n)
+
 def fluidsynth(config,font_path,midi_path,wav_path,folder,label='fluidsynth'):
-    """Render a MIDI file on one SoundFont: dry (no chorus or reverb), 48 kHz float, sample-accurate timing."""
-    log=run([config['fluidsynth']['path'],'-n','-i','-C','0','-R','0','-g','.55','-r',str(RATE),'-T','wav','-O','float','-o','synth.cpu-cores=1','-o','synth.polyphony=256','-o','synth.midi-bank-select=mma','-o','player.timing-source=sample','-F',wav_path,font_path,midi_path],folder,label)
-    # Only FluidSynth's own messages ("fluidsynth: error: ...", a preset "not found"), not paths it echoes.
-    problems=[line for line in log.splitlines() if line.lower().startswith('fluidsynth:') and any(w in line.lower() for w in ('error','panic','failed','not found'))]
-    if problems:raise ValueError('Instrument rendering diagnostic: '+'\n'.join(problems)[-2000:])
-    return log
+    """Render a MIDI file on one SoundFont: dry (no chorus or reverb), 48 kHz float, sample-accurate timing.  A run
+    whose log reports a problem publishes nothing (written_whole)."""
+    def run_it(names):
+        log=run([config['fluidsynth']['path'],'-n','-i','-C','0','-R','0','-g','.55','-r',str(RATE),'-T','wav','-O','float','-o','synth.cpu-cores=1','-o','synth.polyphony=256','-o','synth.midi-bank-select=mma','-o','player.timing-source=sample','-F',names[0],font_path,midi_path],folder,label)
+        # Only FluidSynth's own messages ("fluidsynth: error: ...", a preset "not found"), not paths it echoes.
+        problems=[line for line in log.splitlines() if line.lower().startswith('fluidsynth:') and any(w in line.lower() for w in ('error','panic','failed','not found'))]
+        if problems:raise ValueError('Instrument rendering diagnostic: '+'\n'.join(problems)[-2000:])
+        return log
+    return written_whole(run_it,[wav_path])
 
 def ffmpeg(config,args,folder,label):
-    guarded=[];i=0
+    """Run FFmpeg on the skill's own WAVs.  Every option the scripts pass takes one value, so any other argument is an
+    output file; each output gets no metadata or chapters from its inputs (-map_metadata -1, -map_chapters -1), only
+    the tags a script sets itself: FFmpeg copies an input's global metadata by default (FFmpeg documentation,
+    -map_metadata), and a tag written into a cached WAV would otherwise reach every master, MP3 and FLAC made from it.
+    Each output is written whole (written_whole)."""
+    guarded=[];i=0;outputs=[];slots=[]
     while i<len(args):
         if args[i]=='-i':
             p=Path(args[i+1]).resolve()
@@ -86,8 +211,31 @@ def ffmpeg(config,args,folder,label):
             with p.open('rb') as f:header=f.read(12)
             if header[:4]!=b'RIFF' or header[8:12]!=b'WAVE':raise ValueError('Not RIFF/WAVE')
             guarded.extend(['-protocol_whitelist','file,pipe','-f','wav','-i',p]);i+=2
-        else:guarded.append(args[i]);i+=1
-    return run([config['ffmpeg']['path'],'-hide_banner','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',*guarded],folder,label)
+        elif str(args[i]).startswith('-') and str(args[i])!='-':
+            if i+1>=len(args):raise ValueError(f'FFmpeg option {args[i]} has no value')
+            guarded.extend(args[i:i+2]);i+=2
+        else:
+            guarded.extend(['-map_metadata','-1','-map_chapters','-1',args[i]]);slots.append(len(guarded)-1);outputs.append(args[i]);i+=1
+    def run_it(names):
+        argv=list(guarded)
+        for slot,name in zip(slots,names):argv[slot]=name
+        return run([config['ffmpeg']['path'],'-hide_banner','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',*argv],folder,label)
+    return written_whole(run_it,outputs)
+
+_GRAPH={}
+def graph_file(config,path,text):
+    """Write the filtergraph `text` to `path` and return the FFmpeg options that read it from there: a mix's graph
+    grows with its parts, and on the command line it would take the 32,767 characters a Windows command line holds.
+    FFmpeg 7 and newer read an option's value from a file as -/filter_complex; FFmpeg 6 has only -filter_complex_script,
+    which FFmpeg 9.0.2 no longer accepts (we tried).  The version is asked once per executable."""
+    exe=config['ffmpeg']['path']
+    if exe not in _GRAPH:
+        flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
+        out=subprocess.run([exe,'-hide_banner','-version'],capture_output=True,text=True,errors='replace',stdin=subprocess.DEVNULL,creationflags=flags,timeout=30)
+        m=re.search(r'version\s+n?(\d+)\.',out.stdout)
+        _GRAPH[exe]='-filter_complex_script' if m and int(m.group(1))<7 else '-/filter_complex'
+    with files.staged(path) as f:f.write(text.encode('utf-8'))
+    return [_GRAPH[exe],str(Path(path).resolve())]
 
 _AFIR={}
 def afir_options(config):
@@ -107,7 +255,7 @@ def write_wav(path,data,rate=RATE):
     if not np.isfinite(data).all():raise ValueError('Nonfinite audio')
     channels=data.shape[1];raw=data.tobytes()
     fmt=struct.pack('<HHIIHH',3,channels,rate,rate*channels*4,channels*4,32)
-    with Path(path).open('wb') as f:
+    with files.staged(path) as f:  # whole or not at all: a failed write leaves the file that was there
         f.write(b'RIFF'+struct.pack('<I',36+len(raw))+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',len(raw))+raw)
 
 def read_wav(path):
@@ -122,7 +270,9 @@ def read_wav(path):
             if len(header)!=8:raise ValueError('Truncated WAV chunk')
             name,size=struct.unpack('<4sI',header)
             if size>path.stat().st_size:raise ValueError('Invalid WAV chunk size')
-            if name==b'fmt ':fmt=f.read(size)
+            if name==b'fmt ':
+                if size>1024:raise ValueError('Invalid WAV format chunk')  # 16 to 40 bytes in practice
+                fmt=f.read(size)
             elif name==b'data':payload=(f.tell(),size);f.seek(size,1)
             else:f.seek(size,1)
             if size%2:f.seek(1,1)
@@ -133,6 +283,10 @@ def read_wav(path):
         tag=struct.unpack_from('<H',fmt,24)[0]
     if channels not in (1,2) or rate!=RATE or payload[1]%align:raise ValueError('Unsupported WAV dimensions')
     offset,size=payload
+    if size//align>MAX_WAV_SECONDS*RATE:
+        # Nothing the tools write is longer than a render, so a longer file (a reference, a render folder from
+        # elsewhere) is refused before it is read: analysis and comparison hold several float64 copies of what they read.
+        raise ValueError(f'{path.name}: {size//align/RATE/60:.1f} minutes, longer than a render can be ({MAX_WAV_SECONDS//60} minutes)')
     if tag==3 and bits==32:
         data=np.memmap(path,dtype='<f4',mode='r',offset=offset,shape=(size//4//channels,channels))
     elif tag==1 and bits==24:
@@ -189,28 +343,47 @@ def measure(config,path,logs,label):
     if not all(math.isfinite(info[x]) for x in ('integrated_lufs','true_peak_dbtp','lra_lu')):raise ValueError('Silent/invalid loudness input')
     return info
 
-def automation(points,clock):
-    if not points:return 'anull'
-    pairs=[(clock.seconds(b),v) for b,v in points]
-    expr=str(pairs[-1][1])
-    for (a,x),(b,y) in reversed(list(zip(pairs,pairs[1:]))):
-        expr=f'if(lt(t,{b:.8f}),{x}+({y-x})*(t-{a:.8f})/{b-a:.8f},{expr})'
-    return f"volume='pow(10,({expr})/20)':eval=frame"
+AUTOMATION_BLOCK=1<<16  # samples whose gain is computed at once: the song's whole gain curve is never held in memory
+
+def automated(x,points,clock):
+    """The stem `x` (frames × channels) under its part's `automation`, as a new array, or None where the automation
+    leaves it as it is (no points, or 0 dB at every point).  The level runs linearly in dB and in time from point to
+    point; before the first point it is the first point's, after the last the last one's (as excerpt.py reads it).
+    Sample by sample in NumPy: an FFmpeg expression nests one condition per point, which fails past about 96 points
+    and puts every point on the command line."""
+    db=np.array([v for _,v in points],dtype=np.float64)
+    if not db.any():return None
+    at=np.array([clock.seconds(b)*RATE for b,_ in points],dtype=np.float64)
+    out=np.empty(x.shape,dtype=np.float32)
+    for i in range(0,len(x),AUTOMATION_BLOCK):
+        n=np.arange(i,min(i+AUTOMATION_BLOCK,len(x)),dtype=np.float64)
+        out[i:i+len(n)]=x[i:i+len(n)]*np.power(10.0,np.interp(n,at,db)/20).astype(np.float32)[:,None]
+    return out
+
+def beats_at(clock,times):
+    """clock.beat for an array of seconds: the position in beats each time falls on."""
+    ts=np.asarray(clock.times);i=np.clip(np.searchsorted(ts,times,side='right')-1,0,None)
+    return np.asarray(clock.beats)[i]+(np.asarray(times,dtype=np.float64)-ts[i])/np.asarray(clock.spb)[i]
 
 def control(track,cc,times,clock,default):
-    points=sorted((clock.seconds(b),v) for b,c,v in track['performance'].get('cc',[]) if c==cc)
+    """A controller's value at `times` (seconds) as the exported MIDI plays the part's [beat, controller, value] points
+    (model.cc_events): linear in beats from point to point, or held in step mode; `default` before the first point.
+    In beats, not seconds, so a ramp under a tempo change reaches the value the MIDI file gives that beat."""
+    points=sorted((b,v) for b,c,v in track['performance'].get('cc',[]) if c==cc)
     if not points:return np.full(len(times),default,dtype=np.float32)
-    xs=np.array([x[0] for x in points]);ys=np.array([x[1] for x in points],dtype=np.float64)
+    xs=np.array([x[0] for x in points],dtype=np.float64);ys=np.array([x[1] for x in points],dtype=np.float64);beats=beats_at(clock,times)
     if track['performance'].get('cc_mode','linear')=='step':
-        idx=np.searchsorted(xs,times,side='right')-1
+        idx=np.searchsorted(xs,beats,side='right')-1
         return np.where(idx>=0,ys[np.clip(idx,0,None)],default)
-    return np.interp(times,xs,ys,left=default)
+    return np.interp(beats,xs,ys,left=default)
 
 def bend_curve(track,times,clock):
-    """Pitch bend in semitones at `times` (seconds), linear between the part's bend points; zero without any."""
-    pts=track['performance'].get('bend',[])
+    """Pitch bend in semitones at `times` (seconds), as the exported MIDI plays the part's [beat, semitones] points
+    (model.bend_curve, curve_at): zero until the first point, which it may jump to, then linear in beats between
+    points; zero without any."""
+    pts=wheel_curve(track['performance'].get('bend',[]))
     if not pts:return np.zeros(len(times))
-    return np.interp(times,[clock.seconds(b) for b,_ in pts],[v for _,v in pts])
+    return np.interp(beats_at(clock,times),[b for b,_ in pts],[v for _,v in pts])
 
 def synthesize(project,track,path):
     clock=Clock(project);frames=round((clock.end+clock.tail)*RATE)

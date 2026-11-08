@@ -5,6 +5,8 @@ low (measured below). Find the part and the moment first, decide what the noise 
 here, which runs from no processing at all to processing that can harm the sound. A person's ear decides whether a
 treatment helped; a measurement only says where to listen.
 
+Contents: [Where noise comes from](#where-noise-comes-from) · [When it is heard: masking](#when-it-is-heard-masking) · [Finding it](#finding-it) · [Treatments, safest first](#treatments-safest-first) · [The banks, measured](#the-banks-measured) · [Listening tests](#listening-tests) · [Sources](#sources)
+
 ## Where noise comes from
 
 - **The instrument.** Bow and rosin, breath and reed, keys and pedals, hammers, fingers on strings, a guitar
@@ -87,7 +89,7 @@ Judge both.
 ### 5. Denoising the samples
 
 `soundbank.py`'s `denoise` reduces the steady noise of a bank's recordings when the bank is built
-([soundbanks.md](soundbanks.md)). It descends from spectral subtraction (Boll 1979): a short-time Wiener gain per bin
+([soundbank-building.md](soundbank-building.md)). It descends from spectral subtraction (Boll 1979): a short-time Wiener gain per bin
 from a decision-directed estimate of the a-priori signal-to-noise ratio (Ephraim and Malah 1984; Scalart and Vieira
 Filho 1996), smoothed (α = 0.98) so the noise left over stays steady instead of turning into "musical noise" (Cappé
 1994), and never lower than a set reduction, so that, like the spectral floor of Berouti et al. (1979), it leaves natural
@@ -116,7 +118,7 @@ frequency stay as recorded.
 A click is not steady noise but a short knock from the instrument recorded inside a take that rings on, such as a key
 let go while the sustain pedal holds the string. Every note played on that take knocks at the same moment after its
 strike, most clearly under soft pedalled playing. `soundbank.py`'s `declick` finds such clicks when a bank is built and
-repairs them ([soundbanks.md](soundbanks.md)): a click is broadband (2–12 kHz) and stands alone, where a low string's
+repairs them ([soundbank-building.md](soundbank-building.md)): a click is broadband (2–12 kHz) and stands alone, where a low string's
 own pulse, once a period, and a soft take's hammer noise rise again and again; in the click's frames each bin is held
 to its level just before and just after, so a ringing partial passes and the knock does not. Detecting a click and
 interpolating over it is the classic restoration approach (Godsill and Rayner 1998). Check a repaired take as for
@@ -124,7 +126,7 @@ denoising: the click's band back to its surroundings, the partials' level unchan
 then an A/B by ear. It suits takes recorded one note per file: a second strike's hammer noise looks like a click too.
 The Osiris pedal takes had such knocks 0.2–3.8 s after the strike, where soft pedalled playing reaches them; its build
 repairs them. The VCSL Steinway, Kawai and uprights and the VSCO upright have them too, mostly 3–20 s in, where only a
-long or pedalled note reaches them, and keep them as recorded ([soundbanks.md](soundbanks.md)).
+long or pedalled note reaches them, and keep them as recorded ([soundbank-measurements.md](soundbank-measurements.md)).
 
 ### 7. Gates and expanders
 
@@ -153,7 +155,7 @@ sampled pianos found it there: the VCSL Steinway's soft layer carries rumble abo
 note's early level, the Kawai's softest 30 and 47 dB (10 and 31 on its noisiest takes), where the Osiris pedal takes
 keep 58 and 73, and a pedal adds the takes up. Reducing it take by take, each take its own print, was tried and set
 aside: what was left of the noise rose and fell with the playing, and in a mix the other parts and the reverb cover the
-noise anyway. For quiet, exposed piano choose the Osiris, or the Yamaha upright ([soundbanks.md](soundbanks.md)).
+noise anyway. For quiet, exposed piano choose the Osiris, or the Yamaha upright ([soundbank-measurements.md](soundbank-measurements.md)).
 Otherwise, noise heard in a render is first a matter of an instrument's own sound, gain, voices adding up and the
 playback level.
 

@@ -7,6 +7,8 @@ Read this when choosing chords for a phrase, giving a return new harmony, changi
 - jazz voicings and substitutions in practice: [jazz-and-funk.md](jazz-and-funk.md);
 - the baroque rule of the octave and schemata: [baroque.md](baroque.md).
 
+Contents: [Function and the phrase](#function-and-the-phrase) · [Colour: tonicization and mixture](#colour-tonicization-and-mixture) · [Sequences](#sequences) · [Changing key](#changing-key) · [Reharmonizing a return](#reharmonizing-a-return) · [Developing a motive](#developing-a-motive) · [Sources](#sources)
+
 ## Function and the phrase
 
 - **A phrase moves toward a cadence.** Open Music Theory analyses a phrase from its ending back:
