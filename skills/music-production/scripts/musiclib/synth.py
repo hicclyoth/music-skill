@@ -34,6 +34,9 @@ Everything is deterministic: noise and unison phases come from the note's id.
 import hashlib
 import json
 import math
+import os
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -49,6 +52,8 @@ DEFAULT = {'oscillators': [{'wave': 'saw', 'level': 1.0}], 'amp': {'attack': 0.0
 
 WAVES = ('saw', 'supersaw', 'square', 'pulse', 'triangle', 'sine', 'fm', 'noise')
 MONO_LINE_S = 30.0
+PARALLEL_VOICES = 4    # processes for the voices of a long synth part
+PARALLEL_FROM_S = 30.0  # seconds of voices in a part before it uses them
 
 
 def validate(track):
@@ -176,14 +181,36 @@ def pulse(phase, dt, width):
     return saw(phase, dt) - saw(phase + width, dt)
 
 
-def triangle(phase, freq, rate):
-    out = np.zeros_like(phase)
-    for k in range(1, 400, 2):
-        live = k * freq < .45 * RATE
-        if not live.any():
-            break
-        sign = 1 if (k // 2) % 2 == 0 else -1
-        out += np.where(live, sign * np.sin(2 * np.pi * k * phase) / (k * k), 0.0)
+def triangle(phase, freq, rate, chunk=1 << 15):
+    """A band-limited triangle: its odd harmonics up to .45 RATE, summed.  sin(k x) for k = 3, 5, ... comes from the
+    recurrence sin((k+2)x) = 2 cos(2x) sin(kx) - sin((k-2)x), a chunk of samples at a time so it stays in cache."""
+    phase = np.asarray(phase, dtype=np.float64)
+    n = len(phase)
+    freq = np.broadcast_to(np.asarray(freq, dtype=np.float64), (n,))
+    top = .45 * RATE
+    out = np.empty(n)
+    for s in range(0, n, chunk):
+        e = min(n, s + chunk)
+        f = freq[s:e]
+        lo, hi = float(f.min()), float(f.max())
+        x = 2 * np.pi * (phase[s:e] % 1.0)
+        cur = np.sin(x)
+        prev = -cur
+        c = 2 * np.cos(2 * x)
+        acc = np.zeros(e - s)
+        tmp = np.empty(e - s)
+        for k in range(1, 400, 2):
+            if k * lo >= top:
+                break
+            w = (1 if (k // 2) % 2 == 0 else -1) / (k * k)
+            if k * hi < top:
+                acc += w * cur
+            else:
+                acc += np.where(k * f < top, w * cur, 0.0)
+            np.multiply(c, cur, out=tmp)
+            tmp -= prev
+            prev, cur, tmp = cur, tmp, prev
+        out[s:e] = acc
     return out * 8 / np.pi ** 2
 
 
@@ -211,76 +238,100 @@ def clocked_noise(phase, rng):
     return values[cycle]
 
 
-def adsr(n, off, env, rate):
+def adsr(n, off, env, rate, start=0, stop=None):
     """An envelope over n samples with the key released at sample `off`: a linear attack, an exponential decay to the
-    sustain level (time constants a third of the times given), and an exponential release (a fifth)."""
+    sustain level (time constants a third of the times given), and an exponential release (a fifth).  Returns samples
+    start to stop (all n by default)."""
     a, d, s, r = (max(1e-4, env.get('attack', .005)), max(1e-4, env.get('decay', .1)), env.get('sustain', .8),
                   max(1e-4, env.get('release', .2)))
-    t = np.arange(n) / rate
-    held = np.where(t < a, t / a, s + (1 - s) * np.exp(-(t - a) / (d / 3)))
-    at_off = float(held[min(off, n - 1)]) if off < n else float(held[-1])
-    rel = at_off * np.exp(-(t - off / rate) / (r / 5))
-    return np.where(np.arange(n) < off, held, rel)
+
+    def held_at(t):
+        return np.where(t < a, t / a, s + (1 - s) * np.exp(-(t - a) / (d / 3)))
+    at_off = float(held_at(np.arange(min(off, n - 1), min(off, n - 1) + 1) / rate)[0])
+    idx = np.arange(start, n if stop is None else stop)
+    t = idx / rate
+    with np.errstate(over='ignore'):   # the release curve before the key is let go, never used
+        rel = at_off * np.exp(-(t - off / rate) / (r / 5))
+    return np.where(idx < off, held_at(t), rel)
 
 
-def lfo(n, spec, rate, beat_seconds=None):
+def lfo(n, spec, rate, beat_seconds=None, start=0):
+    """n samples of the LFO from sample `start` on."""
     if not spec:
         return np.zeros(n)
     hz = spec.get('rate_hz') or (1.0 / (spec['rate_beats'] * beat_seconds) if spec.get('rate_beats') and beat_seconds else 5.0)
-    t = np.arange(n) / rate
+    t = np.arange(start, start + n) / rate
     shape = spec.get('shape', 'sine')
     ph = (hz * t + spec.get('phase', 0.0)) % 1.0
-    wave = {'sine': np.sin(2 * np.pi * ph), 'triangle': 1 - 4 * np.abs(ph - .5), 'square': np.where(ph < .5, 1.0, -1.0),
-            'saw': 2 * ph - 1}[shape]
+    wave = {'sine': lambda: np.sin(2 * np.pi * ph), 'triangle': lambda: 1 - 4 * np.abs(ph - .5),
+            'square': lambda: np.where(ph < .5, 1.0, -1.0), 'saw': lambda: 2 * ph - 1}[shape]()
     delay, fade = spec.get('delay', 0.0), spec.get('fade', 0.0)
     ramp = np.clip((t - delay) / fade, 0, 1) if fade > 0 else (t >= delay).astype(float)
     return wave * ramp
 
 
-def linear_recursion(A, z, block=64):
-    """s[n] = A[n] s[n-1] + z[n] with s[-1] = 0, for 2x2 matrices A (n, 2, 2) and vectors z (n, 2).  Within each block
-    of `block` steps the products P[j] = A[j]...A[0] and the response Z[j] from a zero state are built for all blocks at
-    once; each block's state is then P[j] times the state entering it plus Z[j], and the states entering the blocks
-    solve the same recursion over the blocks' end matrices."""
-    n = len(z)
-    if n <= block:
-        out = np.empty_like(z)
-        cur = np.zeros(2)
-        for i in range(n):
-            cur = A[i] @ cur + z[i]
-            out[i] = cur
-        return out
-    nb = -(-n // block)
-    pad = nb * block - n
-    if pad:
-        A = np.concatenate([A, np.broadcast_to(np.eye(2), (pad, 2, 2))])
-        z = np.concatenate([z, np.zeros((pad, 2))])
-    A = A.reshape(nb, block, 2, 2)
-    z = z.reshape(nb, block, 2)
-    P = np.empty_like(A)
-    Z = np.empty_like(z)
-    P[:, 0], Z[:, 0] = A[:, 0], z[:, 0]
-    for j in range(1, block):
-        P[:, j] = A[:, j] @ P[:, j - 1]
-        Z[:, j] = np.einsum('bik,bk->bi', A[:, j], Z[:, j - 1]) + z[:, j]
-    ends = linear_recursion(P[:, -1], Z[:, -1], block)
-    entering = np.concatenate([np.zeros((1, 2)), ends[:-1]])
-    out = np.einsum('bjik,bk->bji', P, entering) + Z
-    return out.reshape(-1, 2)[:n]
+def all_pole(v, a1, a2, state=None, block=256, chunk=1 << 20):
+    """y[n] = v[n] - a1[n] y[n-1] - a2[n] y[n-2], coefficients per sample.  `state` is [y[-1], y[-2]] (zeros when not
+    given) and is updated to the last two outputs, so a long signal can go through in pieces.
 
-
-def all_pole(v, a1, a2):
-    """y[n] = v[n] - a1[n] y[n-1] - a2[n] y[n-2], coefficients per sample."""
+    Exact, and linear in time and memory.  The signal goes through in chunks of `chunk` samples.  A chunk is cut into
+    blocks of `block` samples and the recursion runs once down all blocks side by side (`block` numpy steps over
+    vectors a block count long), three times over: from the input with a zero start, and from a unit y[-1] or a unit
+    y[-2] with no input.  Each block's output is the first plus the other two weighted by the two outputs that end the
+    block before it, which a short loop over the blocks supplies."""
+    v = np.asarray(v, dtype=np.float64)
     n = len(v)
-    A = np.empty((n, 2, 2))
-    A[:, 0, 0], A[:, 0, 1], A[:, 1, 0], A[:, 1, 1] = -a1, -a2, 1.0, 0.0
-    z = np.zeros((n, 2))
-    z[:, 0] = v
-    return linear_recursion(A, z)[:, 0]
+    a1 = np.broadcast_to(np.asarray(a1, dtype=np.float64), (n,))
+    a2 = np.broadcast_to(np.asarray(a2, dtype=np.float64), (n,))
+    state = [0.0, 0.0] if state is None else state
+    out = np.empty(n)
+    for s in range(0, n, chunk):
+        e = min(n, s + chunk)
+        out[s:e] = _all_pole_chunk(v[s:e], a1[s:e], a2[s:e], state[0], state[1], block)
+        state[:] = [float(out[e - 1]), float(out[e - 2]) if e - s >= 2 else state[0]]
+    return out
 
 
-def biquad(x, kind, cutoff, q, rate):
-    """RBJ low-, high- or band-pass with a cutoff (Hz, one per sample) and Q (at least 0.55), in direct form I."""
+def _all_pole_chunk(v, a1, a2, y1, y2, block):
+    m = len(v)
+    if m <= 2 * block:   # short: a plain loop
+        out = np.empty(m)
+        for i, (x, c1, c2) in enumerate(zip(v.tolist(), a1.tolist(), a2.tolist())):
+            y1, y2 = x - c1 * y1 - c2 * y2, y1
+            out[i] = y1
+        return out
+    nb = -(-m // block)
+    pad = nb * block - m
+
+    def rows(x):   # (block, nb): row j holds sample j of every block
+        return np.ascontiguousarray(np.pad(x, (0, pad)).reshape(nb, block).T)
+    V, A1, A2 = rows(v), rows(a1), rows(a2)
+    R = np.empty((block, 3, nb))   # per block: [input response, response to y[-1] = 1, response to y[-2] = 1]
+    prev2 = np.zeros((3, nb))
+    prev2[2] = 1.0
+    prev1 = np.zeros((3, nb))
+    prev1[1] = 1.0
+    for k in range(block):
+        cur = R[k]
+        np.multiply(prev1, -A1[k], out=cur)
+        cur -= A2[k] * prev2
+        cur[0] += V[k]
+        prev2, prev1 = prev1, cur
+    # the two outputs entering each block, block by block
+    last, before = R[-1].tolist(), R[-2].tolist()
+    e1, e2 = np.empty(nb), np.empty(nb)
+    for b in range(nb):
+        e1[b], e2[b] = y1, y2
+        y1, y2 = (last[0][b] + last[1][b] * y1 + last[2][b] * y2,
+                  before[0][b] + before[1][b] * e1[b] + before[2][b] * e2[b])
+    out = R[:, 0] + R[:, 1] * e1 + R[:, 2] * e2
+    return out.T.reshape(-1)[:m]
+
+
+def biquad(x, kind, cutoff, q, rate, state=None):
+    """RBJ low-, high- or band-pass with a cutoff (Hz, one per sample) and Q (at least 0.55), in direct form I.
+    `state` is [x[-1], x[-2], y[-1], y[-2]] (zeros when not given) and is updated, so a signal can go through in
+    pieces."""
     w0 = 2 * np.pi * np.clip(cutoff, 15.0, .45 * rate) / rate
     q = np.maximum(q, .55)
     cw, alpha = np.cos(w0), np.sin(w0) / (2 * q)
@@ -294,47 +345,87 @@ def biquad(x, kind, cutoff, q, rate):
         b1, b2 = -2 * b0, b0
     else:
         b0, b1, b2 = alpha / a0, 0.0 * alpha, -alpha / a0
+    state = [0.0, 0.0, 0.0, 0.0] if state is None else state
     x = np.asarray(x, dtype=np.float64)
-    x1 = np.concatenate([[0.0], x[:-1]])
-    x2 = np.concatenate([[0.0, 0.0], x[:-2]])
+    xs = np.concatenate([[state[1], state[0]], x])
+    x1, x2 = xs[1:-1], xs[:-2]
+    state[0], state[1] = float(xs[-1]), float(xs[-2])
     a1, a2 = np.broadcast_to(a1, x.shape), np.broadcast_to(a2, x.shape)
-    return all_pole(b0 * x + b1 * x1 + b2 * x2, a1, a2)
+    ys = state[2:]
+    y = all_pole(b0 * x + b1 * x1 + b2 * x2, a1, a2, ys)
+    state[2:] = ys
+    return y
 
 
 def resample_down(x, factor):
-    """From `factor` times the output rate down to it, through an FFT low-pass at the output's Nyquist frequency."""
+    """From `factor` times the output rate down to it, through an FFT low-pass at the output's Nyquist frequency.
+    One channel at a time, to hold less memory."""
+    x = np.asarray(x)
     n = len(x)
     m = n // factor
-    spec = np.fft.rfft(x[:m * factor], axis=0)
-    return np.fft.irfft(spec[:m // 2 + 1], n=m, axis=0) * (m / (m * factor))
+    if x.ndim == 1:
+        spec = np.fft.rfft(x[:m * factor])
+        return np.fft.irfft(spec[:m // 2 + 1], n=m) * (m / (m * factor))
+    out = np.empty((m,) + x.shape[1:])
+    for ch in range(x.shape[1]):
+        out[:, ch] = resample_down(x[:, ch], factor)
+    return out
 
 
-def voice(patch, pitch_curve, n_on, n, velocity, note_id, rate, beat_seconds):
+def voice(patch, pitch_curve, n_on, n, velocity, note_id, rate, beat_seconds, seg=1 << 16):
     """One voice at `rate` (the oversampled rate): `pitch_curve` gives its MIDI pitch per sample; the key is held for
-    n_on samples of n.  Returns stereo samples."""
-    freq = 440.0 * 2 ** ((pitch_curve - 69) / 12)
+    n_on samples of n.  Returns stereo samples.  It is synthesized `seg` samples at a time, carrying each oscillator's
+    phase and each filter's state across, so the working memory stays the same however long the note."""
     lfo_spec = patch.get('lfo')
-    mod = lfo(n, lfo_spec, rate, beat_seconds)
-    if lfo_spec and lfo_spec.get('to_pitch_cents'):
-        freq = freq * 2 ** (mod * lfo_spec['to_pitch_cents'] / 1200)
     rng = np.random.default_rng(seed(note_id))
-    out = np.zeros((n, 2))
+    # The oscillator voices, set up in the order their random numbers were always drawn: a voice's start phase, then
+    # its noise, all of it (a noise voice gets its own generator at that point and the shared one skips past it).
+    parts = []
     for osc in patch['oscillators']:
-        f = freq * 2 ** (osc.get('octave', 0) + osc.get('semitones', 0) / 12 + osc.get('cents', 0) / 1200)
         wave, level = osc.get('wave', 'saw'), osc.get('level', 1.0)
         voices = int(osc.get('voices', 7 if wave == 'supersaw' else 1))
         detune, spread = osc.get('detune_cents', 25 if wave == 'supersaw' else 0), osc.get('spread', .8 if wave == 'supersaw' else 0)
         for v in range(voices):
             pos = (v / (voices - 1) - .5) * 2 if voices > 1 else 0.0
-            fv = f * 2 ** (pos * detune / 1200)
-            dt = fv / rate
-            phase = np.cumsum(dt) + (rng.random() if voices > 1 or osc.get('random_phase') else 0.0)
+            part = {'osc': osc, 'wave': wave, 'level': level, 'voices': voices, 'pos': pos, 'pan': pos * spread,
+                    'detune': detune, 'carry': 0.0,
+                    'offset': rng.random() if voices > 1 or osc.get('random_phase') else 0.0}
+            if wave == 'noise' and osc.get('clock'):
+                first = last = None
+                for s in range(0, n, seg):
+                    ph = _phase(part, pitch_curve, s, min(n, s + seg), rate, beat_seconds, lfo_spec)[0]
+                    first = ph[0] * 16 if first is None else first
+                    last = ph[-1] * 16
+                part['carry'] = 0.0
+                part['c0'] = int(np.floor(first))
+                part['values'] = rng.choice((-1.0, 1.0), size=int(np.floor(last)) - part['c0'] + 1)
+            elif wave == 'noise':
+                part['rng'] = np.random.default_rng()
+                part['rng'].bit_generator.state = rng.bit_generator.state
+                for s in range(0, n, seg):
+                    rng.standard_normal(min(n, s + seg) - s)
+            parts.append(part)
+    filt = patch.get('filter')
+    if filt:
+        stages = 2 if filt.get('slope', 12) == 24 else 1
+        fstate = [[[0.0] * 4 for _ in range(stages)] for _ in range(2)]
+    drive = patch.get('drive', 0.0)
+    centred = all(part['pan'] == 0 for part in parts)
+    out = np.empty((n, 2))
+    for s in range(0, n, seg):
+        e = min(n, s + seg)
+        m = e - s
+        seg_out = np.zeros((m, 2))
+        mod = lfo(m, lfo_spec, rate, beat_seconds, s)
+        for part in parts:
+            phase, dt, fv = _phase(part, pitch_curve, s, e, rate, beat_seconds, lfo_spec, mod)
+            osc, wave = part['osc'], part['wave']
             if wave in ('saw', 'supersaw'):
                 sig = saw(phase, dt)
             elif wave in ('square', 'pulse'):
                 width = osc.get('width', .5)
                 if osc.get('pwm'):
-                    width = np.clip(width + osc['pwm'].get('depth', .2) * lfo(n, osc['pwm'], rate, beat_seconds), .05, .95)
+                    width = np.clip(width + osc['pwm'].get('depth', .2) * lfo(m, osc['pwm'], rate, beat_seconds, s), .05, .95)
                 sig = pulse(phase, dt, width)
             elif wave == 'triangle':
                 sig = stepped_triangle(phase, dt, int(osc['steps'])) if osc.get('steps') else triangle(phase, fv, rate)
@@ -342,40 +433,62 @@ def voice(patch, pitch_curve, n_on, n, velocity, note_id, rate, beat_seconds):
                 sig = np.sin(2 * np.pi * phase)
             elif wave == 'fm':
                 ratio, index = osc.get('ratio', 2.0), osc.get('index', 2.0)
-                ienv = adsr(n, n_on, osc.get('index_env', {'attack': .001, 'decay': .5, 'sustain': .3, 'release': .3}), rate)
+                ienv = adsr(n, n_on, osc.get('index_env', {'attack': .001, 'decay': .5, 'sustain': .3, 'release': .3}), rate, s, e)
                 sig = np.sin(2 * np.pi * phase + index * ienv * np.sin(2 * np.pi * phase * ratio))
             elif wave == 'noise':
-                sig = clocked_noise(phase * 16, rng) * .5 if osc.get('clock') else rng.standard_normal(n) * .5
+                if osc.get('clock'):
+                    sig = part['values'][np.floor(phase * 16).astype(np.int64) - part['c0']] * .5
+                else:
+                    sig = part['rng'].standard_normal(m) * .5
             else:
                 raise ValueError(f'unknown oscillator wave {wave!r}')
-            sig = sig * level / math.sqrt(voices)
-            pan = pos * spread
-            out[:, 0] += sig * math.sqrt((1 - pan) / 2) * math.sqrt(2)
-            out[:, 1] += sig * math.sqrt((1 + pan) / 2) * math.sqrt(2)
-    filt = patch.get('filter')
-    if filt:
-        fenv = adsr(n, n_on, patch.get('filter_env') or {}, rate)
-        octaves = (filt.get('env_amount', 0.0) * fenv + filt.get('key_track', 0.0) * (pitch_curve - 60) / 12
-                   + filt.get('velocity', 0.0) * (velocity - .5) * 2)
-        if lfo_spec and lfo_spec.get('to_cutoff_octaves'):
-            octaves = octaves + mod * lfo_spec['to_cutoff_octaves']
-        cutoff = filt.get('cutoff_hz', 2000.0) * 2 ** octaves
-        q = .707 + filt.get('resonance', 0.0) ** 2 * 24
-        kind = filt.get('type', 'lowpass')
-        for ch in range(2):
-            y = biquad(out[:, ch], kind, cutoff, q, rate)
-            if filt.get('slope', 12) == 24:
-                y = biquad(y, kind, cutoff, np.full(n, .707), rate)
-            out[:, ch] = y
-    amp = adsr(n, n_on, patch.get('amp') or {}, rate) * velocity ** patch.get('velocity_curve', 1.5)
-    if lfo_spec and lfo_spec.get('to_amp'):
-        amp = amp * (1 + lfo_spec['to_amp'] * mod)
-    out *= amp[:, None]
-    drive = patch.get('drive', 0.0)
-    if drive > 0:
-        k = 1 + 9 * drive
-        out = np.tanh(k * out) / math.tanh(k)
+            sig = sig * part['level'] / math.sqrt(part['voices'])
+            pan = part['pan']
+            seg_out[:, 0] += sig * math.sqrt((1 - pan) / 2) * math.sqrt(2)
+            seg_out[:, 1] += sig * math.sqrt((1 + pan) / 2) * math.sqrt(2)
+        if filt:
+            fenv = adsr(n, n_on, patch.get('filter_env') or {}, rate, s, e)
+            octaves = (filt.get('env_amount', 0.0) * fenv + filt.get('key_track', 0.0) * (pitch_curve[s:e] - 60) / 12
+                       + filt.get('velocity', 0.0) * (velocity - .5) * 2)
+            if lfo_spec and lfo_spec.get('to_cutoff_octaves'):
+                octaves = octaves + mod * lfo_spec['to_cutoff_octaves']
+            cutoff = filt.get('cutoff_hz', 2000.0) * 2 ** octaves
+            q = .707 + filt.get('resonance', 0.0) ** 2 * 24
+            kind = filt.get('type', 'lowpass')
+            for ch in range(1 if centred else 2):
+                y = biquad(seg_out[:, ch], kind, cutoff, q, rate, fstate[ch][0])
+                if stages == 2:
+                    y = biquad(y, kind, cutoff, np.full(m, .707), rate, fstate[ch][1])
+                seg_out[:, ch] = y
+            if centred:   # every oscillator voice in the middle: the right channel is the left one
+                seg_out[:, 1] = seg_out[:, 0]
+        amp = adsr(n, n_on, patch.get('amp') or {}, rate, s, e) * velocity ** patch.get('velocity_curve', 1.5)
+        if lfo_spec and lfo_spec.get('to_amp'):
+            amp = amp * (1 + lfo_spec['to_amp'] * mod)
+        seg_out *= amp[:, None]
+        if drive > 0:
+            k = 1 + 9 * drive
+            seg_out = np.tanh(k * seg_out) / math.tanh(k)
+        out[s:e] = seg_out
     return out
+
+
+def _phase(part, pitch_curve, s, e, rate, beat_seconds, lfo_spec, mod=None):
+    """An oscillator voice's phase over samples s to e, carried on from where its last call ended, with its phase
+    increment and frequency."""
+    osc = part['osc']
+    freq = 440.0 * 2 ** ((pitch_curve[s:e] - 69) / 12)
+    if lfo_spec and lfo_spec.get('to_pitch_cents'):
+        mod = lfo(e - s, lfo_spec, rate, beat_seconds, s) if mod is None else mod
+        freq = freq * 2 ** (mod * lfo_spec['to_pitch_cents'] / 1200)
+    f = freq * 2 ** (osc.get('octave', 0) + osc.get('semitones', 0) / 12 + osc.get('cents', 0) / 1200)
+    fv = f * 2 ** (part['pos'] * part['detune'] / 1200)
+    dt = fv / rate
+    steps = dt.copy()
+    steps[0] += part['carry']
+    run = np.cumsum(steps)
+    part['carry'] = float(run[-1])
+    return run + part['offset'], dt, fv
 
 
 def arpeggio_curve(chord, arp, start, n, rate, beat_seconds):
@@ -399,6 +512,65 @@ def arpeggio_curve(chord, arp, start, n, rate, beat_seconds):
     return np.asarray(pitches)[idx]
 
 
+def fast_length(n, multiple=1):
+    """The smallest multiple of `multiple` at least n whose other factors are only 2, 3 and 5."""
+    target = -(-n // multiple)
+    best = 1 << (target - 1).bit_length()
+    p5 = 1
+    while p5 < best:
+        p35 = p5
+        while p35 < best:
+            q = p35
+            while q < target:
+                q *= 2
+            best = min(best, q)
+            p35 *= 3
+        p5 *= 5
+    return best * multiple
+
+
+def _render_group(project, track, clock, group):
+    """One voice of a synth part, at RATE: (its start in seconds, its stereo samples)."""
+    patch = patch_of(track)
+    beat_seconds = 60.0 / project['clock']['tempo'][0][1]
+    release = (patch.get('amp') or {}).get('release', .2)
+    rate = RATE * OVER
+    glide = patch.get('glide_ms', 0) / 1000
+    arp = patch.get('arpeggio')
+    first, last = group[0], group[-1]
+    start = first['start_seconds']
+    held = max(.005, (max(e['end_seconds'] for e in group) if arp else last['end_seconds']) - start)
+    length = held + release * 1.2 + .02
+    n = int(round(length * rate))
+    n_on = int(round(held * rate))
+    pitch = np.full(n, float(first['pitch']))
+    if arp:
+        pitch = arpeggio_curve(group, arp, start, n, rate, beat_seconds)
+        group = group[:1]
+    for prev, cur in zip(group, group[1:]):
+        i = int(round((cur['start_seconds'] - start) * rate))
+        if glide > 0:
+            tau = glide / 3
+            seg = np.arange(n - i) / rate
+            pitch[i:] = cur['pitch'] + (pitch[i - 1] - cur['pitch']) * np.exp(-seg / tau)
+        else:
+            pitch[i:] = cur['pitch']
+    pe = patch.get('pitch_env')
+    if pe:
+        pitch = pitch + pe.get('semitones', 12) * np.exp(-np.arange(n) / rate / pe.get('decay', .03))
+    bends = track['performance'].get('bend')
+    if bends:
+        from .model import bend_curve, curve_at
+        bends = bend_curve(bends)
+        t = np.arange(n) / rate + start
+        pitch = pitch + np.array([curve_at(bends, clock.beat(x)) for x in t[::OVER * 48]]).repeat(OVER * 48)[:n]
+    y = voice(patch, pitch, n_on, n, first['velocity'] / 127, first['id'], rate, beat_seconds)
+    # Padded to a length the FFT is quick at (2^a 3^b 5^c): an awkward one takes it ten times longer and several
+    # times the memory.  The extra silence changes the result only above about 20 kHz.
+    y = resample_down(np.pad(y, ((0, fast_length(len(y) + OVER * 64, OVER) - len(y)), (0, 0))), OVER)
+    return start, y
+
+
 def render(project, track, path, clock=None):
     """Render a synth part to `path` (stereo float WAV at RATE)."""
     from .model import Clock, performed
@@ -417,40 +589,21 @@ def render(project, track, path, clock=None):
     # times the rate, about 60 MB a second, so after MONO_LINE_S of unbroken legato the next note starts afresh.
     groups = voices(notes, patch)
     arp = patch.get('arpeggio')
-    for group in groups:
-        first, last = group[0], group[-1]
-        start = first['start_seconds']
-        held = max(.005, (max(e['end_seconds'] for e in group) if arp else last['end_seconds']) - start)
-        length = held + release * 1.2 + .02
-        n = int(round(length * rate))
-        n_on = int(round(held * rate))
-        t = np.arange(n) / rate + start
-        pitch = np.full(n, float(first['pitch']))
-        if arp:
-            pitch = arpeggio_curve(group, arp, start, n, rate, beat_seconds)
-            group = group[:1]
-        for prev, cur in zip(group, group[1:]):
-            i = int(round((cur['start_seconds'] - start) * rate))
-            if glide > 0:
-                tau = glide / 3
-                seg = np.arange(n - i) / rate
-                pitch[i:] = cur['pitch'] + (pitch[i - 1] - cur['pitch']) * np.exp(-seg / tau)
-            else:
-                pitch[i:] = cur['pitch']
-        pe = patch.get('pitch_env')
-        if pe:
-            pitch = pitch + pe.get('semitones', 12) * np.exp(-np.arange(n) / rate / pe.get('decay', .03))
-        bends = track['performance'].get('bend')
-        if bends:
-            from .model import bend_curve, curve_at
-            bends = bend_curve(bends)
-            pitch = pitch + np.array([curve_at(bends, clock.beat(x)) for x in t[::OVER * 48]]).repeat(OVER * 48)[:n]
-        y = voice(patch, pitch, n_on, n, first['velocity'] / 127, first['id'], rate, beat_seconds)
-        y = resample_down(np.pad(y, ((0, (-len(y)) % OVER + OVER * 64), (0, 0))), OVER)
-        i0 = int(round(start * RATE))
-        m = min(len(y), total - i0)
-        if m > 0:
-            out[i0:i0 + m] += y[:m]
+    # Voices are independent, so a long part spreads them over a few processes (threads would wait on each other
+    # for the interpreter); they are added in note order, so the result is the same as one at a time.
+    seconds = sum(g[-1]['end_seconds'] - g[0]['start_seconds'] + release * 1.2 for g in groups)
+    workers = min(PARALLEL_VOICES, os.cpu_count() or 1, len(groups)) if seconds > PARALLEL_FROM_S else 1
+    job = partial(_render_group, project, track, clock)
+    pool = ProcessPoolExecutor(max_workers=workers) if workers > 1 else None
+    try:
+        for start, y in (pool.map(job, groups) if pool else map(job, groups)):
+            i0 = int(round(start * RATE))
+            m = min(len(y), total - i0)
+            if m > 0:
+                out[i0:i0 + m] += y[:m]
+    finally:
+        if pool:
+            pool.shutdown()
     out *= 10 ** (patch.get('gain_db', 0.0) / 20) * .25
     audio.write_wav(path, out.astype(np.float32))
     return {'notes': len(notes), 'voices': len(groups), 'oversampling': OVER}
