@@ -1,5 +1,6 @@
 """Local headless processes, narrow WAV I/O, instruments and audio measurements."""
 import contextlib
+import errno
 import hashlib
 import json
 import math
@@ -74,6 +75,12 @@ def _verify(key,entry,p):
     if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
     if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
 
+def verify_tool(config,key):
+    """The executable a configuration names under `key` is the file its hash names, as load_config holds every one a
+    render runs: for a command that runs one tool only and reads the configuration itself (fetch_soundbanks.py, whose
+    builds ran the configured FFmpeg unverified; GPT's security audit of 0.5, S01)."""
+    _verify(key,config[key],Path(config[key]['path']))
+
 def load_config(path,all_banks=False):
     """Verify the configured executables and the default SoundFont by path and SHA-256. `soundfont` is the default
     bank; optional `soundfonts` adds named banks that tracks select with `soundfont`.  A named bank is found at load and
@@ -140,10 +147,17 @@ def run(argv,folder,label,timeout=600,cwd=None):
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
     cancel=getattr(_scope,'event',None)
     check_cancel(label)  # a run already stopped starts no program (one that ended within 0.2 s ran to its end)
-    opened=False
+    temp=None;ran=False
+    # A file already at the log's name that cannot be written stays, as when the log was opened there: the run stops
+    # before its program starts (a read-only file of someone else's would otherwise be swapped out on POSIX).
+    if files.occupied(log) and (not files.regular_file(log) or not os.access(log,os.W_OK)):
+        raise PermissionError(errno.EACCES,'the log cannot be written there',str(log))
     try:
-        with log.open('wb') as out:
-            opened=True
+        # The program writes its log under a new name of its own (files.new_file, named in a journaled folder's journal
+        # before it is made), which takes the log's name once the program has ended, however it ended: a run killed
+        # while the program wrote leaves a file the journal proves the run's, never a log half written under its name.
+        fd,temp=files.new_file(log,'.log')
+        with os.fdopen(fd,'wb') as out:
             proc=subprocess.Popen([str(x) for x in argv],stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,creationflags=flags,cwd=cwd)
             try:
                 deadline=started+timeout
@@ -158,11 +172,16 @@ def run(argv,folder,label,timeout=600,cwd=None):
                 proc.kill()
                 with contextlib.suppress(Exception):proc.wait(timeout=10)
                 raise
+        ran=True
     finally:
-        # The program's log, written here rather than swapped in, noted once the program has finished writing it: a
-        # file of the run (files.register_tree), whatever stopped it; only once this run has opened it, so a file at
-        # that name it could not open is never taken for the run's (GPT Pro's sixth review of 0.4.0, from the code).
-        if opened:files.wrote(log)
+        # The log takes its name, noted as the run's (files.replace), whatever stopped the program: a failed program's
+        # log is read to report it.  Only this run's own new file ever takes it, so a file at that name the run did not
+        # write is never taken for the run's (GPT Pro's sixth review of 0.4.0, from the code).
+        if temp is not None:
+            try:files.replace(temp,log)
+            except OSError:
+                with contextlib.suppress(OSError):os.unlink(temp)
+                if ran:raise
     receipt={'argv':[str(x) for x in argv],'returncode':code,'seconds':round(time.monotonic()-started,3),'pid':proc.pid,'launch_mode':'CREATE_NO_WINDOW' if flags else 'no stdin; no GUI arguments','log':str(log)}
     save_json(folder/(label+'.process.json'),receipt)
     content=log.read_text(encoding='utf-8',errors='replace')
@@ -277,11 +296,16 @@ def read_wav(path):
             else:f.seek(size,1)
             if size%2:f.seek(1,1)
     if fmt is None or payload is None:raise ValueError('Missing WAV format/data')
+    # A format chunk holds 16 bytes at least, and a frame is its channels times its sample's bytes (the WAVE format's
+    # nBlockAlign, as wavfile.info holds it): a shorter chunk stopped the reader with struct.error, a frame size of 0
+    # with ZeroDivisionError, and another frame size than the samples have made the length limit below count other
+    # frames than the ones then read (GPT's security audit of 0.5, L04).
+    if len(fmt)<16:raise ValueError('Short WAV format chunk')
     tag,channels,rate,_,align,bits=struct.unpack_from('<HHIIHH',fmt)
     if tag==65534:
         if len(fmt)<40:raise ValueError('Short extensible WAV')
         tag=struct.unpack_from('<H',fmt,24)[0]
-    if channels not in (1,2) or rate!=RATE or payload[1]%align:raise ValueError('Unsupported WAV dimensions')
+    if channels not in (1,2) or rate!=RATE or not align or align!=channels*bits//8 or payload[1]%align:raise ValueError('Unsupported WAV dimensions')
     offset,size=payload
     if size//align>MAX_WAV_SECONDS*RATE:
         # Nothing the tools write is longer than a render, so a longer file (a reference, a render folder from

@@ -51,6 +51,8 @@ def safe_extract(path,target,only=None):
     """Extract a zip after checking every member; with `only`, just the members under that prefix.  The members are
     written into a new private folder, then put in `target` (musiclib.files.install_tree): a file the installer did not
     put there is set aside, never written through or lost.  Returns the files set aside."""
+    # A target that is a link is refused before it is resolved, which would follow it (GPT's security audit of 0.5, S03).
+    if files.linked(target):raise ValueError(f'{target} is a link; a setup installs only into real folders')
     target=Path(target).resolve();staging=files.staging_folder(target)
     try:
         with zipfile.ZipFile(path) as z:
@@ -76,6 +78,8 @@ def safe_extract_tar(path,target,only=None):
     """Extract a .tar.gz after checking every member: regular files and folders only (no link), no absolute path and
     none outside the target.  A leading "./" is dropped from the names, `only` keeps the members under that prefix, and
     the permission bits are kept.  Put in `target` as safe_extract does.  Returns the files set aside."""
+    # A target that is a link is refused before it is resolved, which would follow it (GPT's security audit of 0.5, S03).
+    if files.linked(target):raise ValueError(f'{target} is a link; a setup installs only into real folders')
     target=Path(target).resolve();staging=files.staging_folder(target)
     try:
         with tarfile.open(path,'r:gz') as t:
@@ -240,6 +244,9 @@ def _install_surge(lock,runtime,cache,args,system,config):
         print('SKIPPED pedalboard | no pinned wheel for this Python and platform; Surge parts use their fallback presets',flush=True);return
     flags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0
     pylib=runtime/'pylib'
+    # pip writes where its target leads: no link in it (the runtime's own folders are checked in main).
+    odd=files.links_in(pylib) if files.real_folder(pylib) else []
+    if odd:raise ValueError(f'{odd[0]} is a link; pedalboard is installed only into real folders')
     done=subprocess.run([sys.executable,'-m','pip','install','--no-deps','--no-index','--no-cache-dir','--target',str(pylib),str(wheel),'-q'],
                         capture_output=True,text=True,timeout=600,stdin=subprocess.DEVNULL,creationflags=flags)
     if done.returncode or not (pylib/'pedalboard').is_dir():raise ValueError('pedalboard install failed: '+(done.stderr or '').strip()[-300:])
@@ -252,7 +259,7 @@ def _install_surge(lock,runtime,cache,args,system,config):
     src=presets['source'];patches=runtime/'surge_patches';staging=files.staging_folder(patches)
     try:
         for name,p in presets['presets'].items():
-            local=cache/'surge_patches'/p['patch'];local.parent.mkdir(parents=True,exist_ok=True)
+            local=files.cache_file(cache,'surge_patches',*PurePosixPath(p['patch']).parts)
             url=f'https://raw.githubusercontent.com/surge-synthesizer/surge/{src["commit"]}/{src["path"]}/'+urllib.parse.quote(p['patch'])
             download({'url':url,'bytes':p['bytes'],'sha256':p['sha256']},local,args.offline)
             if local.stat().st_size!=p['bytes'] or file_hash(local)!=p['sha256']:raise ValueError('Patch integrity failed: '+name)
@@ -271,7 +278,7 @@ def install_catalog(runtime,cache,args,config):
     doc=json.loads((Path(__file__).resolve().parents[1]/'references'/'surge-catalog.json').read_text(encoding='utf-8'))
     origin=doc['origin'];target=runtime/'surge_patches_all';staging=files.staging_folder(target)
     def one(e):
-        local=cache/'surge_patches_all'/e['path'];local.parent.mkdir(parents=True,exist_ok=True)
+        local=files.cache_file(cache,'surge_patches_all',*PurePosixPath(e['path']).parts)
         url=f'https://raw.githubusercontent.com/surge-synthesizer/surge/{origin["commit"]}/{origin["path"]}/'+urllib.parse.quote(e['path'])
         download({'url':url,'bytes':e['bytes'],'sha256':e['sha256']},local,args.offline)  # tried again there
         if local.stat().st_size!=e['bytes'] or file_hash(local)!=e['sha256']:raise ValueError('Patch integrity failed: '+e['path'])
@@ -296,9 +303,19 @@ def main():
     args=ap.parse_args()
     system=args.system or os.name!='nt'
     files.check_config_path(args.config,'--config')
+    # The downloads' folder given as a link is refused before it is resolved, as a render's cache is (N1).
+    if args.archive_cache and files.linked(args.archive_cache):raise ValueError(f'--archive-cache {args.archive_cache} is a link; give the folder itself')
     if os.path.normcase(str(args.config.resolve()))==os.path.normcase(str((args.runtime/'dependency_receipts.json').resolve())):
         raise ValueError("--config names the runtime folder's dependency_receipts.json; choose another path for the configuration")
     runtime=args.runtime.resolve();runtime.mkdir(parents=True,exist_ok=True)
+    # One setup at a time in a runtime, and none through a link in it (musiclib.files; GPT's security audit of 0.5,
+    # S05 and S03).
+    with files.installing(runtime) as held:
+        # Without the lock the setup goes on, as a render does on a drive that cannot lock, and says so (N2).
+        if not held:print('NOTE runtime | its lock cannot be taken (the drive cannot lock files, or work.lock there is no lock file): make sure no other setup is installing into it',flush=True)
+        files.real_runtime(runtime);_install(args,system,runtime)
+
+def _install(args,system,runtime):
     lock=json.loads((Path(__file__).resolve().parents[1]/'references'/'runtime-lock.json').read_text(encoding='utf-8'))
     cache=args.archive_cache.resolve() if args.archive_cache else runtime/'downloads';cache.mkdir(parents=True,exist_ok=True)
     config={};receipts=[]

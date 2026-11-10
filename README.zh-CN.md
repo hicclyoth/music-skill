@@ -165,17 +165,17 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 | 合成器 | 内置的合成器与鼓机；Surge XT 和它的 3,008 个出厂与第三方音色（其中五十个精选），可选，默认安装 | 内置：MIT；Surge XT：GPL-3.0，由独立的 GPL 程序运行 |
 | 其他乐器 | MuseScore MS Basic | MIT |
 
-录音音色库都是 CC0、可自由用于任何用途而没有限制（爱荷华大学的录音），或已贡献给公有领域（钢鼓），用它们制作的音乐不需要署名。Surge XT 采用 GPL-3.0，只在本项目一个独立的 GPL 程序（`surge_host.py`）里运行；GPL 约束的是程序本身，不是它们演奏出来的音乐。MS Basic 是其他声部退而使用的 General MIDI 音色库，采用 MIT，它的声明要求在任何衍生作品中保留致谢。我们的理解是这指音色库本身的复制和改编，而不是用它演奏的音乐，但这只是我们的理解：如果你发表的作品有声部用到 MS Basic，稳妥起见请署名（示例曲都没有用到）。来源列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+录音音色库都是 CC0、可自由用于任何用途而没有限制（爱荷华大学的录音），或已贡献给公有领域（钢鼓），用它们制作的音乐不需要署名。Surge XT 采用 GPL-3.0，只在本项目一个独立的 GPL 程序（`surge_host.py`）里运行；GPL 约束的是程序本身，不是它们演奏出来的音乐。MS Basic 是其他声部退而使用的 General MIDI 音色库，采用 MIT：它的声明随音色库本身的复制和改编保留，用它演奏的音乐同样不需要署名。来源和我们对各项许可的理解列在 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 效果如何
 
-`selfcheck.py` 共有 136 项检查（没有渲染配置时为 109 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 148 项检查（没有渲染配置时为 119 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音乐好不好听是另一回事，只有实际聆听才知道。上面这些曲子是这个仓库最好的证据。
 
 ## 常见问题
 
-**做出来的音乐可以用在视频、游戏或商业作品里吗？** 工具本身没有任何限制。可选音色库都是 CC0 或可自由使用，不需要署名（MS Basic 见上文）；GPL 许可的程序（FFmpeg、Surge XT）约束的是程序本身，不是经过它们处理的音乐。至于你对 agent 帮你写的音乐是否享有著作权，取决于你所在地的法律，以及你参与塑造了多少。
+**做出来的音乐可以用在视频、游戏或商业作品里吗？** 工具本身没有任何限制。音色库都不需要署名：可选音色库是 CC0 或可自由使用，MS Basic 的 MIT 许可对用它演奏的音乐没有任何要求。GPL 许可的程序（FFmpeg、Surge XT）约束的是程序本身，不是经过它们处理的音乐。至于你对 agent 帮你写的音乐是否享有著作权，取决于你所在地的法律，以及你参与塑造了多少。
 
 **哪些 agent 可以用？** 任何能加载 Agent Skills 并运行 Python 的 agent：Claude Code（以插件安装）、Codex，以及通过 `npx skills` 安装的其他 agent。
 
@@ -216,4 +216,4 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 许可
 
-代码与文档采用 [MIT](LICENSE) 许可。示例的录音与乐曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，不包含在这个仓库中：工具从发布者下载，三十个音色库都从本项目的 release 下载，其中二十五个用发布者的采样构建，五个是 FreePats 的原文件重新打包。`skills/music-production/scripts/surge_host.py` 采用 GPL-3.0-or-later，与它运行的 Surge XT 和 pedalboard 相同。序曲的那张图是程序直接从它的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。
+本项目自己的代码与文档采用 [MIT](LICENSE) 许可；第三方数据、对它们的测量结果和引用的片段保留各自的条款，列在 [THIRD_PARTY.md](THIRD_PARTY.md)。示例的录音与乐曲以 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) 贡献到公有领域。第三方工具和音色库保留各自的许可，不包含在这个仓库中：工具从发布者下载，三十个音色库都从本项目的 release 下载，其中二十五个用发布者的采样构建，五个是 FreePats 的原文件重新打包。`skills/music-production/scripts/surge_host.py` 采用 GPL-3.0-or-later，与它运行的 Surge XT 和 pedalboard 相同。序曲的那张图是程序直接从它的项目文件画出来的；logo 的文字是将 Noto Serif TC（SIL Open Font License）转为轮廓。
