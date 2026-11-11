@@ -28,6 +28,8 @@ verdict on how the music sounds.
   number ones of the genre that governs the piece's mix axis (`published_genre`, from style-maps.json).
 - Warnings from the stem receipts: parts whose dynamics sat between two recorded takes that disagree in phase, and
   Surge XT parts that played their fallback preset.
+- In a bus-chain render, what the project and the spaces' impulse responses say of the reverb (`reverb`): the early
+  decay time of the spaces as the project's sends weight them, and the mix's clarity.
 """
 import json
 import math
@@ -37,7 +39,7 @@ import tempfile
 import numpy as np
 
 from . import audio, files
-from .measure import k_filter, level, release
+from .measure import HALL_C80_DB, clarity_c80, k_filter, level, release
 from .model import Clock, load_project
 
 RATE = audio.RATE
@@ -315,6 +317,65 @@ def lead_presence(lead, accompaniment, spans):
     return rows
 
 
+def early_decay_time(responses):
+    """The early decay time (s) of impulse responses heard together, `responses` being (frames x channels, energy
+    weight) pairs: six times the time their summed backward-integrated energy decay takes to fall 10 dB (ISO
+    3382's definition).  Each response's decay curve is weighted by what the parts send into its space as the
+    project writes it (mixbus.written_energies); the responses themselves are known, so their curves are combined."""
+    total, longest = None, max((len(x) for x, _ in responses), default=0)
+    for x, weight in responses:
+        e = (np.asarray(x, dtype=np.float64) ** 2).sum(axis=1)
+        curve = np.cumsum(e[::-1])[::-1]
+        if curve[0] <= 0 or weight <= 0:
+            continue
+        curve = np.pad(curve / curve[0] * weight, (0, longest - len(curve)))
+        total = curve if total is None else total + curve
+    if total is None:
+        return None
+    below = np.flatnonzero(total <= total[0] * .1)
+    return round(6 * float(below[0]) / RATE, 3) if len(below) else None
+
+
+def mix_measures(render_dir, report, p=None):
+    """What a bus-chain render says of its reverb: {'reverb': ...}, None where the render lacks what it needs
+    (another chain; no part sends to a space; no project).
+
+    The reverb is described from the project `p` (the render's own project.json without it) and from the spaces'
+    impulse responses in returns/, never from the returns' audio: the early decay time of the responses heard
+    together and the clarity (measure.clarity_c80), each part counting as the project writes it
+    (mixbus.written_energies).  Only buses and spaces the mix knows are read, whatever names the report holds.
+    No audio is read."""
+    from .mixbus import clarity_rooms, written_energies
+    from .mixbus import SPACES
+    from .model import BUSES
+    returns = render_dir / 'returns'
+    mix = report.get('buses') or {}
+    spaces = [n[:-len('_return.wav')] for n in mix.get('returns') or [] if isinstance(n, str) and n.endswith('_return.wav')]
+    spaces = [s for s in spaces if s in SPACES]
+    buses = sorted({b for b in (mix.get('assignment') or {}).values() if b in BUSES})
+    if report.get('chain') != 'bus' or not buses or any(not (returns / f'bus_{b}.wav').is_file() for b in buses):
+        return {'reverb': None}
+
+    def read(path):
+        return np.asarray(audio.read_wav(path)[0], dtype=np.float64)
+    out = {'reverb': None}
+    if p is None and (render_dir / 'project.json').is_file():
+        try:
+            p = load_project(render_dir / 'project.json')
+        except (OSError, ValueError):
+            p = None
+    if p is not None and spaces and all((returns / f'{s}_ir.wav').is_file() for s in spaces):
+        clock = Clock(p)
+        responses = {s: read(returns / f'{s}_ir.wav') for s in spaces}
+        sent = written_energies(p, clock)[1]
+        dry, rooms = clarity_rooms(p, clock, responses)
+        # The returns stand where the mix's rules of version 2 set them; their responses are as written.
+        c80 = clarity_c80(dry, rooms, float(((mix.get('rules') or {}).get('reverb') or {}).get('gain_db') or 0.0)) if rooms else None
+        out['reverb'] = {'early_decay_time_s': early_decay_time([(responses[s], sent.get(s, 0.0)) for s in spaces]),
+                         'clarity_c80_db': None if c80 is None else round(c80, 1), 'hall_c80_db': list(HALL_C80_DB), 'spaces': spaces}
+    return out
+
+
 def doublings(p, lo, hi, share=.6):
     """The melody parts sounding in beats [lo, hi) and the parts that double them: at least `share` of a part's onsets
     there fall on a melody onset of the same pitch class."""
@@ -465,6 +526,13 @@ def analyze(render_dir, bar_spans=(), reference=None):
                         'gain reduction on loud peaks and rarely more than 6 (White 2003), and heavier limiting can flatten '
                         'transients; have it heard, lower target_lufs, or lower that section\'s peaks '
                         '(mix.saturate on its loudest parts, ducking, less level on what it adds).')
+    mixed = mix_measures(render_dir, report, p)
+    if mixed['reverb'] is not None:
+        r = mixed['reverb']
+        if p['mix'].get('c80_db') is not None:
+            # The piece names how near it is heard: the range measured on mixes of songs is not its measure, and a
+            # hall's amount of reverb is not too much of it.
+            r['c80_asked_db'] = p['mix']['c80_db']
     receipts_file = render_dir / 'stem_receipts.json'
     for r in files.read_json(receipts_file) if receipts_file.is_file() else []:
         played = r.get('surge') or {}
@@ -479,7 +547,8 @@ def analyze(render_dir, bar_spans=(), reference=None):
                 'side_minus_mid_db': here['side_minus_mid_db'], 'published_genre': genre, 'reference_comparison': comparison, 'stem_levels_lufs_ungated': stems,
                 'lead_tracks': lead_tracks, 'lead_source': 'buses' if buses is not None else 'stems',
                 'lead_presence': lead_presence(lead, accompaniment, regions) if lead is not None and accompaniment is not None else [],
-                'melody_groups': melody, 'warnings': warnings,
+                'melody_groups': melody, 'reverb': mixed['reverb'],
+                'warnings': warnings,
                 'master': here['loudness'],
                 'note': 'Measurements only; they do not establish how the music sounds.'}
     release()

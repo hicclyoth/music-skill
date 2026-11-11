@@ -1,10 +1,14 @@
-"""Round robins: a drum part steps through the takes a bank holds, and where a bank has none a repeated note borrows the
-neighbouring key's recording.
+"""Varying the recording: each hit of a drum part takes one of the takes its bank holds, and where a bank has none a
+repeated note borrows the neighbouring key's recording.
 
-A bank built here keeps a hit's round robins on neighbouring velocities inside its dynamic layer (take 1 at one
-velocity, take 2 at the next, and so on), so a part written at one velocity would play one take every time.  A drum
-part instead takes the next recording of the layer on each hit, at the nearest velocity inside that layer that holds
-it: a step or two (three where the layer ends), a fraction of a dB, as a sampler's round-robin sequence does.
+A bank built here keeps a hit's recorded takes on neighbouring velocities inside its dynamic layer (take 1 at one
+velocity, take 2 at the next, and so on), so a part written at one velocity would play one take every time.  Each
+hit of a drum part instead takes one of the layer's takes by a draw of its own, made from the hit's id, its key and
+its tick together, at the nearest velocity inside that layer that holds it (with N takes at most N - 1 steps away,
+at a layer's edge), as a sampler's random mode does.  The velocity moves only in the MIDI given to the synthesizer;
+the project and the exported MIDI keep the written one.  No hit's take depends on another hit, so a hit has the take
+of the hit before it on the same key and layer with a chance of about one in N, where the layer has N takes.  (Until
+0.6 a drum stepped through its takes in order.)
 
 A sampler plays the same recording every time a key repeats, and a fast repeated figure then sounds mechanical (the
 "machine-gun" effect); libraries record several takes of each note (round robins) and alternate them.  A bank without
@@ -15,6 +19,7 @@ semitone or two further than it would be on its own key.  Only keys whose zones 
 so a bank sampled every few semitones varies only where its zones change, and a part with pitch bends of its own keeps
 its keys.
 """
+import hashlib
 import threading
 
 from . import sf2
@@ -107,11 +112,19 @@ def cycle_layers(row):
     return cells
 
 
-def cycle_velocities(notes, cycles):
-    """A velocity for each performed note (in time order) that steps repeated hits through their layer's recorded round
-    robins: the first hit on a key in a layer keeps its velocity, each later one takes the layer's next recording at the
-    nearest velocity inside the layer that holds it.  `cycles` is velocity_cycles' map."""
-    last, out = {}, []
+def take_of(note, period):
+    """Which of `period` recorded takes a hit plays: a draw from the hit itself, its id (where it has one), the key it
+    plays and its tick together, the same on every render and independent of every other hit.  A hit that keeps its
+    id and is moved or played on another key draws again."""
+    key = f"{note.get('id')}:{note['pitch']}:{note.get('tick')}"
+    return int(hashlib.sha256(key.encode()).hexdigest()[:8], 16) % period
+
+
+def take_velocities(notes, cycles):
+    """A velocity for each performed note that gives the hit one of its layer's recorded takes: the take is take_of's
+    draw, played at the nearest velocity inside the layer that holds it.  A key with one take per velocity keeps its
+    velocities.  `cycles` is velocity_cycles' map."""
+    out = []
     for n in notes:
         v = n['velocity']
         info = cycles.get(n['pitch'], [None] * 128)[v] if 0 < v < 128 else None
@@ -119,13 +132,9 @@ def cycle_velocities(notes, cycles):
             out.append(v)
             continue
         first, final, period, index = info
-        prev = last.get((n['pitch'], first))
-        want = index if prev is None else (prev + 1) % period
-        up = (want - index) % period
+        up = (take_of(n, period) - index) % period
         options = [v + d for d in (up, up - period) if first <= v + d <= final]
-        chosen = min(options, key=lambda x: abs(x - v)) if options else v
-        last[(n['pitch'], first)] = (chosen - first) % period
-        out.append(chosen)
+        out.append(min(options, key=lambda x: abs(x - v)) if options else v)
     return out
 
 

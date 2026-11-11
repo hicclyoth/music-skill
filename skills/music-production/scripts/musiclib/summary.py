@@ -123,6 +123,17 @@ def render(report, folder):
     buses = report.get('buses') or {}
     if buses.get('level_change_db'):
         lines.append('Each bus against the sum of its stems (dB): ' + ', '.join(f'{k} {v:+g}' for k, v in buses['level_change_db'].items()) + '.')
+    ruled = buses.get('rules') or {}
+    if ruled:
+        rv = ruled.get('reverb')
+        lead = ruled.get('lead_threshold_dbfs')
+        lines.append('Mix rules 2' + (f': lead compressor threshold {lead:g} dBFS' if lead is not None else '')
+                     + (f'; clarity C80 {rv["c80_written_db"]:+g} dB as written, asked {rv["c80_asked_db"]:+g}, the returns '
+                        f'{rv["gain_db"]:+.1f} dB, now {rv["c80_db"]:+g}' + ('' if rv.get('c80_reached') else ': not reached')
+                        if rv and rv.get('c80_db') is not None else '')
+                     # A clarity that was asked and could not be set is said, never passed over.
+                     + (f'; clarity C80 asked {rv["c80_asked_db"]:+g} dB: not reached, nothing that sounds is sent to a reverb'
+                        if rv and rv.get('c80_db') is None else '') + '.')
     failed = [k for k, ok in report['checks'].items() if not ok]
     lines.append('Failed checks: ' + (', '.join(failed) if failed else 'none') + '.')
     if report.get('left_out'):
@@ -170,6 +181,12 @@ def analysis(r, path, render=None):
                      'the reference (dB) ' + ', '.join(f'{k} {v:+g}' for k, v in c['octaves_minus_reference_db'].items())
                      + f'; loudness {_signed(c.get("integrated_lufs_difference"))} LU, peak to loudness {_signed(c.get("plr_db_difference"))} dB, '
                      f'loudness range {_signed(c.get("lra_lu_difference"))} LU.')
+    rv = r.get('reverb')
+    if rv:
+        lines.append(f'Reverb: early decay {_g(rv.get("early_decay_time_s"))} s'
+                     + (f', clarity C80 {rv["clarity_c80_db"]:+g} dB (recommended for concert halls {rv["hall_c80_db"][0]:+g} to '
+                        f'{rv["hall_c80_db"][1]:+g}' + (f'; the piece asks {rv["c80_asked_db"]:+g}' if rv.get('c80_asked_db') is not None else '') + ')'
+                        if rv.get('clarity_c80_db') is not None else '') + '.')
     cuts = [(x['region'], b) for x in r.get('melody_groups') or [] for b in x.get('balance', [])[:3]]
     if cuts:
         lines.append('Parts close to the melody group (level minus the melody, the cut that puts each under it, dB): ' + '; '.join(
@@ -177,7 +194,7 @@ def analysis(r, path, render=None):
     lines += [f'Warning: {w}' for w in r.get('warnings') or []]
     lines.append(f'Full figures: {_rel(path)}: sections (band_share_pct, peak, crest), lead_presence, melody_groups (balance), '
                  'stem_levels_lufs_ungated (each part per section), tonal_balance (third_octaves_db), reference_comparison, '
-                 'side_minus_mid_db. Measurements only; they do not establish how the music sounds.')
+                 'side_minus_mid_db, reverb. Measurements only; they do not establish how the music sounds.')
     return joined(lines)
 
 

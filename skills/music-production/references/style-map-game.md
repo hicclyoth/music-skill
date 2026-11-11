@@ -30,9 +30,9 @@ Source tags: WP is Wikipedia, read on 9 November 2026, by article. The other sou
 
   Where the brief names only the place, its entry is the primary, and the axes it leaves without a source follow
   [style-maps.md](style-maps.md), Using a map, step 5.
-- **Pieces that do not end.** Many early console games share a style sometimes called the video game genre: pieces
-  designed to repeat indefinitely rather than end or fade out, without lyrics, playing over the game's sounds; looping
-  is the most common form of game music (WP Video game music). The loop point, and how much a loop can repeat before
+- **Pieces that do not end.** Many early console games share a style sometimes called the video game genre: music with
+  no lyrics that plays over the game's sounds and is written to go round again, with no ending and no fade; no form of
+  game music is more common than the loop (WP Video game music). The loop point, and how much a loop can repeat before
   players tire of it, are in [game-music.md](game-music.md) (The loop point; Repetition: Dutta 2020, Worrall 2025).
 - **Character.** No source read says which character each place conveys: take it from the brief, and set its cues as
   [game-music.md](game-music.md) (Mood and scene) and [moods.md](moods.md) give them (Eerola, Friberg and Bresin
@@ -52,7 +52,7 @@ Music for a town or a village. `game/town`
 | `melody` | no source read | |
 | `rhythm` | no source read | |
 | `timbre` | no source read | |
-| `form` | period structures, more likely here than in the other places; with the cadences, a sense of balance and rest largely absent from the others | Elkins 2020 |
+| `form` | phrases in pairs, the second closing more firmly than the first (the period, as Open Music Theory describes it), likeliest in town music of the four kinds of theme; the pairing and its cadences give a town a balance and rest the other kinds largely lack | Elkins 2020 |
 | `mix` | no source read | |
 
 - **In this skill**: the period's antecedent and consequent, the first closing on a weaker cadence and the second on
@@ -71,7 +71,7 @@ Music for exploring the world between the towns and the dungeons. `game/overworl
 | `melody` | no source read | |
 | `rhythm` | no source read | |
 | `timbre` | no source read | |
-| `form` | more likely to consist of sentential structures, with the forward-oriented, dynamic character Vande Moortele (2011) gives the sentence, where the town's music has periods | Elkins 2020 |
+| `form` | more often the sentence than a town's period: a form that presses on toward its close (Vande Moortele 2011 on the sentence, as Elkins cites him). That this suits music for travelling is this skill's reading | Elkins 2020 |
 | `mix` | no source read | |
 
 - **In this skill**: the sentence, a basic idea stated and repeated, then a continuation that fragments it and drives
@@ -86,11 +86,11 @@ Music for a dungeon, a cave or a tower. `game/dungeon`
 | Axis | Traits | From |
 |---|---|---|
 | `tempo` | no source read | |
-| `harmony` | tonally static or ambiguous harmonies; a lack of functional harmony | Elkins 2020 |
+| `harmony` | chords that stay where they are or leave the key unclear, without the pull of functional progressions | Elkins 2020 |
 | `melody` | no source read | |
 | `rhythm` | no source read | |
 | `timbre` | no source read | |
-| `form` | a significant amount of internal repetition | Elkins 2020 |
+| `form` | much repeating inside the cue | Elkins 2020 |
 | `mix` | no source read | |
 
 - **In this skill**: harmony that does not progress toward a cadence, a drone or pedal under it

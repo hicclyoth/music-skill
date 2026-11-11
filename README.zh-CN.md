@@ -33,15 +33,15 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 
 以下每一首都由 Claude（Opus 5.5，xhigh effort）用这个 skill 的 0.3.0 版，从一句题材和[所有 agent 共用的规则](examples/agent-rules.md)、单次运行做成。曲名、曲式、乐器和音色都由它自己决定，每个音都是它写的，审查、渲染和修改也都由它自己完成，没有人修改过成品。每个示例文件夹都有 prompt、agent 的脚本和渲染时的项目文件。
 
-**[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/fughetta-on-a-lantern-theme.mp3)**（1:55），题材是「巴洛克风格的大键琴与弦乐小品，声部之间要有模仿对位」：先是庄板（Grave）序奏，接着是 D 小调的小赋格，主题依次在四个弦乐声部进入（[示例](examples/fughetta-on-a-lantern-theme)）。
+**[《Fughetta on a Lantern Theme》](https://github.com/owoevan-dev/music-skill/releases/download/examples-3/fughetta-on-a-lantern-theme.mp3)**（1:55），题材是「巴洛克风格的大键琴与弦乐小品，声部之间要有模仿对位」：先是庄板（Grave）序奏，接着是 D 小调的小赋格，主题依次在四个弦乐声部进入（[示例](examples/fughetta-on-a-lantern-theme)）。
 
-- [《Platform in the Snowmelt》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/platform-in-the-snowmelt.mp3)（4:37），题材是「像动画片尾曲的日系抒情曲，钢琴和弦乐为主，安静开始，最后一次副歌情绪最满」（[示例](examples/platform-in-the-snowmelt)）
-- [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sodium-lights.mp3)（4:28），题材是「日系 city pop，夜晚开车兜风的都市感」（[示例](examples/sodium-lights)）
-- [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-2/sprinkle-satellite.mp3)（2:30），题材是「可爱系 future bass，明亮的和弦和轻快的 drop」（[示例](examples/sprinkle-satellite)）
+- [《Platform in the Snowmelt》](https://github.com/owoevan-dev/music-skill/releases/download/examples-3/platform-in-the-snowmelt.mp3)（4:37），题材是「像动画片尾曲的日系抒情曲，钢琴和弦乐为主，安静开始，最后一次副歌情绪最满」（[示例](examples/platform-in-the-snowmelt)）
+- [《Sodium Lights》](https://github.com/owoevan-dev/music-skill/releases/download/examples-3/sodium-lights.mp3)（4:28），题材是「日系 city pop，夜晚开车兜风的都市感」（[示例](examples/sodium-lights)）
+- [《Sprinkle Satellite》](https://github.com/owoevan-dev/music-skill/releases/download/examples-3/sprinkle-satellite.mp3)（2:30），题材是「可爱系 future bass，明亮的和弦和轻快的 drop」（[示例](examples/sprinkle-satellite)）
 
 [原版与修改版对照](examples/before-after) 把一首小曲改掉一个音，再用 `compare` 列出渲染里随之改变的所有地方：那个声部、它的总线、混响尾巴和母带。
 
-录音是 MP3 文件，可以从 release [examples-2](https://github.com/owoevan-dev/music-skill/releases/tag/examples-2) 下载。
+录音是 MP3 文件，可以从 release [examples-3](https://github.com/owoevan-dev/music-skill/releases/tag/examples-3) 下载。
 
 ## 快速开始
 
@@ -74,7 +74,7 @@ music-skill 是一个 [Agent Skill](https://agentskills.io)，让 AI agent 像�
 2. **检查乐谱**：`review` 会列出声部之间持续的小二度和小九度；为和弦外的每个音标出经过音、挂留音等非和弦音的类型，并询问没有级进解决的音；还会列出独立声部之间的平行五度、八度，以及音区过低的密集音程，让每一处都是有意的选择，而不是意外。
 3. **演奏**：演奏模型加入真人演奏会有的偏差：每位乐手在时间和音量上缓慢的起伏、略微靠后的贝斯、乐句的起伏弧线，以及和弦中各音不会同时按下、也不会同时松开。采样的主旋律可以连奏，也可以推弦。
 4. **渲染**：FluidSynth 用有许可的 SoundFont 音色库，让每个采样声部用各自的乐器演奏；电子声部则由内置的合成器和鼓机，或 Surge XT 合成器的音色演奏。
-5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 项目的目标响度（默认 −16 LUFS，流媒体常用 −14 LUFS），真峰值不超过 −1 dBTP。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
+5. **混音与母带**：各声部经过鼓、贝斯、节奏、合奏和主旋律总线，以及四种自动生成的混响，最后由母带处理做到 项目的目标响度（默认 −16 LUFS，流媒体常用 −14 LUFS），真峰值不超过 −1 dBTP。采用新版混音规则时，主旋律会保持在你写的音量附近，母带以真峰值限制器收尾；管弦乐曲还能指定听起来离乐手多近，从乐手身边到音乐厅的座位。管弦乐和管风琴可以跳过压缩器，保留完整的强弱对比；电子音乐可以加上侧链闪避、跟随速度的延迟、滤波扫频，以及俱乐部级别的响亮母带。
 6. **测量**：`analyze` 会测出每个段落的响度、频谱和立体声、主旋律比伴奏响多少，并把母带的音色平衡与已发表的商业录音测量，或同曲风的参考进行比较。这些数字能指出问题所在，但不能代替实际聆听。
 
 只改一个音，就只会重新合成那一个声部；音符和混音都没变的声部，会像 DAW 里冻结的音轨一样，直接使用缓存中处理好的分轨。每次渲染都会用所有声部重新混音，所以共用混响、混响尾巴和母带都会随之改变。每一轮修改用一次 `round`：检查乐谱、渲染草稿（声音相同，只省去交付才需要的文件）、测量，再与上一轮比较，每一步都给出简短摘要。`compare` 会列出两次渲染之间的差异：哪些声部重新合成，以及哪些分轨、总线和混响返回有变化、变在哪里、差多少。
@@ -169,7 +169,7 @@ python skills/music-production/scripts/fetch_soundbanks.py --config <folder>/loc
 
 ## 效果如何
 
-`selfcheck.py` 共有 148 项检查（没有渲染配置时为 119 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
+`selfcheck.py` 共有 152 项检查（没有渲染配置时为 122 项），从 MIDI 往返转换、压缩包安全到实际渲染都包含在内。例如：只改一个音时只会重新合成一个声部，而 `compare` 只在受影响的文件里、从那个音开始找到差异；旧的单一混响混音能逐位重现之前的版本；响度测量对 BS.1770 的标准测试音读出 −3.01 LUFS。CI 会跑完所有检查（包括渲染），环境是 Ubuntu（FluidSynth 2.3、FFmpeg 6.1）和 macOS（FluidSynth 2.6、FFmpeg 9.0）。
 
 音乐好不好听是另一回事，只有实际聆听才知道。上面这些曲子是这个仓库最好的证据。
 
