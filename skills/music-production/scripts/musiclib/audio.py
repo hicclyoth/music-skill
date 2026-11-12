@@ -58,6 +58,25 @@ def absolute_paths(config, base, where=None):
                 entry[key] = str((Path(base) / entry[key]).resolve())
     return config
 
+HASH_FOLDER=None  # the configuration's folder, where known_hash keeps its store (set by load_config)
+
+def known_hash(p,folder):
+    """SHA-256 of a configured file, kept by path, size and modified time in `folder`/.hash_store.json, so a render does
+    not read every bank again (Cutroom, 9 Nov 2026: 8.4 GB of banks took 65-160 s per render; on 0.6.0 a cold render
+    still spent 22 s re-reading the banks it plays). A file that changed in size or time is read again, so a replaced
+    bank is still caught."""
+    store=Path(folder)/'.hash_store.json'
+    try:known=json.loads(store.read_text(encoding='utf-8'))
+    except (OSError,ValueError):known={}
+    if not isinstance(known,dict):known={}
+    s=p.stat();key=f'{p}|{s.st_size}|{s.st_mtime_ns}'
+    if key in known:return known[key]
+    h=file_hash(p);known={k:v for k,v in known.items() if not k.startswith(f'{p}|')};known[key]=h
+    try:
+        tmp=store.with_suffix(f'.{os.getpid()}.{threading.get_ident()}.tmp');tmp.write_text(json.dumps(known,indent=0),encoding='utf-8');os.replace(tmp,store)
+    except OSError:pass
+    return h
+
 VERIFIED={}  # path -> (sha256, size, modification time) of each named bank this process has hashed
 
 def _stamp(p):
@@ -73,7 +92,7 @@ def _verify(key,entry,p):
     # A system package update replaces the executable: the configuration then names a file that is gone or changed.
     again=' Run bootstrap.py again (and fetch_soundbanks.py for the banks) to write a new configuration.'
     if not p.is_file():raise ValueError(f'Missing dependency: {key}: {p}.'+again)
-    if not entry.get('sha256') or file_hash(p)!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
+    if not entry.get('sha256') or (known_hash(p,HASH_FOLDER) if HASH_FOLDER else file_hash(p))!=entry['sha256']:raise ValueError(f'Dependency hash mismatch: {key}: {p} changed since the configuration was written.'+again)
 
 def verify_tool(config,key):
     """The executable a configuration names under `key` is the file its hash names, as load_config holds every one a
@@ -92,6 +111,8 @@ def load_config(path,all_banks=False):
     data=files.read_json(os.path.abspath(path))
     path=Path(path).resolve()
     config_shape(data,path)
+    global HASH_FOLDER
+    HASH_FOLDER=path.parent
     extra=data.get('soundfonts',{})
     if 'default' in extra or not all(re.fullmatch(r'[a-z][a-z0-9_]{0,47}',k) for k in extra):
         raise ValueError('soundfonts must map lower-case names (not "default") to entries')
@@ -272,10 +293,10 @@ def write_wav(path,data,rate=RATE):
     data=np.asarray(data,dtype='<f4')
     if data.ndim==1:data=data[:,None]
     if not np.isfinite(data).all():raise ValueError('Nonfinite audio')
-    channels=data.shape[1];raw=data.tobytes()
+    channels=data.shape[1];data=np.ascontiguousarray(data);size=data.nbytes
     fmt=struct.pack('<HHIIHH',3,channels,rate,rate*channels*4,channels*4,32)
-    with files.staged(path) as f:  # whole or not at all: a failed write leaves the file that was there
-        f.write(b'RIFF'+struct.pack('<I',36+len(raw))+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',len(raw))+raw)
+    with files.staged(path) as f:  # whole or not at all; the samples straight from the array, not copied into one bytes object first
+        f.write(b'RIFF'+struct.pack('<I',36+size)+b'WAVEfmt '+struct.pack('<I',16)+fmt+b'data'+struct.pack('<I',size));f.write(memoryview(data).cast('B'))
 
 def read_wav(path):
     path=Path(path)
